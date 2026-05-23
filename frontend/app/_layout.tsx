@@ -1,27 +1,81 @@
-import { Stack } from "expo-router";
+import React, { useEffect } from "react";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { AuthProvider, useAuth } from "@/src/auth-context";
+import { colors } from "@/src/theme";
 
-// Keep the native splash visible from cold start until icon fonts register.
-// Required because @expo/vector-icons' componentDidMount fallback fires
-// Font.loadAsync against a broken vendor path if any <Icon> mounts before
-// the family is registered — which throws on Android Expo Go.
 SplashScreen.preventAutoHideAsync();
+
+function RootLayoutInner() {
+  const { isLoading, isAuthed } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (isLoading) return;
+    const inAuthGroup = segments[0] === "login";
+    if (!isAuthed && !inAuthGroup) {
+      router.replace("/login");
+    } else if (isAuthed && inAuthGroup) {
+      router.replace("/(tabs)");
+    }
+  }, [isAuthed, isLoading, segments, router]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.white } }}>
+      <Stack.Screen name="login" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="property/[id]" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="layout/[id]" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="booking/[plotId]" options={{ presentation: "modal" }} />
+      <Stack.Screen name="documents" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="services" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="services/[type]" options={{ presentation: "modal" }} />
+      <Stack.Screen name="notifications" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="wishlist" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="centre/[id]" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="admin" options={{ animation: "slide_from_right" }} />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
 
   useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync();
-    }
+    if (loaded || error) SplashScreen.hideAsync();
   }, [loaded, error]);
 
-  // If the CDN is unreachable we fall through on error rather than wedging
-  // the app — icons will tofu, but the app still boots.
   if (!loaded && !error) return null;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="dark" />
+      <AuthProvider>
+        <RootLayoutInner />
+      </AuthProvider>
+    </SafeAreaProvider>
+  );
 }
+
+const styles = StyleSheet.create({
+  loader: {
+    flex: 1,
+    backgroundColor: colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
