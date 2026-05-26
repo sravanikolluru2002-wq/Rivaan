@@ -20,6 +20,66 @@ const SERVICE_ICONS: Record<string, any> = {
   "Legal Documentation": "file-text",
 };
 
+// Demo data shown when user has no booked properties yet
+const DEMO_PURCHASED = {
+  id: "demo-purchased",
+  unit_type: "villa",
+  plot_number: "V-03",
+  size: "3200 sq ft",
+  facing: "East",
+  survey_number: "SY-No 89/2",
+  price: 19331200,
+  payment_progress: 1.0,
+  paid_amount: 19331200,
+  balance_amount: 0,
+  purchase_complete: true,
+  status: "sold",
+  property_id: "prop-2",
+  property: {
+    id: "prop-2",
+    name: "Rivan Heritage Villas",
+    location: "Kompally, Hyderabad",
+    image: "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png",
+  },
+};
+
+const DEMO_ONGOING = {
+  id: "demo-ongoing",
+  unit_type: "plot",
+  plot_number: "P-005",
+  size: "300 sq yards",
+  facing: "East",
+  survey_number: "SY-No 234/3",
+  price: 2775000,
+  payment_progress: 0.25,
+  paid_amount: 693750,
+  balance_amount: 2081250,
+  purchase_complete: false,
+  status: "booked",
+  property_id: "prop-1",
+  property: {
+    id: "prop-1",
+    name: "Rivan Greens",
+    location: "Shadnagar, Hyderabad",
+    image: "https://images.unsplash.com/photo-1677137263546-8695fb895a9d",
+  },
+  next_due: {
+    id: "demo-next",
+    installment_number: 4,
+    amount: 231250,
+    due_date: "2026-04-15",
+    status: "upcoming",
+  },
+  registration_timeline: [
+    { step: "Booking Confirmed", done: true },
+    { step: "Token Paid", done: true },
+    { step: "Agreement Signed", done: true },
+    { step: "Installments Complete", done: false },
+    { step: "Registration Done", done: false },
+    { step: "Possession Handed Over", done: false },
+  ],
+};
+
 export default function MyLandScreen() {
   const router = useRouter();
   const [lands, setLands] = useState<any[]>([]);
@@ -32,7 +92,7 @@ export default function MyLandScreen() {
   const load = useCallback(async () => {
     try {
       const [landRes, svcRes, notifRes] = await Promise.all([
-        api.myLand(),
+        api.myLand().catch(() => []),
         api.servicesCatalog().catch(() => []),
         api.notifications().catch(() => []),
       ]);
@@ -62,10 +122,6 @@ export default function MyLandScreen() {
     }
   }
 
-  if (loading) {
-    return <SafeAreaView style={styles.safe}><View style={styles.loader}><ActivityIndicator color={colors.primary} size="large" /></View></SafeAreaView>;
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="myland-screen">
       <ScrollView
@@ -77,16 +133,50 @@ export default function MyLandScreen() {
           <Text style={styles.subheading}>Your owned & under-purchase properties</Text>
         </View>
 
-        {lands.length === 0 ? (
-          <View style={styles.empty}>
-            <Feather name="map" size={64} color={colors.stone300} />
-            <Text style={styles.emptyTitle}>No properties yet</Text>
-            <Text style={styles.emptyText}>Explore our premium properties and book your dream plot.</Text>
-            <TouchableOpacity testID="myland-browse-button" style={styles.exploreBtn} onPress={() => router.push("/(tabs)")}>
-              <Text style={styles.exploreBtnText}>Explore Properties</Text>
-              <Feather name="arrow-right" size={16} color={colors.white} />
-            </TouchableOpacity>
+        {loading ? (
+          <View style={styles.inlineLoader} testID="myland-loader">
+            <ActivityIndicator color={colors.primary} size="small" />
+            <Text style={styles.inlineLoaderText}>Loading your properties…</Text>
           </View>
+        ) : null}
+
+        {!loading && lands.length === 0 ? (
+          <>
+            {/* Preview banner */}
+            <View style={styles.previewBanner} testID="myland-preview-banner">
+              <View style={styles.previewIcon}><Feather name="eye" size={16} color={colors.white} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.previewTitle}>Preview: My Land Experience</Text>
+                <Text style={styles.previewSub}>Once you book a property, this is how your dashboard will look</Text>
+              </View>
+            </View>
+            <View style={styles.list}>
+              <PurchasedCard
+                land={DEMO_PURCHASED}
+                services={services}
+                notifications={notifications}
+                router={router}
+                isDemo
+              />
+              <OngoingCard
+                land={DEMO_ONGOING}
+                router={router}
+                onPay={() => Alert.alert("Demo Preview", "Book a real property to start paying installments.")}
+                paying={null}
+                notifications={notifications}
+                isDemo
+              />
+            </View>
+            <View style={styles.empty}>
+              <Feather name="map" size={48} color={colors.stone300} />
+              <Text style={styles.emptyTitle}>Start your Rivan journey</Text>
+              <Text style={styles.emptyText}>Book your first plot, villa or flat to unlock your real My Land dashboard.</Text>
+              <TouchableOpacity testID="myland-browse-button" style={styles.exploreBtn} onPress={() => router.push("/(tabs)")}>
+                <Text style={styles.exploreBtnText}>Explore Properties</Text>
+                <Feather name="arrow-right" size={16} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+          </>
         ) : (
           <View style={styles.list}>
             {lands.map((land) =>
@@ -119,8 +209,11 @@ export default function MyLandScreen() {
 // ====================================================
 // PURCHASED PROPERTY CARD (premium, full-featured)
 // ====================================================
-function PurchasedCard({ land, services, notifications, router }: any) {
-  const recentNotifs = notifications.slice(0, 3);
+function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
+  const recentNotifs = isDemo ? [
+    { id: "dn1", title: "Welcome to your owned property", body: "Possession handed over · Sale deed registered" },
+    { id: "dn2", title: "Site visit on April 5", body: "Inspection scheduled by Rivan team" },
+  ] : notifications.slice(0, 3);
 
   function openMaps() {
     Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(land.property?.location || "")}`).catch(() => Alert.alert("Cannot open maps"));
@@ -263,9 +356,12 @@ function PurchasedCard({ land, services, notifications, router }: any) {
 // ====================================================
 // ONGOING PROPERTY CARD (payment-focused)
 // ====================================================
-function OngoingCard({ land, router, onPay, paying, notifications }: any) {
+function OngoingCard({ land, router, onPay, paying, notifications, isDemo }: any) {
   const progress = (land.payment_progress || 0) * 100;
-  const recentPays = notifications.filter((n: any) => n.type === "payment").slice(0, 2);
+  const recentPays = isDemo ? [
+    { id: "dp1", title: "Installment #3 paid", body: "₹2,31,250 paid via UPI · Receipt generated" },
+    { id: "dp2", title: "Reminder: Next due Apr 15", body: "Installment #4 of ₹2,31,250 upcoming" },
+  ] : notifications.filter((n: any) => n.type === "payment").slice(0, 2);
 
   return (
     <View style={styles.ongoingCard} testID={`myland-ongoing-${land.id}`}>
@@ -484,6 +580,14 @@ const styles = StyleSheet.create({
   heading: { ...typography.h1, color: colors.primaryDeepest, fontWeight: "700" },
   subheading: { ...typography.body, color: colors.stone500, marginTop: 4 },
   list: { padding: spacing.lg, gap: spacing.lg },
+  // Inline loader (non-blocking)
+  inlineLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: spacing.md, marginHorizontal: spacing.lg, marginTop: spacing.sm, backgroundColor: colors.offWhite, borderRadius: radii.md },
+  inlineLoaderText: { ...typography.small, color: colors.stone500 },
+  // Preview banner
+  previewBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.primary, borderRadius: radii.md, ...shadow.md },
+  previewIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
+  previewTitle: { ...typography.body, color: colors.white, fontWeight: "700" },
+  previewSub: { ...typography.small, color: "rgba(255,255,255,0.8)", marginTop: 2 },
 
   // Card wrappers
   purchasedCard: { backgroundColor: colors.white, borderRadius: radii.lg, overflow: "hidden", borderWidth: 1.5, borderColor: "#E6F4EA", ...shadow.md },
