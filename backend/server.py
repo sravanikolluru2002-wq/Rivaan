@@ -2,7 +2,8 @@
 Rivan Reality LLP - Customer App Backend
 FastAPI + MongoDB with OTP-based JWT authentication
 """
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -20,22 +21,57 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # ---------- Config ----------
-MONGO_URL = os.environ['MONGO_URL']
-DB_NAME = os.environ['DB_NAME']
+MONGO_URL = os.environ.get('MONGO_URL')
+DB_NAME = os.environ.get('DB_NAME', 'rivan_reality')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'rivan-reality-dev-secret-change-in-prod')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRES_MIN = 60 * 24 * 30  # 30 days
-MOCK_OTP = "123456"
+MOCK_OTP = os.environ.get("MOCK_OTP", "123456")
+OTP_DEV_MODE = os.environ.get("OTP_DEV_MODE", "true").lower() == "true"
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+]
 
-client = AsyncIOMotorClient(MONGO_URL)
+if not MONGO_URL:
+    raise RuntimeError("MONGO_URL is required. Set it to your MongoDB Atlas connection string.")
+
+if JWT_SECRET == 'rivan-reality-dev-secret-change-in-prod':
+    logger_warning = "Using development JWT_SECRET. Set JWT_SECRET in production."
+else:
+    logger_warning = None
+
+client = AsyncIOMotorClient(
+    MONGO_URL,
+    serverSelectionTimeoutMS=8000,
+    uuidRepresentation="standard",
+)
 db = client[DB_NAME]
 
-app = FastAPI(title="Rivan Reality API")
 api_router = APIRouter(prefix="/api")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("rivan")
+if logger_warning:
+    logger.warning(logger_warning)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await client.admin.command("ping")
+        logger.info("Connected to MongoDB database '%s'.", DB_NAME)
+    except Exception as exc:
+        logger.exception("MongoDB connection failed. Check MONGO_URL, Atlas IP access, and DB credentials.")
+        raise exc
+    await seed_data()
+    yield
+    client.close()
+
+
+app = FastAPI(title="Rivan Reality API", lifespan=lifespan)
 
 
 def now_utc() -> datetime:
@@ -44,6 +80,19 @@ def now_utc() -> datetime:
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
+
+
+def normalize_phone(phone: str) -> str:
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    return digits[-10:]
+
+
+def as_aware_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 # ---------- Auth helpers ----------
@@ -154,41 +203,50 @@ class AdminPropertyReq(BaseModel):
 # ---------- Auth Routes ----------
 @api_router.post("/auth/send-otp")
 async def send_otp(req: SendOtpReq):
-    if not req.phone or len(req.phone) < 10:
+    phone = normalize_phone(req.phone)
+    if len(phone) != 10:
         raise HTTPException(status_code=400, detail="Invalid phone number")
     await db.otps.update_one(
-        {"phone": req.phone},
+        {"phone": phone},
         {"$set": {
-            "phone": req.phone,
+            "phone": phone,
             "otp": MOCK_OTP,
             "expires_at": now_utc() + timedelta(minutes=10),
             "created_at": now_utc(),
         }},
         upsert=True,
     )
-    logger.info(f"OTP sent to {req.phone} (mock: {MOCK_OTP})")
-    return {"success": True, "message": f"OTP sent. Use {MOCK_OTP} for dev.", "dev_otp": MOCK_OTP}
+    logger.info("OTP requested for %s", phone)
+    resp = {"success": True, "message": "OTP sent."}
+    if OTP_DEV_MODE:
+        resp["dev_otp"] = MOCK_OTP
+        resp["message"] = f"OTP sent. Use {MOCK_OTP} for dev."
+    return resp
 
 
 @api_router.post("/auth/verify-otp", response_model=TokenResp)
 async def verify_otp(req: VerifyOtpReq):
-    otp_doc = await db.otps.find_one({"phone": req.phone}, {"_id": 0})
+    phone = normalize_phone(req.phone)
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    otp_doc = await db.otps.find_one({"phone": phone}, {"_id": 0})
     if not otp_doc:
         raise HTTPException(status_code=400, detail="No OTP requested for this number")
     expires_at = otp_doc.get("expires_at")
-    if expires_at and expires_at.replace(tzinfo=timezone.utc) < now_utc():
+    if expires_at and as_aware_utc(expires_at) < now_utc():
+        await db.otps.delete_one({"phone": phone})
         raise HTTPException(status_code=400, detail="OTP expired")
-    if req.otp != MOCK_OTP and req.otp != otp_doc.get("otp"):
+    if req.otp != otp_doc.get("otp"):
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
     # Find or create user
-    user = await db.users.find_one({"phone": req.phone}, {"_id": 0})
+    user = await db.users.find_one({"phone": phone}, {"_id": 0})
     if not user:
         user_id = str(uuid.uuid4())
         user = {
             "id": user_id,
-            "phone": req.phone,
-            "name": req.name or f"User-{req.phone[-4:]}",
+            "phone": phone,
+            "name": req.name or f"User-{phone[-4:]}",
             "email": "",
             "address": "",
             "kyc_status": "pending",
@@ -207,7 +265,7 @@ async def verify_otp(req: VerifyOtpReq):
             "created_at": now_utc().isoformat(),
         })
     user.pop("_id", None)
-    await db.otps.delete_one({"phone": req.phone})
+    await db.otps.delete_one({"phone": phone})
     token = create_access_token(user["id"])
     return TokenResp(access_token=token, user=user)
 
@@ -216,6 +274,12 @@ async def verify_otp(req: VerifyOtpReq):
 async def me(user: Dict[str, Any] = Depends(get_current_user)):
     user.pop("_id", None)
     return user
+
+
+@api_router.get("/health")
+async def health():
+    await client.admin.command("ping")
+    return {"status": "ok", "database": DB_NAME}
 
 
 @api_router.put("/auth/profile")
@@ -1301,18 +1365,8 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=["*"],
+    allow_credentials="*" not in CORS_ORIGINS,
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def on_startup():
-    await seed_data()
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()

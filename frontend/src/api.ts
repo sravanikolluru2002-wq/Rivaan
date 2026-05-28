@@ -1,8 +1,15 @@
 // API client for Rivan Reality
 import { storage } from "@/src/utils/storage";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+const RAW_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BASE_URL = RAW_BASE_URL?.replace(/\/+$/, "") || "";
 const TOKEN_KEY = "rivan_token";
+
+function assertBackendUrl() {
+  if (!BASE_URL) {
+    throw new Error("EXPO_PUBLIC_BACKEND_URL is not set. Configure it before running the app.");
+  }
+}
 
 export async function getToken(): Promise<string | null> {
   const t = await storage.secureGet(TOKEN_KEY, "");
@@ -25,6 +32,7 @@ type RequestOptions = {
 };
 
 export async function apiRequest<T = any>(path: string, opts: RequestOptions = {}): Promise<T> {
+  assertBackendUrl();
   const { method = "GET", body, auth = true, query } = opts;
   let url = `${BASE_URL}/api${path}`;
   if (query) {

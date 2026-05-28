@@ -7,9 +7,11 @@ import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth-context";
+import { registerServiceWorker } from "@/src/pwa/register-service-worker";
 import { colors } from "@/src/theme";
 
 SplashScreen.preventAutoHideAsync();
+registerServiceWorker();
 
 function RootLayoutInner() {
   const { isLoading, isAuthed } = useAuth();
