@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Redirect, Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -21,9 +21,12 @@ function RootLayoutInner() {
   useEffect(() => {
     if (isLoading) return;
     const inAuthGroup = segments[0] === "login";
+    console.log("[auth-flow] root guard effect", { isAuthed, isLoading, segments, inAuthGroup });
     if (!isAuthed && !inAuthGroup) {
+      console.log("[auth-flow] root guard effect -> router.replace('/login')");
       router.replace("/login");
     } else if (isAuthed && inAuthGroup) {
+      console.log("[auth-flow] root guard effect -> router.replace('/(tabs)')");
       router.replace("/(tabs)");
     }
   }, [isAuthed, isLoading, segments, router]);
@@ -34,6 +37,16 @@ function RootLayoutInner() {
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
+  }
+
+  const inAuthGroup = segments[0] === "login";
+  if (!isAuthed && !inAuthGroup) {
+    console.log("[auth-flow] root guard render -> Redirect('/login')");
+    return <Redirect href="/login" />;
+  }
+  if (isAuthed && inAuthGroup) {
+    console.log("[auth-flow] root guard render -> Redirect('/(tabs)')");
+    return <Redirect href="/(tabs)" />;
   }
 
   return (

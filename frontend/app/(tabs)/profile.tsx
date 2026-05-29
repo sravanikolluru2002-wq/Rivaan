@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, TextInput, Modal } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, TextInput, Modal, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -32,11 +32,16 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleLogout() {
-    Alert.alert("Sign out?", "You'll need to verify OTP to sign in again.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: () => signOut() },
-    ]);
+  function handleLogout() {
+    console.log("SIGNOUT CLICKED");
+    console.log("[auth-flow] profile logout handler -> signOut");
+    signOut();
+    console.log("[auth-flow] profile logout handler -> router.replace('/login')");
+    router.replace("/login");
+    if (typeof window !== "undefined") {
+      console.log("[auth-flow] profile logout handler -> history.replaceState('/login')");
+      window.history.replaceState(null, "", "/login");
+    }
   }
 
   const initials = (user?.name || "U").split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -104,10 +109,15 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <TouchableOpacity testID="profile-logout-button" style={styles.logoutBtn} onPress={handleLogout}>
+        <Pressable
+          testID="profile-logout-button"
+          accessibilityRole="button"
+          style={styles.logoutBtn}
+          onPress={handleLogout}
+        >
           <Feather name="log-out" size={16} color={colors.danger} />
           <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+        </Pressable>
 
         <Text style={styles.footer}>Rivan Reality LLP · Legacy of trust, legacy of wealth</Text>
       </ScrollView>

@@ -1,9 +1,49 @@
 // API client for Rivan Reality
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { storage } from "@/src/utils/storage";
 
 const RAW_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const BASE_URL = RAW_BASE_URL?.replace(/\/+$/, "") || "";
 const TOKEN_KEY = "rivan_token";
+const USER_KEY = "rivan_user";
+const SESSION_KEY = "rivan_session";
+const LOGOUT_MARKER_KEY = "logout_marker";
+const AUTH_STORAGE_KEYS = [
+  TOKEN_KEY,
+  USER_KEY,
+  SESSION_KEY,
+  "token",
+  "user",
+  "session",
+  "auth_token",
+  "auth_user",
+  "auth_session",
+];
+const AUTH_STORAGE_KEY_PATTERNS = ["token", "user", "session", "auth", "rivan"];
+
+function hasLogoutMarker() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage?.getItem(LOGOUT_MARKER_KEY) === "1" ||
+    window.sessionStorage?.getItem(LOGOUT_MARKER_KEY) === "1";
+}
+
+export function markLoggedOut() {
+  if (typeof window === "undefined") return;
+  window.localStorage?.setItem(LOGOUT_MARKER_KEY, "1");
+  window.sessionStorage?.setItem(LOGOUT_MARKER_KEY, "1");
+  AUTH_STORAGE_KEYS.forEach((key) => {
+    window.localStorage?.removeItem(key);
+    window.sessionStorage?.removeItem(key);
+  });
+  console.log("[auth-flow] logout marker set and browser auth storage cleared");
+}
+
+function clearLogoutMarker() {
+  if (typeof window === "undefined") return;
+  window.localStorage?.removeItem(LOGOUT_MARKER_KEY);
+  window.sessionStorage?.removeItem(LOGOUT_MARKER_KEY);
+}
 
 function assertBackendUrl() {
   if (!BASE_URL) {
@@ -12,16 +52,65 @@ function assertBackendUrl() {
 }
 
 export async function getToken(): Promise<string | null> {
+  if (hasLogoutMarker()) {
+    console.log("[auth-flow] getToken blocked by logout marker");
+    return null;
+  }
   const t = await storage.secureGet(TOKEN_KEY, "");
+  console.log("[auth-flow] getToken result", t ? "present" : "missing");
   return t && typeof t === "string" ? t : null;
 }
 
 export async function setToken(token: string) {
+  clearLogoutMarker();
+  console.log("[auth-flow] setToken");
   await storage.secureSet(TOKEN_KEY, token);
 }
 
 export async function clearToken() {
   await storage.secureRemove(TOKEN_KEY);
+}
+
+export async function setStoredUser(user: any) {
+  await storage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export async function clearAuthData() {
+  const asyncStorageKeys = await AsyncStorage.getAllKeys().catch(() => []);
+  const authAsyncStorageKeys = asyncStorageKeys.filter((key) =>
+    AUTH_STORAGE_KEYS.includes(key) ||
+    AUTH_STORAGE_KEY_PATTERNS.some((pattern) => key.toLowerCase().includes(pattern)),
+  );
+
+  await Promise.all(
+    AUTH_STORAGE_KEYS.flatMap((key) => [
+      storage.secureRemove(key),
+      storage.removeItem(key),
+    ]),
+  );
+  if (authAsyncStorageKeys.length > 0) {
+    await AsyncStorage.multiRemove(authAsyncStorageKeys);
+  }
+
+  if (typeof window !== "undefined") {
+    AUTH_STORAGE_KEYS.forEach((key) => {
+      window.localStorage?.removeItem(key);
+      window.sessionStorage?.removeItem(key);
+    });
+
+    [window.localStorage, window.sessionStorage].forEach((store) => {
+      if (!store) return;
+      Object.keys(store).forEach((key) => {
+        if (
+          AUTH_STORAGE_KEYS.includes(key) ||
+          AUTH_STORAGE_KEY_PATTERNS.some((pattern) => key.toLowerCase().includes(pattern))
+        ) {
+          store.removeItem(key);
+        }
+      });
+    });
+  }
+  console.log("auth storage cleared");
 }
 
 type RequestOptions = {

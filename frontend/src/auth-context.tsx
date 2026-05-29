@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { api, clearToken, getToken, setToken } from "@/src/api";
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { api, clearAuthData, getToken, markLoggedOut, setStoredUser, setToken } from "@/src/api";
 
 type User = {
   id: string;
@@ -16,7 +16,7 @@ type AuthContextValue = {
   isLoading: boolean;
   isAuthed: boolean;
   signIn: (token: string, user: User) => Promise<void>;
-  signOut: () => Promise<void>;
+  signOut: () => void;
   refresh: () => Promise<void>;
 };
 
@@ -24,22 +24,49 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const authEpochRef = useRef(0);
 
   async function load() {
+    const epoch = authEpochRef.current;
+    console.log("[auth-flow] load start", { epoch });
     try {
       const token = await getToken();
-      if (!token) {
-        setUser(null);
+      if (epoch !== authEpochRef.current) {
+        console.log("[auth-flow] load ignored after epoch changed", { epoch, current: authEpochRef.current });
         return;
       }
+      if (!token) {
+        console.log("[auth-flow] load no token -> clear state");
+        void clearAuthData();
+        setUser(null);
+        setAuthToken(null);
+        return;
+      }
+      console.log("[auth-flow] load token found -> api.me");
       const u = await api.me();
+      if (epoch !== authEpochRef.current) {
+        console.log("[auth-flow] api.me ignored after epoch changed", { epoch, current: authEpochRef.current });
+        return;
+      }
+      console.log("[auth-flow] load api.me success -> set authed state");
       setUser(u as User);
+      setAuthToken(token);
     } catch (_e) {
-      await clearToken();
+      if (epoch !== authEpochRef.current) {
+        console.log("[auth-flow] load error ignored after epoch changed", { epoch, current: authEpochRef.current });
+        return;
+      }
+      console.log("[auth-flow] load error -> clear auth state");
+      void clearAuthData();
       setUser(null);
+      setAuthToken(null);
     } finally {
-      setIsLoading(false);
+      if (epoch === authEpochRef.current) {
+        console.log("[auth-flow] load finished", { epoch });
+        setIsLoading(false);
+      }
     }
   }
 
@@ -48,17 +75,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function signIn(token: string, u: User) {
+    const epoch = authEpochRef.current + 1;
+    authEpochRef.current = epoch;
+    console.log("[auth-flow] signIn start", { epoch });
     await setToken(token);
+    await setStoredUser(u);
+    if (epoch !== authEpochRef.current) {
+      console.log("[auth-flow] signIn ignored after epoch changed", { epoch, current: authEpochRef.current });
+      return;
+    }
+    console.log("[auth-flow] signIn set authed state");
     setUser(u);
+    setAuthToken(token);
+    setIsLoading(false);
   }
 
-  async function signOut() {
-    await clearToken();
+  function signOut() {
+    authEpochRef.current += 1;
+    console.log("[auth-flow] signOut start", { epoch: authEpochRef.current });
+    markLoggedOut();
+    setAuthToken(null);
     setUser(null);
+    setIsLoading(false);
+    console.log("[auth-flow] signOut state reset");
+    void clearAuthData();
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthed: !!user, signIn, signOut, refresh: load }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthed: !!authToken && !!user, signIn, signOut, refresh: load }}>
       {children}
     </AuthContext.Provider>
   );
