@@ -1,7 +1,11 @@
 // Supabase-backed API compatibility layer for the Expo app.
 import { supabase } from "@/src/supabase";
+import { storage } from "@/src/utils/storage";
 
 const DEV_OTP = process.env.EXPO_PUBLIC_SUPABASE_DEV_OTP || "123456";
+const DEV_ACCESS_TOKEN = "dev-token";
+const TOKEN_KEY = "rivan_token";
+const USER_KEY = "rivan_user";
 const LOGOUT_MARKER_KEY = "logout_marker";
 
 const SERVICE_CATALOG = [
@@ -46,6 +50,21 @@ function e164(phone: string) {
   return `+91${normalizePhone(phone)}`;
 }
 
+function devUserId(phone: string) {
+  const suffix = normalizePhone(phone).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
+async function getStoredUser() {
+  const raw = await storage.getItem(USER_KEY, "");
+  if (!raw || typeof raw !== "string") return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_e) {
+    return null;
+  }
+}
+
 function hasLogoutMarker() {
   if (typeof window === "undefined") return false;
   return window.localStorage?.getItem(LOGOUT_MARKER_KEY) === "1" ||
@@ -70,31 +89,48 @@ export async function getToken(): Promise<string | null> {
     console.log("[auth-flow] getToken blocked by logout marker");
     return null;
   }
+
+  const storedToken = await storage.secureGet<string>(TOKEN_KEY, "");
+  if (storedToken && typeof storedToken === "string") return storedToken;
+
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token || null;
 }
 
-export async function setToken(_token: string) {
+export async function setToken(token: string) {
   clearLogoutMarker();
+  await storage.secureSet(TOKEN_KEY, token);
 }
 
 export async function clearToken() {
+  await storage.secureRemove(TOKEN_KEY);
   await supabase.auth.signOut();
 }
 
-export async function setStoredUser(_user: any) {
+export async function setStoredUser(user: any) {
   clearLogoutMarker();
+  await storage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export async function clearAuthData() {
   markLoggedOut();
+  await storage.secureRemove(TOKEN_KEY);
+  await storage.removeItem(USER_KEY);
   await supabase.auth.signOut();
   console.log("auth storage cleared");
 }
 
 async function currentUser() {
+  if (hasLogoutMarker()) return null;
+
+  const storedToken = await storage.secureGet<string>(TOKEN_KEY, "");
+  if (storedToken === DEV_ACCESS_TOKEN) {
+    const storedUser = await getStoredUser();
+    return storedUser ? { id: storedUser.id } : null;
+  }
+
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user || hasLogoutMarker()) return null;
+  if (error || !data.user) return null;
   return data.user;
 }
 
@@ -118,6 +154,40 @@ async function upsertProfile(userId: string, phone: string, name?: string) {
     .single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+async function upsertDevProfile(phone: string, name?: string) {
+  const cleaned = normalizePhone(phone);
+  const localProfile = {
+    id: devUserId(cleaned),
+    phone: cleaned,
+    name: name || `Dev User ${cleaned.slice(-4)}`,
+    email: "",
+    address: "",
+    kyc_status: "pending",
+    is_admin: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const existing = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("phone", cleaned)
+    .maybeSingle();
+
+  if (!existing.error && existing.data) return existing.data;
+
+  const created = await supabase
+    .from("profiles")
+    .upsert(localProfile, { onConflict: "phone" })
+    .select("*")
+    .maybeSingle();
+
+  if (!created.error && created.data) return created.data;
+
+  console.warn("Using local dev profile because Supabase profile upsert is unavailable.", created.error?.message || existing.error?.message);
+  return localProfile;
 }
 
 function mapProfile(profile: any) {
@@ -192,29 +262,34 @@ export const api = {
     assertSupabaseEnv();
     const cleaned = normalizePhone(phone);
     clearLogoutMarker();
-    let authUserId = "";
-    let accessToken = "";
+
+    if (otp === DEV_OTP) {
+      const profile = await upsertDevProfile(cleaned, name);
+      const user = mapProfile(profile);
+      await setToken(DEV_ACCESS_TOKEN);
+      await setStoredUser(user);
+      return { access_token: DEV_ACCESS_TOKEN, user };
+    }
 
     const verified = await supabase.auth.verifyOtp({ phone: e164(cleaned), token: otp, type: "sms" });
     if (!verified.error && verified.data.user) {
-      authUserId = verified.data.user.id;
-      accessToken = verified.data.session?.access_token || "";
-    } else if (otp === DEV_OTP) {
-      const anon = await supabase.auth.signInAnonymously();
-      if (anon.error || !anon.data.user) {
-        throw new Error("Supabase phone OTP failed and anonymous dev login is not enabled.");
-      }
-      authUserId = anon.data.user.id;
-      accessToken = anon.data.session?.access_token || "";
-    } else {
-      throw new Error(verified.error?.message || "Invalid OTP");
+      const authUserId = verified.data.user.id;
+      const accessToken = verified.data.session?.access_token || "";
+      const profile = await upsertProfile(authUserId, cleaned, name);
+      return { access_token: accessToken, user: mapProfile(profile) };
     }
 
-    const profile = await upsertProfile(authUserId, cleaned, name);
-    return { access_token: accessToken, user: mapProfile(profile) };
+    throw new Error(verified.error?.message || "Invalid OTP");
   },
 
   me: async () => {
+    const token = await getToken();
+    if (token === DEV_ACCESS_TOKEN) {
+      const storedUser = await getStoredUser();
+      if (!storedUser) throw new Error("Local dev session missing user");
+      return storedUser;
+    }
+
     const user = await requireUser();
     const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
     if (error) throw new Error(error.message);
