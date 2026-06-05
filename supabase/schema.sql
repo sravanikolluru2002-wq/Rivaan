@@ -21,6 +21,7 @@ create table if not exists public.profiles (
   address text,
   kyc_status text not null default 'pending',
   is_admin boolean not null default false,
+  onboarding_completed boolean not null default false,
   avatar_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -140,6 +141,25 @@ create table if not exists public.leads (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.customer_preferences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  full_name text not null,
+  location_preference text not null check (location_preference in ('Vizag', 'Vijayawada')),
+  property_interest text not null check (property_interest in ('Plot', 'Villa', 'Apartment', 'Commercial')),
+  budget_range text not null,
+  buying_purpose text not null check (buying_purpose in ('Investment', 'Own use', 'Business', 'Not sure')),
+  timeline text not null check (timeline in ('Immediately', '1-3 months', '3-6 months', 'Just exploring')),
+  preferred_contact_method text not null check (preferred_contact_method in ('Call', 'WhatsApp', 'Email')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id)
+);
+
+alter table public.profiles
+add column if not exists onboarding_completed boolean not null default false;
+
 create index if not exists profiles_phone_idx on public.profiles(phone);
 create index if not exists properties_category_idx on public.properties(category);
 create index if not exists properties_location_idx on public.properties(location);
@@ -155,6 +175,7 @@ create index if not exists notifications_user_id_read_idx on public.notification
 create index if not exists leads_user_id_idx on public.leads(user_id);
 create index if not exists leads_status_idx on public.leads(status);
 create index if not exists leads_created_at_idx on public.leads(created_at desc);
+create index if not exists customer_preferences_user_id_idx on public.customer_preferences(user_id);
 
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
@@ -191,6 +212,11 @@ create trigger leads_set_updated_at
 before update on public.leads
 for each row execute function public.set_updated_at();
 
+drop trigger if exists customer_preferences_set_updated_at on public.customer_preferences;
+create trigger customer_preferences_set_updated_at
+before update on public.customer_preferences
+for each row execute function public.set_updated_at();
+
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -210,6 +236,7 @@ alter table public.documents enable row level security;
 alter table public.payments enable row level security;
 alter table public.notifications enable row level security;
 alter table public.leads enable row level security;
+alter table public.customer_preferences enable row level security;
 
 drop policy if exists "profiles read own" on public.profiles;
 create policy "profiles read own" on public.profiles
@@ -302,3 +329,15 @@ for select using (user_id = auth.uid() or public.is_admin());
 drop policy if exists "leads update admin" on public.leads;
 create policy "leads update admin" on public.leads
 for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "customer preferences read own" on public.customer_preferences;
+create policy "customer preferences read own" on public.customer_preferences
+for select using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "customer preferences insert own" on public.customer_preferences;
+create policy "customer preferences insert own" on public.customer_preferences
+for insert with check (user_id = auth.uid());
+
+drop policy if exists "customer preferences update own" on public.customer_preferences;
+create policy "customer preferences update own" on public.customer_preferences
+for update using (user_id = auth.uid()) with check (user_id = auth.uid());

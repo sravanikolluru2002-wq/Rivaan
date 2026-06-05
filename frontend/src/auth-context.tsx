@@ -9,6 +9,7 @@ type User = {
   address?: string;
   kyc_status?: string;
   is_admin?: boolean;
+  onboarding_completed?: boolean;
 };
 
 type AuthContextValue = {

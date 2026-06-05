@@ -199,6 +199,7 @@ function mapProfile(profile: any) {
     address: profile.address || "",
     kyc_status: profile.kyc_status || "pending",
     is_admin: !!profile.is_admin,
+    onboarding_completed: profile.onboarding_completed === true,
     created_at: profile.created_at,
   };
 }
@@ -294,6 +295,58 @@ export const api = {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
     if (error) throw new Error(error.message);
     return mapProfile(data);
+  },
+
+  saveOnboarding: async (answers: any) => {
+    const token = await getToken();
+    if (token === DEV_ACCESS_TOKEN) {
+      const storedUser = await getStoredUser();
+      if (!storedUser) throw new Error("Local dev session missing user");
+      const updatedUser = {
+        ...storedUser,
+        name: answers.full_name,
+        onboarding_completed: true,
+      };
+      await setStoredUser(updatedUser);
+      return { success: true, user: updatedUser };
+    }
+
+    const user = await requireUser();
+    const payload = {
+      user_id: user.id,
+      full_name: answers.full_name,
+      location_preference: answers.location_preference,
+      property_interest: answers.property_interest,
+      budget_range: answers.budget_range,
+      buying_purpose: answers.buying_purpose,
+      timeline: answers.timeline,
+      preferred_contact_method: answers.preferred_contact_method,
+      notes: answers.notes || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const saved = await supabase
+      .from("customer_preferences")
+      .upsert(payload, { onConflict: "user_id" })
+      .select("*")
+      .single();
+    if (saved.error) throw new Error(saved.error.message);
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .update({
+        name: answers.full_name,
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const mapped = mapProfile(profile);
+    await setStoredUser(mapped);
+    return { success: true, user: mapped, preferences: saved.data };
   },
 
   updateProfile: async (data: any) => {
