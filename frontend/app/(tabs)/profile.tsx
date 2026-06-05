@@ -105,7 +105,7 @@ export default function ProfileScreen() {
           <View style={styles.menu}>
             <MenuItem icon="info" label="About Rivan Reality" testID="profile-about" onPress={() => Alert.alert("Rivan Reality LLP", "Legacy of trust, legacy of wealth.\n\nRivan Reality LLP is a premium real estate company committed to building landmark projects and delivering long-term value to our customers.")} />
             <MenuItem icon="message-square" label="Customer Support" testID="profile-support" onPress={() => Alert.alert("Support", "Call: +91 9876543210\nEmail: support@rivanreality.com")} />
-            <MenuItem icon="award" label="Testimonials" testID="profile-testimonials" onPress={() => Alert.alert("Customer Love", "Rated 4.8/5 by 1200+ happy customers across Hyderabad.")} />
+            <MenuItem icon="award" label="Testimonials" testID="profile-testimonials" onPress={() => Alert.alert("Customer Love", "Rated 4.8/5 by customers exploring Vizag and Vijayawada projects.")} />
           </View>
         </View>
 

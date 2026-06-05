@@ -19,7 +19,7 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { colors, radii, spacing, typography, shadow, formatINR } from "@/src/theme";
 
-const LOCATIONS = ["Hyderabad", "Shadnagar", "Gachibowli", "Kompally", "Madhapur"];
+const LOCATIONS = ["Vizag", "Vijayawada", "Madhurawada", "Rushikonda", "Gannavaram", "Amaravati"];
 
 const CATEGORIES = [
   { key: "all", label: "All", icon: "grid" as const },
@@ -37,7 +37,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [location, setLocation] = useState("Hyderabad");
+  const [location, setLocation] = useState("Vizag");
   const [locationOpen, setLocationOpen] = useState(false);
   const [properties, setProperties] = useState<any[]>([]);
   const [featured, setFeatured] = useState<any[]>([]);
@@ -48,7 +48,7 @@ export default function HomeScreen() {
   const fetchData = useCallback(async () => {
     try {
       const [props, feat, notifs] = await Promise.all([
-        api.listProperties({ category: category === "all" ? undefined : category, search }),
+        api.listProperties({ category: category === "all" ? undefined : category, location, search }),
         api.featured(),
         api.notifications().catch(() => []),
       ]);
@@ -61,7 +61,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [category, search]);
+  }, [category, location, search]);
 
   useEffect(() => {
     fetchData();
@@ -285,7 +285,7 @@ export default function HomeScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                {category === "all" ? "All Properties" : category} ({properties.length})
+                {category === "all" ? `${location} Properties` : category} ({properties.length})
               </Text>
             </View>
           </View>
@@ -299,7 +299,20 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.empty}>
               <Feather name="inbox" size={48} color={colors.stone300} />
-              <Text style={styles.emptyText}>No properties match your filters</Text>
+              <Text style={styles.emptyTitle}>No properties found</Text>
+              <Text style={styles.emptyText}>Try another Vizag or Vijayawada location, or clear your search to see available projects.</Text>
+              {(search || category !== "all") ? (
+                <TouchableOpacity
+                  testID="home-clear-filters"
+                  style={styles.clearFiltersBtn}
+                  onPress={() => {
+                    setSearch("");
+                    setCategory("all");
+                  }}
+                >
+                  <Text style={styles.clearFiltersText}>Clear Filters</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           )
         }
@@ -473,5 +486,8 @@ const styles = StyleSheet.create({
   viewBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md },
   viewBtnText: { ...typography.body, color: colors.white, fontWeight: "700" },
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
-  emptyText: { ...typography.body, color: colors.stone500 },
+  emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
+  emptyText: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 280 },
+  clearFiltersBtn: { marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md, backgroundColor: colors.primary },
+  clearFiltersText: { ...typography.small, color: colors.white, fontWeight: "700" },
 });

@@ -127,7 +127,7 @@ export default function LoginScreen() {
                 <TextInput
                   testID="login-name-input"
                   style={styles.input}
-                  placeholder="e.g. Rajesh Kumar"
+                  placeholder="e.g. Sita Rao"
                   placeholderTextColor={colors.stone400}
                   value={name}
                   onChangeText={setName}
@@ -146,7 +146,7 @@ export default function LoginScreen() {
               <View style={styles.hintBox}>
                 <Feather name="info" size={14} color={colors.primary} />
                 <Text style={styles.hintText}>
-                  Try the demo account: <Text style={styles.hintBold}>9999900001</Text> (Rajesh Kumar with active plot, payments & documents)
+                  For local testing, enter any 10-digit number and use the dev OTP shown after sending.
                 </Text>
               </View>
             </View>

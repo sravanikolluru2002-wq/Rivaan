@@ -23,15 +23,26 @@ const SERVICE_CATALOG = [
 
 const CENTRES = [
   {
-    id: "centre-hyd",
-    name: "Rivan Experience Centre",
-    address: "Jubilee Hills, Hyderabad",
+    id: "centre-vizag",
+    name: "Rivan Vizag Experience Centre",
+    address: "MVP Colony, Visakhapatnam, Andhra Pradesh",
     timings: "10:00 AM - 7:00 PM",
     manager: "Rivan Team",
     phone: "+91 9876543210",
     whatsapp: "+91 9876543210",
-    directions_url: "https://maps.google.com/?q=Hyderabad",
+    directions_url: "https://maps.google.com/?q=MVP+Colony+Visakhapatnam",
     image: "https://images.unsplash.com/photo-1497366216548-37526070297c",
+  },
+  {
+    id: "centre-vijayawada",
+    name: "Rivan Vijayawada Experience Centre",
+    address: "Benz Circle, Vijayawada, Andhra Pradesh",
+    timings: "10:00 AM - 7:00 PM",
+    manager: "Rivan Team",
+    phone: "+91 9876543210",
+    whatsapp: "+91 9876543210",
+    directions_url: "https://maps.google.com/?q=Benz+Circle+Vijayawada",
+    image: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab",
   },
 ];
 

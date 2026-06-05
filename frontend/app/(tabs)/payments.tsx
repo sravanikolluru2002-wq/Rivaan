@@ -55,6 +55,7 @@ export default function PaymentsScreen() {
 
   const upcoming = installments.filter((i) => i.status !== "paid");
   const paid = installments.filter((i) => i.status === "paid");
+  const hasPayments = installments.length > 0 || history.length > 0 || (summary?.total_cost || 0) > 0;
 
   if (loading) {
     return (
@@ -147,13 +148,25 @@ export default function PaymentsScreen() {
           </TouchableOpacity>
         </View>
 
-        {tab === "upcoming" ? (
+        {!hasPayments ? (
+          <View style={styles.listSection}>
+            <View style={styles.empty}>
+              <Feather name="credit-card" size={48} color={colors.stone300} />
+              <Text style={styles.emptyTitle}>No payments yet</Text>
+              <Text style={styles.emptyText}>Once you book a Vizag or Vijayawada property, installments, receipts and due dates will appear here.</Text>
+              <TouchableOpacity testID="payments-browse-properties" style={styles.exploreBtn} onPress={() => router.push("/(tabs)")}>
+                <Text style={styles.exploreBtnText}>Browse Properties</Text>
+                <Feather name="arrow-right" size={16} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : tab === "upcoming" ? (
           <View style={styles.listSection}>
             {upcoming.length === 0 ? (
               <View style={styles.empty}>
                 <Feather name="check-circle" size={48} color={colors.success} />
-                <Text style={styles.emptyTitle}>All Paid!</Text>
-                <Text style={styles.emptyText}>You're up to date with all installments.</Text>
+                <Text style={styles.emptyTitle}>No upcoming installments</Text>
+                <Text style={styles.emptyText}>You are currently up to date. Future payment schedules will appear here.</Text>
               </View>
             ) : (
               upcoming.map((inst) => (
@@ -192,7 +205,8 @@ export default function PaymentsScreen() {
             {history.length === 0 ? (
               <View style={styles.empty}>
                 <Feather name="inbox" size={48} color={colors.stone300} />
-                <Text style={styles.emptyText}>No payment history yet.</Text>
+                <Text style={styles.emptyTitle}>No receipts yet</Text>
+                <Text style={styles.emptyText}>Completed payment receipts will appear here after your first installment.</Text>
               </View>
             ) : (
               history.map((p) => (
@@ -277,4 +291,6 @@ const styles = StyleSheet.create({
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
   emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700", marginTop: spacing.sm },
   emptyText: { ...typography.body, color: colors.stone500, textAlign: "center" },
+  exploreBtn: { marginTop: spacing.sm, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 12, borderRadius: radii.md },
+  exploreBtnText: { ...typography.body, color: colors.white, fontWeight: "700" },
 });

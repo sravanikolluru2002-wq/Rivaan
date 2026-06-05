@@ -37,7 +37,7 @@ export default function VisitsScreen() {
   }
   function openWhatsApp(num: string) {
     const clean = num.replace(/\D/g, "");
-    Linking.openURL(`https://wa.me/${clean}?text=Hello%20Rivan%20Reality`).catch(() => Alert.alert("Cannot open WhatsApp"));
+    Linking.openURL(`https://wa.me/${clean}?text=Hello%20Rivan%20Reality%2C%20I%20am%20interested%20in%20Vizag%20or%20Vijayawada%20projects.`).catch(() => Alert.alert("Cannot open WhatsApp"));
   }
   function openDirections(url: string) {
     Linking.openURL(url).catch(() => Alert.alert("Cannot open maps"));
@@ -117,7 +117,12 @@ export default function VisitsScreen() {
             {visits.length === 0 ? (
               <View style={styles.empty}>
                 <Feather name="calendar" size={48} color={colors.stone300} />
-                <Text style={styles.emptyText}>No visits scheduled yet. Book your first visit!</Text>
+                <Text style={styles.emptyTitle}>No visits scheduled</Text>
+                <Text style={styles.emptyText}>Book a centre visit or site visit for Vizag and Vijayawada projects when you are ready.</Text>
+                <TouchableOpacity testID="visits-show-centres" style={styles.exploreBtn} onPress={() => setTab("centres")}>
+                  <Text style={styles.exploreBtnText}>View Centres</Text>
+                  <Feather name="arrow-right" size={16} color={colors.white} />
+                </TouchableOpacity>
               </View>
             ) : (
               visits.map((v) => (
@@ -177,5 +182,8 @@ const styles = StyleSheet.create({
   visitStatus: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.sm },
   visitStatusText: { ...typography.label, fontSize: 9 },
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+  emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
   emptyText: { ...typography.body, color: colors.stone500, textAlign: "center" },
+  exploreBtn: { marginTop: spacing.sm, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 12, borderRadius: radii.md },
+  exploreBtnText: { ...typography.body, color: colors.white, fontWeight: "700" },
 });
