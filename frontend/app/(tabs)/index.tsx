@@ -45,20 +45,23 @@ export default function HomeScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [props, feat, notifs] = await Promise.all([
-        api.listProperties({ category: category === "all" ? undefined : category, location, search }),
-        api.featured(),
-        api.notifications().catch(() => []),
-      ]);
+      const props = await api.listProperties({ category: category === "all" ? undefined : category, location, search });
       setProperties(props as any[]);
-      setFeatured(feat as any[]);
-      setUnreadCount((notifs as any[]).filter((n) => !n.read).length);
     } catch (e: any) {
       console.warn("home fetch", e?.message);
+      setProperties([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+
+    api.featured()
+      .then((feat) => setFeatured(feat as any[]))
+      .catch(() => setFeatured([]));
+
+    api.notifications()
+      .then((notifs) => setUnreadCount((notifs as any[]).filter((n) => !n.read).length))
+      .catch(() => setUnreadCount(0));
   }, [category, location, search]);
 
   useEffect(() => {

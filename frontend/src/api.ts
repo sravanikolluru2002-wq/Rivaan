@@ -276,13 +276,6 @@ function mapUnit(unit: any) {
   };
 }
 
-function propertiesQuery() {
-  return supabase
-    .from("properties")
-    .select("*, property_images(id, url, alt_text, sort_order)")
-    .order("created_at", { ascending: false });
-}
-
 function mapPayment(row: any) {
   return {
     ...row,
