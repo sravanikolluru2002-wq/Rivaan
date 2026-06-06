@@ -19,7 +19,7 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { colors, radii, spacing, typography, shadow, formatINR } from "@/src/theme";
 
-const LOCATIONS = ["Vizag", "Vijayawada", "Madhurawada", "Rushikonda", "Gannavaram", "Amaravati"];
+const LOCATIONS = ["Vizag", "Vijayawada"];
 
 const CATEGORIES = [
   { key: "all", label: "All", icon: "grid" as const },
