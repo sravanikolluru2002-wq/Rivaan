@@ -23,13 +23,10 @@ const LOCATIONS = ["Vizag", "Vijayawada"];
 
 const CATEGORIES = [
   { key: "all", label: "All", icon: "grid" as const },
-  { key: "Apartments", label: "Apartments", icon: "home" as const },
-  { key: "Flats", label: "Flats", icon: "layers" as const },
-  { key: "Villas", label: "Villas", icon: "home" as const },
-  { key: "Open Plots", label: "Open Plots", icon: "square" as const },
-  { key: "Layouts", label: "Layouts", icon: "map" as const },
-  { key: "Commercial Properties", label: "Commercial", icon: "briefcase" as const },
-  { key: "Farm Lands", label: "Farm Lands", icon: "sun" as const },
+  { key: "Apartment", label: "Apartment", icon: "home" as const },
+  { key: "Villa", label: "Villa", icon: "home" as const },
+  { key: "Plot", label: "Plot", icon: "square" as const },
+  { key: "Commercial", label: "Commercial", icon: "briefcase" as const },
 ];
 
 export default function HomeScreen() {

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, Alert, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, Alert, Linking, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth-context";
 import { colors, radii, spacing, typography, shadow, formatINR, formatINRFull } from "@/src/theme";
 
 const { width } = Dimensions.get("window");
@@ -12,11 +13,16 @@ const { width } = Dimensions.get("window");
 export default function PropertyDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { user } = useAuth();
   const [property, setProperty] = useState<any>(null);
   const [plots, setPlots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [wishlisted, setWishlisted] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
+  const [enquiryName, setEnquiryName] = useState(user?.name || "");
+  const [enquiryPhone, setEnquiryPhone] = useState(user?.phone || "");
+  const [enquiryMessage, setEnquiryMessage] = useState("");
+  const [submittingEnquiry, setSubmittingEnquiry] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -44,6 +50,30 @@ export default function PropertyDetails() {
   function openWhatsApp() {
     const text = `Hi, I'm interested in ${property.name} at ${property.location}.`;
     Linking.openURL(`https://wa.me/919876543210?text=${encodeURIComponent(text)}`).catch(() => Alert.alert("Cannot open WhatsApp"));
+  }
+
+  async function submitEnquiry() {
+    const cleanedPhone = enquiryPhone.replace(/\D/g, "").slice(-10);
+    if (!enquiryName.trim() || cleanedPhone.length !== 10) {
+      Alert.alert("Complete enquiry", "Please enter your name and a valid 10-digit phone number.");
+      return;
+    }
+
+    setSubmittingEnquiry(true);
+    try {
+      const res = await api.submitPropertyEnquiry({
+        property_id: id as string,
+        name: enquiryName.trim(),
+        phone: cleanedPhone,
+        message: enquiryMessage.trim() || `Interested in ${property.name}`,
+      });
+      Alert.alert("Enquiry sent", res.message || "Thank you. Our team will contact you shortly.");
+      setEnquiryMessage("");
+    } catch (e: any) {
+      Alert.alert("Could not submit enquiry", e.message || "Please try again.");
+    } finally {
+      setSubmittingEnquiry(false);
+    }
   }
 
   if (loading || !property) {
@@ -190,6 +220,53 @@ export default function PropertyDetails() {
             </View>
             <Feather name="chevron-right" size={18} color={colors.stone400} />
           </TouchableOpacity>
+
+          <View style={styles.enquiryCard} testID="property-enquiry-form">
+            <Text style={styles.enquiryTitle}>Contact Sales</Text>
+            <Text style={styles.enquirySub}>Share your details and our team will call you about this property.</Text>
+            <TextInput
+              testID="property-enquiry-name"
+              style={styles.input}
+              value={enquiryName}
+              onChangeText={setEnquiryName}
+              placeholder="Full name"
+              placeholderTextColor={colors.stone400}
+            />
+            <TextInput
+              testID="property-enquiry-phone"
+              style={styles.input}
+              value={enquiryPhone}
+              onChangeText={(value) => setEnquiryPhone(value.replace(/\D/g, ""))}
+              placeholder="10-digit phone number"
+              placeholderTextColor={colors.stone400}
+              keyboardType="phone-pad"
+              maxLength={10}
+            />
+            <TextInput
+              testID="property-enquiry-message"
+              style={[styles.input, styles.messageInput]}
+              value={enquiryMessage}
+              onChangeText={setEnquiryMessage}
+              placeholder={`I am interested in ${property.name}`}
+              placeholderTextColor={colors.stone400}
+              multiline
+            />
+            <TouchableOpacity
+              testID="property-enquiry-submit"
+              style={[styles.enquirySubmit, submittingEnquiry && styles.enquirySubmitDisabled]}
+              onPress={submitEnquiry}
+              disabled={submittingEnquiry}
+            >
+              {submittingEnquiry ? (
+                <ActivityIndicator color={colors.white} size="small" />
+              ) : (
+                <>
+                  <Text style={styles.enquirySubmitText}>Submit Enquiry</Text>
+                  <Feather name="send" size={15} color={colors.white} />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -215,14 +292,14 @@ export default function PropertyDetails() {
             >
               <Feather name="grid" size={16} color={colors.white} />
               <Text style={styles.actionBtnTextPrimary}>
-                {property.category === "Open Plots" || property.category === "Layouts" ? "View Layout" : "View Availability"}
+                {property.category === "Plot" ? "View Layout" : "View Availability"}
               </Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               testID="property-enquire-button"
               style={[styles.actionBtn, styles.actionBtnPrimary]}
-              onPress={openWhatsApp}
+              onPress={submitEnquiry}
             >
               <Text style={styles.actionBtnTextPrimary}>Enquire Now</Text>
             </TouchableOpacity>
@@ -291,6 +368,14 @@ const styles = StyleSheet.create({
   brochureContent: { flex: 1 },
   brochureTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
   brochureSub: { ...typography.small, color: colors.stone500 },
+  enquiryCard: { gap: spacing.sm, backgroundColor: colors.offWhite, borderRadius: radii.md, padding: spacing.md, marginTop: spacing.md, borderWidth: 1, borderColor: colors.stone100 },
+  enquiryTitle: { ...typography.h4, color: colors.primaryDeepest, fontWeight: "700" },
+  enquirySub: { ...typography.small, color: colors.stone600 },
+  input: { minHeight: 46, borderWidth: 1, borderColor: colors.stone200, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: 10, backgroundColor: colors.white, color: colors.primaryDeepest },
+  messageInput: { minHeight: 88, textAlignVertical: "top" },
+  enquirySubmit: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: radii.md, backgroundColor: colors.primary },
+  enquirySubmitDisabled: { opacity: 0.6 },
+  enquirySubmitText: { ...typography.body, color: colors.white, fontWeight: "700" },
   actionBarWrap: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.stone100, ...shadow.lg },
   actionBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md },
   iconAction: { width: 48, height: 48, borderRadius: radii.md, backgroundColor: "#E6F9EE", alignItems: "center", justifyContent: "center" },

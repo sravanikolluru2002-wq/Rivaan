@@ -159,6 +159,12 @@ class BookingReq(BaseModel):
     whatsapp: Optional[str] = None
     message: Optional[str] = None
 
+class EnquiryReq(BaseModel):
+    property_id: str
+    name: str
+    phone: str
+    message: Optional[str] = None
+
 class ServiceReq(BaseModel):
     service_type: str
     property_id: Optional[str] = None
@@ -338,6 +344,26 @@ async def get_property(property_id: str):
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
     return prop
+
+@api_router.post("/enquiries")
+async def create_enquiry(req: EnquiryReq):
+    prop = await db.properties.find_one({"id": req.property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    enquiry = {
+        "id": str(uuid.uuid4()),
+        "property_id": req.property_id,
+        "property_name": prop.get("name"),
+        "name": req.name.strip(),
+        "phone": req.phone.strip(),
+        "message": (req.message or "").strip(),
+        "status": "new",
+        "source": "property_detail",
+        "created_at": now_utc().isoformat(),
+    }
+    await db.enquiries.insert_one(enquiry.copy())
+    enquiry.pop("_id", None)
+    return {"success": True, "enquiry": enquiry, "message": "Thank you. Our team will contact you shortly."}
 
 
 @api_router.get("/properties/{property_id}/plots")
@@ -817,21 +843,24 @@ async def admin_create_property(req: AdminPropertyReq, user: Dict[str, Any] = De
 # ---------- Seed Data ----------
 async def seed_data():
     existing_property_count = await db.properties.count_documents({})
+    allowed_categories = ["Apartment", "Villa", "Plot", "Commercial"]
     legacy_region_property_count = await db.properties.count_documents({
         "$nor": [
             {"location": {"$regex": "Vizag", "$options": "i"}},
             {"location": {"$regex": "Vijayawada", "$options": "i"}},
         ],
     })
-    if existing_property_count > 0 and legacy_region_property_count == 0:
+    legacy_category_property_count = await db.properties.count_documents({"category": {"$nin": allowed_categories}})
+    if existing_property_count > 0 and legacy_region_property_count == 0 and legacy_category_property_count == 0:
         logger.info("Database already seeded, skipping.")
         return
-    if legacy_region_property_count > 0:
+    if legacy_region_property_count > 0 or legacy_category_property_count > 0:
         logger.info("Replacing legacy regional seed data with Vizag/Vijayawada seed data...")
         await db.properties.delete_many({})
         await db.plots.delete_many({})
         await db.centres.delete_many({})
         await db.bookings.delete_many({})
+        await db.enquiries.delete_many({})
         await db.installments.delete_many({"id": {"$regex": "^inst-demo-"}})
         await db.payments.delete_many({"id": {"$regex": "^pay-demo-"}})
         await db.documents.delete_many({"user_id": "demo-user-001"})
@@ -845,7 +874,7 @@ async def seed_data():
         {
             "id": "prop-1",
             "name": "Rivan Madhurawada Plots",
-            "category": "Open Plots",
+            "category": "Plot",
             "location": "Vizag",
             "starting_price": 1850000,
             "size": "200-600 sq yards",
@@ -870,7 +899,7 @@ async def seed_data():
         {
             "id": "prop-2",
             "name": "Rivan Rushikonda Villas",
-            "category": "Villas",
+            "category": "Villa",
             "location": "Vizag",
             "starting_price": 14500000,
             "size": "2400-3800 sq ft",
@@ -895,7 +924,7 @@ async def seed_data():
         {
             "id": "prop-3",
             "name": "Rivan Coastal Heights",
-            "category": "Apartments",
+            "category": "Apartment",
             "location": "Vizag",
             "starting_price": 8500000,
             "size": "1450-2200 sq ft",
@@ -909,7 +938,7 @@ async def seed_data():
             "survey_number": "VSP-CH-11/1",
             "facing": "North-East",
             "road_width": "100 ft main road",
-            "availability": "Available",
+            "availability": "Coming Soon",
             "featured": True,
             "amenities": ["Infinity Pool", "Sky Lounge", "Gym", "Co-working Space", "Pet Park", "EV Charging"],
             "approvals": ["VUDA Zone", "RERA Registered"],
@@ -920,7 +949,7 @@ async def seed_data():
         {
             "id": "prop-4",
             "name": "Rivan Coastal Farms",
-            "category": "Farm Lands",
+            "category": "Plot",
             "location": "Vizag",
             "starting_price": 3500000,
             "size": "1-5 acres",
@@ -933,7 +962,7 @@ async def seed_data():
             "survey_number": "VSP-CF-156, 157",
             "facing": "Multiple",
             "road_width": "30 ft",
-            "availability": "Available",
+            "availability": "Sold Out",
             "featured": False,
             "amenities": ["Managed Farming", "Cottage", "Borewell", "Drip Irrigation", "Solar Power"],
             "approvals": ["Agriculture Clearance", "Clear Title"],
@@ -944,7 +973,7 @@ async def seed_data():
         {
             "id": "prop-5",
             "name": "Rivan Benz Circle Business Park",
-            "category": "Commercial Properties",
+            "category": "Commercial",
             "location": "Vijayawada",
             "starting_price": 12000000,
             "size": "800-3500 sq ft",
@@ -968,7 +997,7 @@ async def seed_data():
         {
             "id": "prop-6",
             "name": "Rivan Riverfront Plots",
-            "category": "Layouts",
+            "category": "Plot",
             "location": "Vijayawada",
             "starting_price": 2200000,
             "size": "150-500 sq yards",
@@ -992,7 +1021,7 @@ async def seed_data():
         {
             "id": "prop-7",
             "name": "Rivan Amaravati Avenue",
-            "category": "Flats",
+            "category": "Apartment",
             "location": "Vijayawada",
             "starting_price": 5800000,
             "size": "1100-1650 sq ft",
@@ -1005,7 +1034,7 @@ async def seed_data():
             "survey_number": "VJA-AA-45/1",
             "facing": "East / West",
             "road_width": "60 ft",
-            "availability": "Available",
+            "availability": "Coming Soon",
             "featured": False,
             "amenities": ["Swimming Pool", "Gym", "Kids Play Area", "Yoga Deck", "Visitor Parking"],
             "approvals": ["CRDA Zone", "RERA Registered"],

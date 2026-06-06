@@ -2,6 +2,8 @@
 import { supabase } from "@/src/supabase";
 import { storage } from "@/src/utils/storage";
 
+const RAW_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND_URL = RAW_BACKEND_URL?.replace(/\/+$/, "") || "";
 const DEV_OTP = process.env.EXPO_PUBLIC_SUPABASE_DEV_OTP || "123456";
 const DEV_ACCESS_TOKEN = "dev-token";
 const TOKEN_KEY = "rivan_token";
@@ -59,6 +61,12 @@ function normalizePhone(phone: string) {
 
 function e164(phone: string) {
   return `+91${normalizePhone(phone)}`;
+}
+
+function assertBackendUrl() {
+  if (!BACKEND_URL) {
+    throw new Error("EXPO_PUBLIC_BACKEND_URL is not set. Configure it to submit enquiries.");
+  }
 }
 
 function devUserId(phone: string) {
@@ -427,6 +435,17 @@ export const api = {
       .single();
     if (error) throw new Error(error.message);
     return { success: true, booking: data, message: "Thank you. Our Rivan team will contact you shortly." };
+  },
+  submitPropertyEnquiry: async (body: { property_id: string; name: string; phone: string; message?: string }) => {
+    assertBackendUrl();
+    const res = await fetch(`${BACKEND_URL}/api/enquiries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || data.message || "Failed to submit enquiry");
+    return data;
   },
   myBookings: async () => [],
   myLand: async () => [],
