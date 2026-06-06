@@ -338,6 +338,49 @@ async def featured_properties():
     return items
 
 
+def display_unit_status(status: str) -> str:
+    status_map = {
+        "available": "Available",
+        "reserved": "Reserved",
+        "booked": "Reserved",
+        "sold": "Sold Out",
+        "sold out": "Sold Out",
+        "coming soon": "Coming Soon",
+    }
+    return status_map.get((status or "").lower(), status or "Coming Soon")
+
+
+def normalize_unit(unit: Dict[str, Any], prop: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    category = (prop or {}).get("category") or unit.get("category") or "Plot"
+    unit_no = (
+        unit.get("unit_no")
+        or unit.get("flat_number")
+        or unit.get("plot_number")
+        or unit.get("id")
+    )
+    normalized = {
+        **unit,
+        "unit_no": unit_no,
+        "category": category,
+        "status": display_unit_status(unit.get("status")),
+        "block": unit.get("block") or unit.get("tower"),
+        "floor": unit.get("floor"),
+    }
+    normalized.pop("_id", None)
+    return normalized
+
+
+@api_router.get("/properties/{property_id}/units")
+async def get_property_units(property_id: str):
+    prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    units = prop.get("units")
+    if not units:
+        units = await db.plots.find({"property_id": property_id}, {"_id": 0}).to_list(500)
+    return [normalize_unit(unit, prop) for unit in units]
+
+
 @api_router.get("/properties/{property_id}")
 async def get_property(property_id: str):
     prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
@@ -368,8 +411,7 @@ async def create_enquiry(req: EnquiryReq):
 
 @api_router.get("/properties/{property_id}/plots")
 async def get_property_plots(property_id: str):
-    plots = await db.plots.find({"property_id": property_id}, {"_id": 0}).to_list(500)
-    return plots
+    return await get_property_units(property_id)
 
 
 @api_router.get("/plots/{plot_id}")
@@ -843,7 +885,7 @@ async def admin_create_property(req: AdminPropertyReq, user: Dict[str, Any] = De
 # ---------- Seed Data ----------
 async def seed_data():
     existing_property_count = await db.properties.count_documents({})
-    allowed_categories = ["Apartment", "Villa", "Plot", "Commercial"]
+    allowed_categories = ["Apartment", "Villa", "Plot", "Farm Lands", "Commercial"]
     legacy_region_property_count = await db.properties.count_documents({
         "$nor": [
             {"location": {"$regex": "Vizag", "$options": "i"}},
@@ -851,10 +893,18 @@ async def seed_data():
         ],
     })
     legacy_category_property_count = await db.properties.count_documents({"category": {"$nin": allowed_categories}})
-    if existing_property_count > 0 and legacy_region_property_count == 0 and legacy_category_property_count == 0:
+    farm_category_missing = await db.properties.count_documents({"id": "prop-4", "category": {"$ne": "Farm Lands"}})
+    missing_seed_units = await db.properties.count_documents({"id": {"$regex": "^prop-"}, "units": {"$exists": False}})
+    if (
+        existing_property_count > 0
+        and legacy_region_property_count == 0
+        and legacy_category_property_count == 0
+        and farm_category_missing == 0
+        and missing_seed_units == 0
+    ):
         logger.info("Database already seeded, skipping.")
         return
-    if legacy_region_property_count > 0 or legacy_category_property_count > 0:
+    if legacy_region_property_count > 0 or legacy_category_property_count > 0 or farm_category_missing > 0 or missing_seed_units > 0:
         logger.info("Replacing legacy regional seed data with Vizag/Vijayawada seed data...")
         await db.properties.delete_many({})
         await db.plots.delete_many({})
@@ -949,7 +999,7 @@ async def seed_data():
         {
             "id": "prop-4",
             "name": "Rivan Coastal Farms",
-            "category": "Plot",
+            "category": "Farm Lands",
             "location": "Vizag",
             "starting_price": 3500000,
             "size": "1-5 acres",
@@ -1247,6 +1297,16 @@ async def seed_data():
                     "created_at": now_utc().isoformat(),
                 })
     await db.plots.insert_many([u.copy() for u in pflat_units])
+
+    seed_units = plots + plots2 + apt_units + villa_units + commercial_units + farm_units + pflat_units
+    seed_properties_by_id = {p["id"]: p for p in properties}
+    for prop_id, prop in seed_properties_by_id.items():
+        units = [
+            normalize_unit(unit, prop)
+            for unit in seed_units
+            if unit.get("property_id") == prop_id
+        ]
+        await db.properties.update_one({"id": prop_id}, {"$set": {"units": units}})
 
     # ---- Experience Centres ----
     centres = [

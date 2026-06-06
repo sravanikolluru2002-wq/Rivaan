@@ -94,21 +94,25 @@ export const shadow = {
 };
 
 export const plotStatusColor = (status: string): string => {
-  switch (status) {
+  switch ((status || "").toLowerCase()) {
     case "available": return colors.available;
     case "reserved": return colors.reserved;
     case "booked": return colors.booked;
     case "sold": return colors.sold;
+    case "sold out": return colors.sold;
+    case "coming soon": return colors.info;
     default: return colors.stone400;
   }
 };
 
 export const plotStatusLabel = (status: string): string => {
-  switch (status) {
+  switch ((status || "").toLowerCase()) {
     case "available": return "Available";
     case "reserved": return "Reserved";
     case "booked": return "Booked";
     case "sold": return "Sold";
+    case "sold out": return "Sold Out";
+    case "coming soon": return "Coming Soon";
     default: return status;
   }
 };

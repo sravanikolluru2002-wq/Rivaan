@@ -26,6 +26,7 @@ const CATEGORIES = [
   { key: "Apartment", label: "Apartment", icon: "home" as const },
   { key: "Villa", label: "Villa", icon: "home" as const },
   { key: "Plot", label: "Plot", icon: "square" as const },
+  { key: "Farm Lands", label: "Farm Lands", icon: "sun" as const },
   { key: "Commercial", label: "Commercial", icon: "briefcase" as const },
 ];
 
@@ -287,7 +288,13 @@ export default function HomeScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => <PropertyCard property={item} onPress={() => router.push(`/property/${item.id}`)} />}
+        renderItem={({ item }) => (
+          <PropertyCard
+            property={item}
+            onPress={() => router.push(`/property/${item.id}`)}
+            onAvailability={() => router.push(`/property/${item.id}/availability-map`)}
+          />
+        )}
         ListEmptyComponent={
           loading ? (
             <View style={styles.empty}>
@@ -318,7 +325,7 @@ export default function HomeScreen() {
   );
 }
 
-function PropertyCard({ property, onPress }: { property: any; onPress: () => void }) {
+function PropertyCard({ property, onPress, onAvailability }: { property: any; onPress: () => void; onAvailability: () => void }) {
   return (
     <TouchableOpacity
       testID={`home-property-${property.id}`}
@@ -365,6 +372,15 @@ function PropertyCard({ property, onPress }: { property: any; onPress: () => voi
             <Feather name="arrow-right" size={14} color={colors.white} />
           </View>
         </View>
+        <TouchableOpacity
+          testID={`home-property-map-${property.id}`}
+          style={styles.availabilityMapBtn}
+          onPress={onAvailability}
+          activeOpacity={0.85}
+        >
+          <Feather name="grid" size={14} color={colors.primary} />
+          <Text style={styles.availabilityMapText}>View Availability Map</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -482,6 +498,8 @@ const styles = StyleSheet.create({
   price: { ...typography.h4, color: colors.primary, fontWeight: "700" },
   viewBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md },
   viewBtnText: { ...typography.body, color: colors.white, fontWeight: "700" },
+  availabilityMapBtn: { marginTop: spacing.sm, minHeight: 42, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#E6F4EA" },
+  availabilityMapText: { ...typography.small, color: colors.primary, fontWeight: "700" },
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
   emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
   emptyText: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 280 },

@@ -80,7 +80,7 @@ export default function PropertyDetails() {
     return <View style={styles.loader}><ActivityIndicator color={colors.primary} size="large" /></View>;
   }
 
-  const availPlots = plots.filter((p) => p.status === "available").length;
+  const availPlots = plots.filter((p) => (p.status || "").toLowerCase() === "available").length;
   const hasLayout = plots.length > 0;
   const images: string[] = property.images || [property.image];
 
@@ -221,6 +221,22 @@ export default function PropertyDetails() {
             <Feather name="chevron-right" size={18} color={colors.stone400} />
           </TouchableOpacity>
 
+          <TouchableOpacity
+            testID="property-availability-map-button"
+            style={styles.availabilityMapBtn}
+            onPress={() => router.push(`/property/${id}/availability-map`)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.brochureIcon}>
+              <Feather name="grid" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.brochureContent}>
+              <Text style={styles.brochureTitle}>View Availability Map</Text>
+              <Text style={styles.brochureSub}>Check live units, parcels, plots and commercial spaces</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.stone400} />
+          </TouchableOpacity>
+
           <View style={styles.enquiryCard} testID="property-enquiry-form">
             <Text style={styles.enquiryTitle}>Contact Sales</Text>
             <Text style={styles.enquirySub}>Share your details and our team will call you about this property.</Text>
@@ -284,26 +300,14 @@ export default function PropertyDetails() {
             <Feather name="calendar" size={16} color={colors.accent} />
             <Text style={styles.actionBtnTextSecondary}>Schedule Visit</Text>
           </TouchableOpacity>
-          {hasLayout ? (
-            <TouchableOpacity
-              testID="property-layout-button"
-              style={[styles.actionBtn, styles.actionBtnPrimary]}
-              onPress={() => router.push(`/layout/${id}`)}
-            >
-              <Feather name="grid" size={16} color={colors.white} />
-              <Text style={styles.actionBtnTextPrimary}>
-                {property.category === "Plot" ? "View Layout" : "View Availability"}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              testID="property-enquire-button"
-              style={[styles.actionBtn, styles.actionBtnPrimary]}
-              onPress={submitEnquiry}
-            >
-              <Text style={styles.actionBtnTextPrimary}>Enquire Now</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            testID="property-layout-button"
+            style={[styles.actionBtn, styles.actionBtnPrimary]}
+            onPress={() => router.push(`/property/${id}/availability-map`)}
+          >
+            <Feather name="grid" size={16} color={colors.white} />
+            <Text style={styles.actionBtnTextPrimary}>View Availability Map</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     </View>
@@ -364,6 +368,7 @@ const styles = StyleSheet.create({
   mapText: { ...typography.body, color: colors.primaryDeepest, fontWeight: "600" },
   mapSubtext: { ...typography.small, color: colors.stone500 },
   brochureBtn: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.offWhite, padding: spacing.md, borderRadius: radii.md, marginTop: spacing.md },
+  availabilityMapBtn: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: "#E6F4EA", padding: spacing.md, borderRadius: radii.md, marginTop: spacing.sm, borderWidth: 1, borderColor: colors.primary },
   brochureIcon: { width: 40, height: 40, borderRadius: radii.sm, backgroundColor: colors.white, alignItems: "center", justifyContent: "center" },
   brochureContent: { flex: 1 },
   brochureTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },

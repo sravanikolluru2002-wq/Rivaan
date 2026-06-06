@@ -65,8 +65,28 @@ function e164(phone: string) {
 
 function assertBackendUrl() {
   if (!BACKEND_URL) {
-    throw new Error("EXPO_PUBLIC_BACKEND_URL is not set. Configure it to submit enquiries.");
+    throw new Error("EXPO_PUBLIC_BACKEND_URL is not set. Configure it to connect to the backend.");
   }
+}
+
+function backendUrl(path: string, params?: Record<string, string | number | undefined | null>) {
+  assertBackendUrl();
+  const url = new URL(`${BACKEND_URL}${path}`);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  return url.toString();
+}
+
+async function backendGet(path: string, params?: Record<string, string | number | undefined | null>) {
+  const res = await fetch(backendUrl(path, params));
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(data?.detail || data?.message || `Backend request failed: ${res.status}`);
+  }
+  return data;
 }
 
 function devUserId(phone: string) {
@@ -229,10 +249,30 @@ function mapProperty(p: any) {
     .slice()
     .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
     .map((img: any) => img.url);
+  const backendImages = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+  const allImages = backendImages.length ? backendImages : images;
   return {
     ...p,
-    image: p.image || images[0],
-    images: images.length ? images : (p.image ? [p.image] : []),
+    name: p.name || p.title || "Rivan Property",
+    starting_price: Number(p.starting_price ?? p.price ?? 0),
+    location: p.location || p.city || "",
+    category: p.category || "Property",
+    image: p.image || allImages[0],
+    images: allImages.length ? allImages : (p.image ? [p.image] : []),
+  };
+}
+
+function mapUnit(unit: any) {
+  const unitNo = unit.unit_no || unit.flat_number || unit.plot_number || unit.id;
+  return {
+    ...unit,
+    id: unit.id || unitNo,
+    unit_no: unitNo,
+    plot_number: unit.plot_number || unitNo,
+    status: unit.status || "Coming Soon",
+    category: unit.category || "Plot",
+    price: Number(unit.price || 0),
+    block: unit.block || unit.tower,
   };
 }
 
@@ -381,38 +421,30 @@ export const api = {
   },
 
   listProperties: async (filters?: any) => {
-    let query = propertiesQuery();
-    if (filters?.category) query = query.eq("category", filters.category);
-    if (filters?.location) query = query.ilike("location", `%${filters.location}%`);
-    if (filters?.min_price) query = query.gte("starting_price", filters.min_price);
-    if (filters?.max_price) query = query.lte("starting_price", filters.max_price);
-    if (filters?.search) {
-      const search = `%${filters.search}%`;
-      query = query.or(`name.ilike.${search},location.ilike.${search},description.ilike.${search}`);
-    }
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return (data || []).map(mapProperty);
+    const data = await backendGet("/api/properties", {
+      category: filters?.category,
+      location: filters?.location,
+      min_price: filters?.min_price,
+      max_price: filters?.max_price,
+      search: filters?.search,
+    });
+    return (Array.isArray(data) ? data : data?.properties || []).map(mapProperty);
   },
   featured: async () => {
-    const { data, error } = await supabase
-      .from("properties")
-      .select("*, property_images(id, url, alt_text, sort_order)")
-      .eq("featured", true)
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data || []).map(mapProperty);
+    const data = await backendGet("/api/properties/featured");
+    return (Array.isArray(data) ? data : data?.properties || []).map(mapProperty);
   },
   getProperty: async (id: string) => {
-    const { data, error } = await supabase
-      .from("properties")
-      .select("*, property_images(id, url, alt_text, sort_order)")
-      .eq("id", id)
-      .single();
-    if (error) throw new Error(error.message);
+    const data = await backendGet(`/api/properties/${encodeURIComponent(id)}`);
     return mapProperty(data);
   },
-  getPropertyPlots: async (_id: string) => [],
+  getPropertyUnits: async (id: string) => {
+    const data = await backendGet(`/api/properties/${encodeURIComponent(id)}/units`);
+    return Array.isArray(data) ? data.map(mapUnit) : [];
+  },
+  getPropertyPlots: async (id: string) => {
+    return api.getPropertyUnits(id);
+  },
   getPlot: async (id: string) => {
     const property = await api.getProperty(id);
     return { ...property, plot_number: property.name, status: "available", property_id: property.id, price: property.starting_price };
