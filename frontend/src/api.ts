@@ -1,9 +1,10 @@
-// Supabase-backed API compatibility layer for the Expo app.
+// API compatibility layer for the Expo app.
 import { supabase } from "@/src/supabase";
 import { storage } from "@/src/utils/storage";
 
 const RAW_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
-const BACKEND_URL = RAW_BACKEND_URL?.replace(/\/+$/, "") || "";
+const LOCAL_BACKEND_URL = "http://127.0.0.1:8000";
+const BACKEND_URL = (RAW_BACKEND_URL || LOCAL_BACKEND_URL).replace(/\/+$/, "");
 const DEV_OTP = process.env.EXPO_PUBLIC_SUPABASE_DEV_OTP || "123456";
 const DEV_ACCESS_TOKEN = "dev-token";
 const TOKEN_KEY = "rivan_token";
@@ -81,7 +82,9 @@ function backendUrl(path: string, params?: Record<string, string | number | unde
 }
 
 async function backendGet(path: string, params?: Record<string, string | number | undefined | null>) {
-  const res = await fetch(backendUrl(path, params));
+  const url = backendUrl(path, params);
+  console.log("[backend GET]", url);
+  const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error(data?.detail || data?.message || `Backend request failed: ${res.status}`);
@@ -421,7 +424,9 @@ export const api = {
       max_price: filters?.max_price,
       search: filters?.search,
     });
-    return (Array.isArray(data) ? data : data?.properties || []).map(mapProperty);
+    const properties = (Array.isArray(data) ? data : data?.properties || []).map(mapProperty);
+    console.log("[properties loaded]", properties.length);
+    return properties;
   },
   featured: async () => {
     const data = await backendGet("/api/properties/featured");
@@ -432,8 +437,23 @@ export const api = {
     return mapProperty(data);
   },
   getPropertyUnits: async (id: string) => {
-    const data = await backendGet(`/api/properties/${encodeURIComponent(id)}/units`);
-    return Array.isArray(data) ? data.map(mapUnit) : [];
+    let data: any[] = [];
+    try {
+      const unitRows = await backendGet(`/api/properties/${encodeURIComponent(id)}/units`);
+      data = Array.isArray(unitRows) ? unitRows : [];
+    } catch (unitsError: any) {
+      console.warn("[property units fallback]", unitsError?.message);
+      try {
+        const plotRows = await backendGet(`/api/properties/${encodeURIComponent(id)}/plots`);
+        data = Array.isArray(plotRows) ? plotRows : [];
+      } catch (_plotsError) {
+        const property = await api.getProperty(id);
+        data = Array.isArray(property.units) ? property.units : [];
+      }
+    }
+    const units = data.map(mapUnit);
+    console.log("[property units loaded]", id, units.length);
+    return units;
   },
   getPropertyPlots: async (id: string) => {
     return api.getPropertyUnits(id);
