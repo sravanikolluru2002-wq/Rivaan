@@ -2,7 +2,8 @@
 Rivan Reality LLP - Customer App Backend
 FastAPI + MongoDB with OTP-based JWT authentication
 """
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -20,22 +21,57 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # ---------- Config ----------
-MONGO_URL = os.environ['MONGO_URL']
-DB_NAME = os.environ['DB_NAME']
+MONGO_URL = os.environ.get('MONGO_URL')
+DB_NAME = os.environ.get('DB_NAME', 'rivan_reality')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'rivan-reality-dev-secret-change-in-prod')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRES_MIN = 60 * 24 * 30  # 30 days
-MOCK_OTP = "123456"
+MOCK_OTP = os.environ.get("MOCK_OTP", "123456")
+OTP_DEV_MODE = os.environ.get("OTP_DEV_MODE", "true").lower() == "true"
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+]
 
-client = AsyncIOMotorClient(MONGO_URL)
+if not MONGO_URL:
+    raise RuntimeError("MONGO_URL is required. Set it to your MongoDB Atlas connection string.")
+
+if JWT_SECRET == 'rivan-reality-dev-secret-change-in-prod':
+    logger_warning = "Using development JWT_SECRET. Set JWT_SECRET in production."
+else:
+    logger_warning = None
+
+client = AsyncIOMotorClient(
+    MONGO_URL,
+    serverSelectionTimeoutMS=8000,
+    uuidRepresentation="standard",
+)
 db = client[DB_NAME]
 
-app = FastAPI(title="Rivan Reality API")
 api_router = APIRouter(prefix="/api")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("rivan")
+if logger_warning:
+    logger.warning(logger_warning)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await client.admin.command("ping")
+        logger.info("Connected to MongoDB database '%s'.", DB_NAME)
+    except Exception as exc:
+        logger.exception("MongoDB connection failed. Check MONGO_URL, Atlas IP access, and DB credentials.")
+        raise exc
+    await seed_data()
+    yield
+    client.close()
+
+
+app = FastAPI(title="Rivan Reality API", lifespan=lifespan)
 
 
 def now_utc() -> datetime:
@@ -44,6 +80,19 @@ def now_utc() -> datetime:
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
+
+
+def normalize_phone(phone: str) -> str:
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    return digits[-10:]
+
+
+def as_aware_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 # ---------- Auth helpers ----------
@@ -110,6 +159,12 @@ class BookingReq(BaseModel):
     whatsapp: Optional[str] = None
     message: Optional[str] = None
 
+class EnquiryReq(BaseModel):
+    property_id: str
+    name: str
+    phone: str
+    message: Optional[str] = None
+
 class ServiceReq(BaseModel):
     service_type: str
     property_id: Optional[str] = None
@@ -154,41 +209,50 @@ class AdminPropertyReq(BaseModel):
 # ---------- Auth Routes ----------
 @api_router.post("/auth/send-otp")
 async def send_otp(req: SendOtpReq):
-    if not req.phone or len(req.phone) < 10:
+    phone = normalize_phone(req.phone)
+    if len(phone) != 10:
         raise HTTPException(status_code=400, detail="Invalid phone number")
     await db.otps.update_one(
-        {"phone": req.phone},
+        {"phone": phone},
         {"$set": {
-            "phone": req.phone,
+            "phone": phone,
             "otp": MOCK_OTP,
             "expires_at": now_utc() + timedelta(minutes=10),
             "created_at": now_utc(),
         }},
         upsert=True,
     )
-    logger.info(f"OTP sent to {req.phone} (mock: {MOCK_OTP})")
-    return {"success": True, "message": f"OTP sent. Use {MOCK_OTP} for dev.", "dev_otp": MOCK_OTP}
+    logger.info("OTP requested for %s", phone)
+    resp = {"success": True, "message": "OTP sent."}
+    if OTP_DEV_MODE:
+        resp["dev_otp"] = MOCK_OTP
+        resp["message"] = f"OTP sent. Use {MOCK_OTP} for dev."
+    return resp
 
 
 @api_router.post("/auth/verify-otp", response_model=TokenResp)
 async def verify_otp(req: VerifyOtpReq):
-    otp_doc = await db.otps.find_one({"phone": req.phone}, {"_id": 0})
+    phone = normalize_phone(req.phone)
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    otp_doc = await db.otps.find_one({"phone": phone}, {"_id": 0})
     if not otp_doc:
         raise HTTPException(status_code=400, detail="No OTP requested for this number")
     expires_at = otp_doc.get("expires_at")
-    if expires_at and expires_at.replace(tzinfo=timezone.utc) < now_utc():
+    if expires_at and as_aware_utc(expires_at) < now_utc():
+        await db.otps.delete_one({"phone": phone})
         raise HTTPException(status_code=400, detail="OTP expired")
-    if req.otp != MOCK_OTP and req.otp != otp_doc.get("otp"):
+    if req.otp != otp_doc.get("otp"):
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
     # Find or create user
-    user = await db.users.find_one({"phone": req.phone}, {"_id": 0})
+    user = await db.users.find_one({"phone": phone}, {"_id": 0})
     if not user:
         user_id = str(uuid.uuid4())
         user = {
             "id": user_id,
-            "phone": req.phone,
-            "name": req.name or f"User-{req.phone[-4:]}",
+            "phone": phone,
+            "name": req.name or f"User-{phone[-4:]}",
             "email": "",
             "address": "",
             "kyc_status": "pending",
@@ -207,7 +271,7 @@ async def verify_otp(req: VerifyOtpReq):
             "created_at": now_utc().isoformat(),
         })
     user.pop("_id", None)
-    await db.otps.delete_one({"phone": req.phone})
+    await db.otps.delete_one({"phone": phone})
     token = create_access_token(user["id"])
     return TokenResp(access_token=token, user=user)
 
@@ -216,6 +280,12 @@ async def verify_otp(req: VerifyOtpReq):
 async def me(user: Dict[str, Any] = Depends(get_current_user)):
     user.pop("_id", None)
     return user
+
+
+@api_router.get("/health")
+async def health():
+    await client.admin.command("ping")
+    return {"status": "ok", "database": DB_NAME}
 
 
 @api_router.put("/auth/profile")
@@ -236,10 +306,13 @@ async def list_properties(
     max_price: Optional[float] = None,
     search: Optional[str] = None,
 ):
-    q: Dict[str, Any] = {}
+    regional_location_regex = "Vizag|Vijayawada"
+    q: Dict[str, Any] = {"location": {"$regex": regional_location_regex, "$options": "i"}}
     if category and category.lower() != "all":
         q["category"] = category
     if location and location.lower() != "all":
+        if location.lower() not in ("vizag", "vijayawada"):
+            return []
         q["location"] = {"$regex": location, "$options": "i"}
     if min_price is not None:
         q["starting_price"] = {"$gte": min_price}
@@ -258,8 +331,54 @@ async def list_properties(
 
 @api_router.get("/properties/featured")
 async def featured_properties():
-    items = await db.properties.find({"featured": True}, {"_id": 0}).to_list(20)
+    items = await db.properties.find({
+        "featured": True,
+        "location": {"$regex": "Vizag|Vijayawada", "$options": "i"},
+    }, {"_id": 0}).to_list(20)
     return items
+
+
+def display_unit_status(status: str) -> str:
+    status_map = {
+        "available": "Available",
+        "reserved": "Reserved",
+        "booked": "Reserved",
+        "sold": "Sold Out",
+        "sold out": "Sold Out",
+        "coming soon": "Coming Soon",
+    }
+    return status_map.get((status or "").lower(), status or "Coming Soon")
+
+
+def normalize_unit(unit: Dict[str, Any], prop: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    category = (prop or {}).get("category") or unit.get("category") or "Plot"
+    unit_no = (
+        unit.get("unit_no")
+        or unit.get("flat_number")
+        or unit.get("plot_number")
+        or unit.get("id")
+    )
+    normalized = {
+        **unit,
+        "unit_no": unit_no,
+        "category": category,
+        "status": display_unit_status(unit.get("status")),
+        "block": unit.get("block") or unit.get("tower"),
+        "floor": unit.get("floor"),
+    }
+    normalized.pop("_id", None)
+    return normalized
+
+
+@api_router.get("/properties/{property_id}/units")
+async def get_property_units(property_id: str):
+    prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    units = prop.get("units")
+    if not units:
+        units = await db.plots.find({"property_id": property_id}, {"_id": 0}).to_list(500)
+    return [normalize_unit(unit, prop) for unit in units]
 
 
 @api_router.get("/properties/{property_id}")
@@ -269,11 +388,30 @@ async def get_property(property_id: str):
         raise HTTPException(status_code=404, detail="Property not found")
     return prop
 
+@api_router.post("/enquiries")
+async def create_enquiry(req: EnquiryReq):
+    prop = await db.properties.find_one({"id": req.property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    enquiry = {
+        "id": str(uuid.uuid4()),
+        "property_id": req.property_id,
+        "property_name": prop.get("name"),
+        "name": req.name.strip(),
+        "phone": req.phone.strip(),
+        "message": (req.message or "").strip(),
+        "status": "new",
+        "source": "property_detail",
+        "created_at": now_utc().isoformat(),
+    }
+    await db.enquiries.insert_one(enquiry.copy())
+    enquiry.pop("_id", None)
+    return {"success": True, "enquiry": enquiry, "message": "Thank you. Our team will contact you shortly."}
+
 
 @api_router.get("/properties/{property_id}/plots")
 async def get_property_plots(property_id: str):
-    plots = await db.plots.find({"property_id": property_id}, {"_id": 0}).to_list(500)
-    return plots
+    return await get_property_units(property_id)
 
 
 @api_router.get("/plots/{plot_id}")
@@ -746,10 +884,38 @@ async def admin_create_property(req: AdminPropertyReq, user: Dict[str, Any] = De
 
 # ---------- Seed Data ----------
 async def seed_data():
-    # Only seed if empty
-    if await db.properties.count_documents({}) > 0:
+    existing_property_count = await db.properties.count_documents({})
+    allowed_categories = ["Apartment", "Villa", "Plot", "Farm Lands", "Commercial"]
+    legacy_region_property_count = await db.properties.count_documents({
+        "$nor": [
+            {"location": {"$regex": "Vizag", "$options": "i"}},
+            {"location": {"$regex": "Vijayawada", "$options": "i"}},
+        ],
+    })
+    legacy_category_property_count = await db.properties.count_documents({"category": {"$nin": allowed_categories}})
+    farm_category_missing = await db.properties.count_documents({"id": "prop-4", "category": {"$ne": "Farm Lands"}})
+    missing_seed_units = await db.properties.count_documents({"id": {"$regex": "^prop-"}, "units": {"$exists": False}})
+    if (
+        existing_property_count > 0
+        and legacy_region_property_count == 0
+        and legacy_category_property_count == 0
+        and farm_category_missing == 0
+        and missing_seed_units == 0
+    ):
         logger.info("Database already seeded, skipping.")
         return
+    if legacy_region_property_count > 0 or legacy_category_property_count > 0 or farm_category_missing > 0 or missing_seed_units > 0:
+        logger.info("Replacing legacy regional seed data with Vizag/Vijayawada seed data...")
+        await db.properties.delete_many({})
+        await db.plots.delete_many({})
+        await db.centres.delete_many({})
+        await db.bookings.delete_many({})
+        await db.enquiries.delete_many({})
+        await db.installments.delete_many({"id": {"$regex": "^inst-demo-"}})
+        await db.payments.delete_many({"id": {"$regex": "^pay-demo-"}})
+        await db.documents.delete_many({"user_id": "demo-user-001"})
+        await db.notifications.delete_many({"user_id": "demo-user-001"})
+        await db.users.delete_many({"id": {"$in": ["demo-user-001", "admin-user-001"]}})
 
     logger.info("Seeding initial data...")
 
@@ -757,9 +923,9 @@ async def seed_data():
     properties = [
         {
             "id": "prop-1",
-            "name": "Rivan Greens",
-            "category": "Open Plots",
-            "location": "Shadnagar, Hyderabad",
+            "name": "Rivan Madhurawada Plots",
+            "category": "Plot",
+            "location": "Vizag",
             "starting_price": 1850000,
             "size": "200-600 sq yards",
             "image": "https://images.unsplash.com/photo-1677137263546-8695fb895a9d",
@@ -768,23 +934,23 @@ async def seed_data():
                 "https://images.pexels.com/photos/15422584/pexels-photo-15422584.jpeg",
                 "https://images.unsplash.com/photo-1500382017468-9049fed747ef",
             ],
-            "description": "Premium gated community plots with lush greenery, world-class amenities, and excellent connectivity to ORR.",
-            "survey_number": "SY-No 234/3, 235/1",
+            "description": "Premium gated community plots in North Vizag with excellent connectivity to Madhurawada, PM Palem and Anandapuram.",
+            "survey_number": "VSP-MP-234/3, 235/1",
             "facing": "East / North",
             "road_width": "40 ft black-top",
             "availability": "Available",
             "featured": True,
             "amenities": ["Clubhouse", "Swimming Pool", "Gym", "Children's Park", "24/7 Security", "Underground Drainage", "Avenue Plantation"],
-            "approvals": ["HMDA Approved", "RERA Registered", "Clear Title", "Vasthu Compliant"],
-            "nearby": ["ORR - 2km", "International Airport - 25min", "Schools - 5min", "Hospitals - 7min"],
-            "highlights": "HMDA approved · Gated community · Investment grade",
+            "approvals": ["VUDA Zone", "RERA Registered", "Clear Title", "Vasthu Compliant"],
+            "nearby": ["Madhurawada - 2km", "PM Palem - 5min", "Anandapuram Junction - 12min", "Schools - 5min"],
+            "highlights": "North Vizag growth corridor · Gated community · Investment grade",
             "created_at": now_utc().isoformat(),
         },
         {
             "id": "prop-2",
-            "name": "Rivan Heritage Villas",
-            "category": "Villas",
-            "location": "Kompally, Hyderabad",
+            "name": "Rivan Rushikonda Villas",
+            "category": "Villa",
+            "location": "Vizag",
             "starting_price": 14500000,
             "size": "2400-3800 sq ft",
             "image": "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png",
@@ -793,23 +959,23 @@ async def seed_data():
                 "https://images.unsplash.com/photo-1626249893783-cc4a9f66880a",
                 "https://images.unsplash.com/photo-1564013799919-ab600027ffc6",
             ],
-            "description": "Luxury 4 BHK villas with private gardens, swimming pools and premium finishes. A legacy worth investing in.",
-            "survey_number": "SY-No 89/2, 90",
+            "description": "Luxury 4 BHK villas near Rushikonda with private gardens, premium finishes and access to the beach corridor.",
+            "survey_number": "VSP-RV-89/2, 90",
             "facing": "East",
             "road_width": "60 ft",
             "availability": "Available",
             "featured": True,
             "amenities": ["Private Pool", "Garden", "Servant Quarter", "Italian Marble", "Modular Kitchen", "Smart Home"],
-            "approvals": ["GHMC Approved", "RERA Registered", "Bank Loan Approved"],
-            "nearby": ["Outer Ring Road - 3km", "Metro - 10min", "Schools - 5min"],
-            "highlights": "Premium 4 BHK · Private pool · Smart home",
+            "approvals": ["VUDA Zone", "RERA Registered", "Bank Loan Approved"],
+            "nearby": ["Rushikonda Beach - 5min", "IT SEZ - 10min", "Gitam University - 8min"],
+            "highlights": "Premium 4 BHK · Coastal villa community · Smart home",
             "created_at": now_utc().isoformat(),
         },
         {
             "id": "prop-3",
-            "name": "Rivan Skyline Towers",
-            "category": "Apartments",
-            "location": "Gachibowli, Hyderabad",
+            "name": "Rivan Coastal Heights",
+            "category": "Apartment",
+            "location": "Vizag",
             "starting_price": 8500000,
             "size": "1450-2200 sq ft",
             "image": "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00",
@@ -818,23 +984,23 @@ async def seed_data():
                 "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688",
                 "https://images.unsplash.com/photo-1493809842364-78817add7ffb",
             ],
-            "description": "Premium 3 BHK apartments in the heart of IT corridor. Sky lounges, infinity pool, and panoramic city views.",
-            "survey_number": "SY-No 11/1",
+            "description": "Premium 3 BHK apartments close to schools, hospitals and the Vizag beach corridor.",
+            "survey_number": "VSP-CH-11/1",
             "facing": "North-East",
             "road_width": "100 ft main road",
-            "availability": "Available",
+            "availability": "Coming Soon",
             "featured": True,
             "amenities": ["Infinity Pool", "Sky Lounge", "Gym", "Co-working Space", "Pet Park", "EV Charging"],
-            "approvals": ["GHMC Approved", "RERA Registered"],
-            "nearby": ["Wipro Circle - 2km", "Financial District - 4km", "International Schools - 3km"],
-            "highlights": "3 BHK · IT corridor · Sky lounge",
+            "approvals": ["VUDA Zone", "RERA Registered"],
+            "nearby": ["MVP Colony - 1km", "Beach Road - 10min", "Siripuram - 12min"],
+            "highlights": "3 BHK · Beach-city living · Sky lounge",
             "created_at": now_utc().isoformat(),
         },
         {
             "id": "prop-4",
-            "name": "Rivan Farms",
+            "name": "Rivan Coastal Farms",
             "category": "Farm Lands",
-            "location": "Moinabad, Hyderabad",
+            "location": "Vizag",
             "starting_price": 3500000,
             "size": "1-5 acres",
             "image": "https://images.unsplash.com/photo-1500382017468-9049fed747ef",
@@ -842,47 +1008,47 @@ async def seed_data():
                 "https://images.unsplash.com/photo-1500382017468-9049fed747ef",
                 "https://images.unsplash.com/photo-1444858345236-d791f5d20245",
             ],
-            "description": "Premium managed farm lands. Own a piece of nature with mango and teak plantations. Returns guaranteed.",
-            "survey_number": "SY-No 156, 157",
+            "description": "Premium managed farm lands near Anandapuram with mango and teak plantation options.",
+            "survey_number": "VSP-CF-156, 157",
             "facing": "Multiple",
             "road_width": "30 ft",
-            "availability": "Available",
+            "availability": "Sold Out",
             "featured": False,
             "amenities": ["Managed Farming", "Cottage", "Borewell", "Drip Irrigation", "Solar Power"],
             "approvals": ["Agriculture Clearance", "Clear Title"],
-            "nearby": ["Outer Ring Road - 15min", "Chevella - 8km"],
-            "highlights": "Managed farm · Cottage included · Plantations",
+            "nearby": ["Anandapuram Junction - 8km", "Bheemili Road - 20min"],
+            "highlights": "Managed farm · Cottage included · Plantation option",
             "created_at": now_utc().isoformat(),
         },
         {
             "id": "prop-5",
-            "name": "Rivan Commercial Hub",
-            "category": "Commercial Properties",
-            "location": "Madhapur, Hyderabad",
+            "name": "Rivan Benz Circle Business Park",
+            "category": "Commercial",
+            "location": "Vijayawada",
             "starting_price": 12000000,
             "size": "800-3500 sq ft",
-            "image": "https://images.unsplash.com/photo-1486325212027-8081e485255e",
+            "image": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab",
             "images": [
-                "https://images.unsplash.com/photo-1486325212027-8081e485255e",
+                "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab",
                 "https://images.unsplash.com/photo-1497366216548-37526070297c",
             ],
-            "description": "Grade A commercial spaces in the heart of HITEC City. Designed for premium retail and office tenants.",
-            "survey_number": "SY-No 22/1",
+            "description": "Grade A commercial spaces in a high-visibility Vijayawada business location.",
+            "survey_number": "VJA-BC-22/1",
             "facing": "South-West",
             "road_width": "100 ft",
             "availability": "Available",
             "featured": False,
             "amenities": ["High-speed Elevators", "100% Power Backup", "Centralized AC", "Smart Parking"],
-            "approvals": ["GHMC Approved", "RERA Registered"],
-            "nearby": ["Cyber Towers - 1km", "Metro - 500m"],
-            "highlights": "Grade A · HITEC City · Premium tenants",
+            "approvals": ["Commercial Use Approved", "RERA Registered"],
+            "nearby": ["Benz Circle - 500m", "MG Road - 1km", "Auto Nagar - 10min"],
+            "highlights": "Grade A · Benz Circle · Business-ready",
             "created_at": now_utc().isoformat(),
         },
         {
             "id": "prop-6",
-            "name": "Rivan Lakeside Layout",
-            "category": "Layouts",
-            "location": "Tukkuguda, Hyderabad",
+            "name": "Rivan Riverfront Plots",
+            "category": "Plot",
+            "location": "Vijayawada",
             "starting_price": 2200000,
             "size": "150-500 sq yards",
             "image": "https://images.pexels.com/photos/15422584/pexels-photo-15422584.jpeg",
@@ -890,23 +1056,23 @@ async def seed_data():
                 "https://images.pexels.com/photos/15422584/pexels-photo-15422584.jpeg",
                 "https://images.unsplash.com/photo-1500382017468-9049fed747ef",
             ],
-            "description": "Lakeside layouts with HMDA approval. Tree-lined boulevards, lake-view plots, and serene surroundings.",
-            "survey_number": "SY-No 78/2, 79",
+            "description": "Well-connected residential plots near the Vijayawada airport and emerging growth belt.",
+            "survey_number": "VJA-RP-78/2, 79",
             "facing": "Multiple",
             "road_width": "40 ft",
             "availability": "Available",
             "featured": True,
-            "amenities": ["Lake View", "Avenue Plantation", "Underground Drainage", "Street Lights"],
-            "approvals": ["HMDA Approved", "RERA Registered"],
-            "nearby": ["Airport - 20min", "ORR - 5min"],
-            "highlights": "HMDA · Lakeside · Premium layout",
+            "amenities": ["Avenue Plantation", "Underground Drainage", "Street Lights", "Park"],
+            "approvals": ["CRDA Zone", "RERA Registered"],
+            "nearby": ["Gannavaram Airport - 10min", "NH16 - 5min", "Autonagar - 15min"],
+            "highlights": "Airport corridor · Premium layout · Clear title",
             "created_at": now_utc().isoformat(),
         },
         {
             "id": "prop-7",
-            "name": "Rivan Premium Flats",
-            "category": "Flats",
-            "location": "Kukatpally, Hyderabad",
+            "name": "Rivan Amaravati Avenue",
+            "category": "Apartment",
+            "location": "Vijayawada",
             "starting_price": 5800000,
             "size": "1100-1650 sq ft",
             "image": "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688",
@@ -914,22 +1080,22 @@ async def seed_data():
                 "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688",
                 "https://images.unsplash.com/photo-1493809842364-78817add7ffb",
             ],
-            "description": "2 & 3 BHK premium flats with modern amenities. Excellent rental yield potential.",
-            "survey_number": "SY-No 45/1",
+            "description": "2 & 3 BHK premium flats near the Amaravati capital region with modern amenities.",
+            "survey_number": "VJA-AA-45/1",
             "facing": "East / West",
             "road_width": "60 ft",
-            "availability": "Available",
+            "availability": "Coming Soon",
             "featured": False,
             "amenities": ["Swimming Pool", "Gym", "Kids Play Area", "Yoga Deck", "Visitor Parking"],
-            "approvals": ["GHMC Approved", "RERA Registered"],
-            "nearby": ["JNTU - 1km", "Metro - 2km"],
-            "highlights": "2/3 BHK · Premium amenities · Investment",
+            "approvals": ["CRDA Zone", "RERA Registered"],
+            "nearby": ["Amaravati - 10min", "Tadepalli - 15min", "Undavalli - 15min"],
+            "highlights": "2/3 BHK · Capital-region access · Investment",
             "created_at": now_utc().isoformat(),
         },
     ]
     await db.properties.insert_many([p.copy() for p in properties])
 
-    # ---- Plots for Rivan Greens (interactive layout) ----
+    # ---- Plots for Rivan Madhurawada Plots (interactive layout) ----
     plot_statuses = ["available"] * 10 + ["reserved"] * 4 + ["booked"] * 4 + ["sold"] * 6
     facings = ["East", "West", "North", "South", "North-East", "South-East"]
     plots = []
@@ -946,7 +1112,7 @@ async def seed_data():
                 "property_id": "prop-1",
                 "unit_type": "plot",
                 "plot_number": f"P-{plot_num:03d}",
-                "survey_number": "SY-No 234/3",
+                "survey_number": "VSP-MP-234/3",
                 "size": f"{size_sqy} sq yards",
                 "size_sqy": size_sqy,
                 "facing": facings[idx % len(facings)],
@@ -960,7 +1126,7 @@ async def seed_data():
             plot_num += 1
     await db.plots.insert_many([p.copy() for p in plots])
 
-    # ---- Plots for Rivan Lakeside Layout ----
+    # ---- Plots for Rivan Riverfront Plots ----
     plots2 = []
     plot_num = 1
     for row in range(5):
@@ -974,7 +1140,7 @@ async def seed_data():
                 "property_id": "prop-6",
                 "unit_type": "plot",
                 "plot_number": f"L-{plot_num:03d}",
-                "survey_number": "SY-No 78/2",
+                "survey_number": "VJA-RP-78/2",
                 "size": f"{size_sqy} sq yards",
                 "size_sqy": size_sqy,
                 "facing": facings[idx % len(facings)],
@@ -988,7 +1154,7 @@ async def seed_data():
             plot_num += 1
     await db.plots.insert_many([p.copy() for p in plots2])
 
-    # ---- Apartment Units for Rivan Skyline Towers (prop-3) ----
+    # ---- Apartment Units for Rivan Coastal Heights (prop-3) ----
     # 2 towers × 8 floors × 4 flats per floor = 64 units
     apt_units = []
     flat_status_pool = ["available"] * 5 + ["reserved", "booked", "sold"]
@@ -1004,7 +1170,7 @@ async def seed_data():
                     "property_id": "prop-3",
                     "unit_type": "flat",
                     "plot_number": f"{tower}-{floor:02d}0{flat}",
-                    "survey_number": "SY-No 11/1",
+                    "survey_number": "VSP-CH-11/1",
                     "tower": tower,
                     "floor": floor,
                     "flat_number": f"{tower}-{floor:02d}0{flat}",
@@ -1021,7 +1187,7 @@ async def seed_data():
                 })
     await db.plots.insert_many([u.copy() for u in apt_units])
 
-    # ---- Villa Units for Rivan Heritage Villas (prop-2) ----
+    # ---- Villa Units for Rivan Rushikonda Villas (prop-2) ----
     villa_units = []
     villa_status_pool = ["available", "available", "available", "reserved", "booked", "sold"]
     for i in range(1, 13):
@@ -1033,7 +1199,7 @@ async def seed_data():
             "property_id": "prop-2",
             "unit_type": "villa",
             "plot_number": f"V-{i:02d}",
-            "survey_number": "SY-No 89/2",
+            "survey_number": "VSP-RV-89/2",
             "villa_type": villa_type,
             "size": f"{size_sqft} sq ft",
             "size_sqft": size_sqft,
@@ -1047,7 +1213,7 @@ async def seed_data():
         })
     await db.plots.insert_many([v.copy() for v in villa_units])
 
-    # ---- Commercial Units for Rivan Commercial Hub (prop-5) ----
+    # ---- Commercial Units for Rivan Benz Circle Business Park (prop-5) ----
     commercial_units = []
     cm_status_pool = ["available", "available", "reserved", "booked", "sold"]
     for floor in range(1, 6):
@@ -1061,7 +1227,7 @@ async def seed_data():
                 "property_id": "prop-5",
                 "unit_type": "shop",
                 "plot_number": f"F{floor}-S{shop:02d}",
-                "survey_number": "SY-No 22/1",
+                "survey_number": "VJA-BC-22/1",
                 "floor": floor,
                 "shop_type": shop_type,
                 "size": f"{size_sqft} sq ft",
@@ -1076,7 +1242,7 @@ async def seed_data():
             })
     await db.plots.insert_many([c.copy() for c in commercial_units])
 
-    # ---- Farm Land Parcels for Rivan Farms (prop-4) ----
+    # ---- Farm Land Parcels for Rivan Coastal Farms (prop-4) ----
     farm_units = []
     farm_status_pool = ["available", "available", "reserved", "booked", "sold"]
     for i in range(1, 9):
@@ -1087,7 +1253,7 @@ async def seed_data():
             "property_id": "prop-4",
             "unit_type": "farm",
             "plot_number": f"FL-{i:02d}",
-            "survey_number": "SY-No 156",
+            "survey_number": "VSP-CF-156",
             "acres": acres,
             "size": f"{acres} acres",
             "facing": facings[i % len(facings)],
@@ -1100,7 +1266,7 @@ async def seed_data():
         })
     await db.plots.insert_many([f.copy() for f in farm_units])
 
-    # ---- Flats for Rivan Premium Flats (prop-7) ----
+    # ---- Flats for Rivan Amaravati Avenue (prop-7) ----
     pflat_units = []
     pf_status_pool = ["available"] * 4 + ["reserved", "booked", "sold"]
     for tower_idx, tower in enumerate(["A", "B"]):
@@ -1115,7 +1281,7 @@ async def seed_data():
                     "property_id": "prop-7",
                     "unit_type": "flat",
                     "plot_number": f"{tower}-{floor:02d}0{flat}",
-                    "survey_number": "SY-No 45/1",
+                    "survey_number": "VJA-AA-45/1",
                     "tower": tower,
                     "floor": floor,
                     "flat_number": f"{tower}-{floor:02d}0{flat}",
@@ -1132,46 +1298,56 @@ async def seed_data():
                 })
     await db.plots.insert_many([u.copy() for u in pflat_units])
 
+    seed_units = plots + plots2 + apt_units + villa_units + commercial_units + farm_units + pflat_units
+    seed_properties_by_id = {p["id"]: p for p in properties}
+    for prop_id, prop in seed_properties_by_id.items():
+        units = [
+            normalize_unit(unit, prop)
+            for unit in seed_units
+            if unit.get("property_id") == prop_id
+        ]
+        await db.properties.update_one({"id": prop_id}, {"$set": {"units": units}})
+
     # ---- Experience Centres ----
     centres = [
         {
             "id": "centre-1",
-            "name": "Rivan Banjara Hills Experience Centre",
-            "address": "Road No 12, Banjara Hills, Hyderabad - 500034",
+            "name": "Rivan Vizag Experience Centre",
+            "address": "MVP Colony, Visakhapatnam, Andhra Pradesh",
             "phone": "+91-9876543210",
             "whatsapp": "+91-9876543210",
             "timings": "10:00 AM - 7:00 PM (Mon-Sun)",
             "manager": "Mr. Karthik Reddy",
             "image": "https://images.pexels.com/photos/7534173/pexels-photo-7534173.jpeg",
-            "latitude": 17.4172,
-            "longitude": 78.4506,
-            "directions_url": "https://maps.google.com/?q=Banjara+Hills+Hyderabad",
+            "latitude": 17.7439,
+            "longitude": 83.3250,
+            "directions_url": "https://maps.google.com/?q=MVP+Colony+Visakhapatnam",
         },
         {
             "id": "centre-2",
-            "name": "Rivan Gachibowli Experience Centre",
-            "address": "DLF Cyber City, Gachibowli, Hyderabad - 500032",
+            "name": "Rivan Vijayawada Experience Centre",
+            "address": "Benz Circle, Vijayawada, Andhra Pradesh",
             "phone": "+91-9876543211",
             "whatsapp": "+91-9876543211",
             "timings": "10:00 AM - 8:00 PM (Mon-Sun)",
             "manager": "Mrs. Priya Sharma",
             "image": "https://images.unsplash.com/photo-1497366216548-37526070297c",
-            "latitude": 17.4399,
-            "longitude": 78.3489,
-            "directions_url": "https://maps.google.com/?q=Gachibowli+Hyderabad",
+            "latitude": 16.5010,
+            "longitude": 80.6540,
+            "directions_url": "https://maps.google.com/?q=Benz+Circle+Vijayawada",
         },
         {
             "id": "centre-3",
-            "name": "Rivan Kompally Site Office",
-            "address": "Medchal Road, Kompally, Hyderabad - 500100",
+            "name": "Rivan Rushikonda Site Office",
+            "address": "Rushikonda, Visakhapatnam, Andhra Pradesh",
             "phone": "+91-9876543212",
             "whatsapp": "+91-9876543212",
             "timings": "9:00 AM - 6:00 PM (Mon-Sat)",
             "manager": "Mr. Suresh Babu",
             "image": "https://images.unsplash.com/photo-1497366811353-6870744d04b2",
-            "latitude": 17.5354,
-            "longitude": 78.4895,
-            "directions_url": "https://maps.google.com/?q=Kompally+Hyderabad",
+            "latitude": 17.7827,
+            "longitude": 83.3762,
+            "directions_url": "https://maps.google.com/?q=Rushikonda+Visakhapatnam",
         },
     ]
     await db.centres.insert_many([c.copy() for c in centres])
@@ -1183,7 +1359,7 @@ async def seed_data():
         "phone": "9999900001",
         "name": "Rajesh Kumar",
         "email": "rajesh.demo@rivanreality.com",
-        "address": "Plot 22, Jubilee Hills, Hyderabad",
+        "address": "MVP Colony, Visakhapatnam",
         "kyc_status": "verified",
         "is_admin": False,
         "created_at": now_utc().isoformat(),
@@ -1249,7 +1425,7 @@ async def seed_data():
         {"name": "Payment Receipt #3", "type": "Receipt", "size": "180 KB"},
         {"name": "KYC - PAN Card", "type": "KYC", "size": "220 KB"},
         {"name": "KYC - Aadhaar", "type": "KYC", "size": "340 KB"},
-        {"name": "HMDA Approval Copy", "type": "Approval", "size": "2.1 MB"},
+        {"name": "Regional Approval Copy", "type": "Approval", "size": "2.1 MB"},
         {"name": "Sale Deed Draft", "type": "Deed", "size": "850 KB"},
     ]
     for d in demo_docs:
@@ -1267,7 +1443,7 @@ async def seed_data():
     demo_notifs = [
         ("Welcome to Rivan Reality", "Legacy of trust, legacy of wealth.", "welcome"),
         ("Installment Due Reminder", f"Your next installment of ₹{installment_amount:,.0f} is due soon.", "payment"),
-        ("New Layout Launched", "Rivan Lakeside Layout — bookings open now!", "project"),
+        ("New Layout Launched", "Rivan Riverfront Plots — bookings open now!", "project"),
         ("Document Uploaded", "Your sale deed draft has been uploaded to the document locker.", "document"),
     ]
     for title, body, ntype in demo_notifs:
@@ -1287,7 +1463,7 @@ async def seed_data():
         "phone": "9000000000",
         "name": "Rivan Admin",
         "email": "admin@rivanreality.com",
-        "address": "Rivan HQ, Hyderabad",
+        "address": "Rivan Regional Office, Vijayawada",
         "kyc_status": "verified",
         "is_admin": True,
         "created_at": now_utc().isoformat(),
@@ -1301,18 +1477,8 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=["*"],
+    allow_credentials="*" not in CORS_ORIGINS,
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def on_startup():
-    await seed_data()
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()

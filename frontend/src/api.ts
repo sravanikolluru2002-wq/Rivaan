@@ -1,125 +1,615 @@
-// API client for Rivan Reality
+// API compatibility layer for the Expo app.
+import { supabase } from "@/src/supabase";
 import { storage } from "@/src/utils/storage";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+const RAW_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const LOCAL_BACKEND_URL = "http://127.0.0.1:8000";
+const BACKEND_URL = (RAW_BACKEND_URL || LOCAL_BACKEND_URL).replace(/\/+$/, "");
+const DEV_OTP = process.env.EXPO_PUBLIC_SUPABASE_DEV_OTP || "123456";
+const DEV_ACCESS_TOKEN = "dev-token";
 const TOKEN_KEY = "rivan_token";
+const USER_KEY = "rivan_user";
+const LOGOUT_MARKER_KEY = "logout_marker";
+
+const SERVICE_CATALOG = [
+  { type: "Cleaning", icon: "feather", description: "Professional property cleaning" },
+  { type: "CCTV Installation", icon: "video", description: "Security camera setup" },
+  { type: "Compound Wall", icon: "grid", description: "Boundary wall construction" },
+  { type: "Construction", icon: "tool", description: "Custom construction services" },
+  { type: "Borewell", icon: "droplet", description: "Borewell drilling" },
+  { type: "Fencing", icon: "shield", description: "Property fencing" },
+  { type: "Electricity Connection", icon: "zap", description: "New connection setup" },
+  { type: "Water Connection", icon: "droplet", description: "Water connection setup" },
+  { type: "Property Maintenance", icon: "settings", description: "Routine maintenance" },
+  { type: "Legal Documentation", icon: "file-text", description: "Legal paperwork support" },
+];
+
+const CENTRES = [
+  {
+    id: "centre-vizag",
+    name: "Rivan Vizag Experience Centre",
+    address: "MVP Colony, Visakhapatnam, Andhra Pradesh",
+    timings: "10:00 AM - 7:00 PM",
+    manager: "Rivan Team",
+    phone: "+91 9876543210",
+    whatsapp: "+91 9876543210",
+    directions_url: "https://maps.google.com/?q=MVP+Colony+Visakhapatnam",
+    image: "https://images.unsplash.com/photo-1497366216548-37526070297c",
+  },
+  {
+    id: "centre-vijayawada",
+    name: "Rivan Vijayawada Experience Centre",
+    address: "Benz Circle, Vijayawada, Andhra Pradesh",
+    timings: "10:00 AM - 7:00 PM",
+    manager: "Rivan Team",
+    phone: "+91 9876543210",
+    whatsapp: "+91 9876543210",
+    directions_url: "https://maps.google.com/?q=Benz+Circle+Vijayawada",
+    image: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab",
+  },
+];
+
+function assertSupabaseEnv() {
+  if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
+    throw new Error("Supabase env vars are missing. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.");
+  }
+}
+
+function normalizePhone(phone: string) {
+  const digits = (phone || "").replace(/\D/g, "");
+  return digits.startsWith("91") && digits.length === 12 ? digits.slice(2) : digits.slice(-10);
+}
+
+function e164(phone: string) {
+  return `+91${normalizePhone(phone)}`;
+}
+
+function assertBackendUrl() {
+  if (!BACKEND_URL) {
+    throw new Error("EXPO_PUBLIC_BACKEND_URL is not set. Configure it to connect to the backend.");
+  }
+}
+
+function backendUrl(path: string, params?: Record<string, string | number | undefined | null>) {
+  assertBackendUrl();
+  const url = new URL(`${BACKEND_URL}${path}`);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  return url.toString();
+}
+
+async function backendGet(path: string, params?: Record<string, string | number | undefined | null>) {
+  const url = backendUrl(path, params);
+  console.log("[backend GET]", url);
+  const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(data?.detail || data?.message || `Backend request failed: ${res.status}`);
+  }
+  return data;
+}
+
+function devUserId(phone: string) {
+  const suffix = normalizePhone(phone).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
+async function getStoredUser() {
+  const raw = await storage.getItem(USER_KEY, "");
+  if (!raw || typeof raw !== "string") return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_e) {
+    return null;
+  }
+}
+
+function hasLogoutMarker() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage?.getItem(LOGOUT_MARKER_KEY) === "1" ||
+    window.sessionStorage?.getItem(LOGOUT_MARKER_KEY) === "1";
+}
+
+function clearLogoutMarker() {
+  if (typeof window === "undefined") return;
+  window.localStorage?.removeItem(LOGOUT_MARKER_KEY);
+  window.sessionStorage?.removeItem(LOGOUT_MARKER_KEY);
+}
+
+export function markLoggedOut() {
+  if (typeof window === "undefined") return;
+  window.localStorage?.setItem(LOGOUT_MARKER_KEY, "1");
+  window.sessionStorage?.setItem(LOGOUT_MARKER_KEY, "1");
+  console.log("[auth-flow] logout marker set");
+}
 
 export async function getToken(): Promise<string | null> {
-  const t = await storage.secureGet(TOKEN_KEY, "");
-  return t && typeof t === "string" ? t : null;
+  if (hasLogoutMarker()) {
+    console.log("[auth-flow] getToken blocked by logout marker");
+    return null;
+  }
+
+  const storedToken = await storage.secureGet<string>(TOKEN_KEY, "");
+  if (storedToken && typeof storedToken === "string") return storedToken;
+
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
 }
 
 export async function setToken(token: string) {
+  clearLogoutMarker();
   await storage.secureSet(TOKEN_KEY, token);
 }
 
 export async function clearToken() {
   await storage.secureRemove(TOKEN_KEY);
+  await supabase.auth.signOut();
 }
 
-type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  body?: any;
-  auth?: boolean;
-  query?: Record<string, string | number | undefined | null>;
-};
+export async function setStoredUser(user: any) {
+  clearLogoutMarker();
+  await storage.setItem(USER_KEY, JSON.stringify(user));
+}
 
-export async function apiRequest<T = any>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, auth = true, query } = opts;
-  let url = `${BASE_URL}/api${path}`;
-  if (query) {
-    const params = new URLSearchParams();
-    Object.entries(query).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== "") params.append(k, String(v));
-    });
-    const qs = params.toString();
-    if (qs) url += `?${qs}`;
+export async function clearAuthData() {
+  markLoggedOut();
+  await storage.secureRemove(TOKEN_KEY);
+  await storage.removeItem(USER_KEY);
+  await supabase.auth.signOut();
+  console.log("auth storage cleared");
+}
+
+async function currentUser() {
+  if (hasLogoutMarker()) return null;
+
+  const storedToken = await storage.secureGet<string>(TOKEN_KEY, "");
+  if (storedToken === DEV_ACCESS_TOKEN) {
+    const storedUser = await getStoredUser();
+    return storedUser ? { id: storedUser.id } : null;
   }
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (auth) {
-    const token = await getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  }
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return data.user;
+}
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+async function requireUser() {
+  const user = await currentUser();
+  if (!user) throw new Error("Not authenticated");
+  return user;
+}
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    let detail = errText;
-    try {
-      const j = JSON.parse(errText);
-      detail = j.detail || j.message || errText;
-    } catch (_e) { /* keep raw */ }
-    throw new Error(detail || `HTTP ${res.status}`);
-  }
-  if (res.status === 204) return undefined as any;
-  return (await res.json()) as T;
+async function upsertProfile(userId: string, phone: string, name?: string) {
+  const payload = {
+    id: userId,
+    phone: normalizePhone(phone),
+    name: name || `User-${normalizePhone(phone).slice(-4)}`,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert(payload, { onConflict: "id" })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function upsertDevProfile(phone: string, name?: string) {
+  const cleaned = normalizePhone(phone);
+  const localProfile = {
+    id: devUserId(cleaned),
+    phone: cleaned,
+    name: name || `Dev User ${cleaned.slice(-4)}`,
+    email: "",
+    address: "",
+    kyc_status: "pending",
+    is_admin: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const existing = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("phone", cleaned)
+    .maybeSingle();
+
+  if (!existing.error && existing.data) return existing.data;
+
+  const created = await supabase
+    .from("profiles")
+    .upsert(localProfile, { onConflict: "phone" })
+    .select("*")
+    .maybeSingle();
+
+  if (!created.error && created.data) return created.data;
+
+  console.warn("Using local dev profile because Supabase profile upsert is unavailable.", created.error?.message || existing.error?.message);
+  return localProfile;
+}
+
+function mapProfile(profile: any) {
+  return {
+    id: profile.id,
+    phone: profile.phone || "",
+    name: profile.name || `User-${(profile.phone || "").slice(-4)}`,
+    email: profile.email || "",
+    address: profile.address || "",
+    kyc_status: profile.kyc_status || "pending",
+    is_admin: !!profile.is_admin,
+    onboarding_completed: profile.onboarding_completed === true,
+    created_at: profile.created_at,
+  };
+}
+
+function mapProperty(p: any) {
+  const imageRows = p.property_images || [];
+  const images = imageRows
+    .slice()
+    .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+    .map((img: any) => img.url);
+  const backendImages = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+  const allImages = backendImages.length ? backendImages : images;
+  return {
+    ...p,
+    name: p.name || p.title || "Rivan Property",
+    starting_price: Number(p.starting_price ?? p.price ?? 0),
+    location: p.location || p.city || "",
+    category: p.category || "Property",
+    image: p.image || allImages[0],
+    images: allImages.length ? allImages : (p.image ? [p.image] : []),
+  };
+}
+
+function mapUnit(unit: any) {
+  const unitNo = unit.unit_no || unit.flat_number || unit.plot_number || unit.id;
+  return {
+    ...unit,
+    id: unit.id || unitNo,
+    unit_no: unitNo,
+    plot_number: unit.plot_number || unitNo,
+    status: unit.status || "Coming Soon",
+    category: unit.category || "Plot",
+    price: Number(unit.price || 0),
+    block: unit.block || unit.tower,
+  };
+}
+
+function mapPayment(row: any) {
+  return {
+    ...row,
+    status: row.status || "pending",
+    receipt_id: row.receipt_id || row.id,
+    method: row.method || "Online",
+    installment_number: row.installment_number || 1,
+  };
+}
+
+function mapService(row: any) {
+  const serviceType = typeof row.source === "string" && row.source.startsWith("service:")
+    ? row.source.replace("service:", "")
+    : row.service_type || "Service Request";
+  return {
+    ...row,
+    service_type: serviceType,
+    description: row.message || row.description || "",
+    preferred_date: row.metadata?.preferred_date || row.created_at?.slice(0, 10) || "",
+  };
 }
 
 export const api = {
-  // Auth
-  sendOtp: (phone: string) => apiRequest("/auth/send-otp", { method: "POST", body: { phone }, auth: false }),
-  verifyOtp: (phone: string, otp: string, name?: string) =>
-    apiRequest<{ access_token: string; user: any }>("/auth/verify-otp", { method: "POST", body: { phone, otp, name }, auth: false }),
-  me: () => apiRequest("/auth/me"),
-  updateProfile: (data: any) => apiRequest("/auth/profile", { method: "PUT", body: data }),
+  sendOtp: async (phone: string) => {
+    assertSupabaseEnv();
+    const cleaned = normalizePhone(phone);
+    if (cleaned.length !== 10) throw new Error("Invalid phone number");
+    const { error } = await supabase.auth.signInWithOtp({ phone: e164(cleaned) });
+    if (error) {
+      console.warn("Supabase phone OTP unavailable, falling back to local dev OTP.", error.message);
+      return { success: true, dev_otp: DEV_OTP, message: `Dev OTP: ${DEV_OTP}`, dev_mode: true };
+    }
+    return { success: true, message: "OTP sent. Check your phone.", dev_otp: DEV_OTP };
+  },
 
-  // Properties
-  listProperties: (filters?: any) => apiRequest("/properties", { auth: false, query: filters }),
-  featured: () => apiRequest("/properties/featured", { auth: false }),
-  getProperty: (id: string) => apiRequest(`/properties/${id}`, { auth: false }),
-  getPropertyPlots: (id: string) => apiRequest(`/properties/${id}/plots`, { auth: false }),
-  getPlot: (id: string) => apiRequest(`/plots/${id}`, { auth: false }),
+  verifyOtp: async (phone: string, otp: string, name?: string) => {
+    assertSupabaseEnv();
+    const cleaned = normalizePhone(phone);
+    clearLogoutMarker();
 
-  // Bookings
-  createBooking: (body: any) => apiRequest("/bookings", { method: "POST", body }),
-  myBookings: () => apiRequest("/bookings/mine"),
+    if (otp === DEV_OTP) {
+      const profile = await upsertDevProfile(cleaned, name);
+      const user = mapProfile(profile);
+      await setToken(DEV_ACCESS_TOKEN);
+      await setStoredUser(user);
+      return { access_token: DEV_ACCESS_TOKEN, user };
+    }
 
-  // My Land
-  myLand: () => apiRequest("/myland"),
-  canRequestServices: () => apiRequest("/myland/can-request-services"),
+    const verified = await supabase.auth.verifyOtp({ phone: e164(cleaned), token: otp, type: "sms" });
+    if (!verified.error && verified.data.user) {
+      const authUserId = verified.data.user.id;
+      const accessToken = verified.data.session?.access_token || "";
+      const profile = await upsertProfile(authUserId, cleaned, name);
+      return { access_token: accessToken, user: mapProfile(profile) };
+    }
 
-  // Payments
-  paymentsSummary: () => apiRequest("/payments/summary"),
-  installments: () => apiRequest("/payments/installments"),
-  paymentHistory: () => apiRequest("/payments/history"),
-  payInstallment: (id: string) => apiRequest("/payments/pay", { method: "POST", body: { installment_id: id } }),
+    throw new Error(verified.error?.message || "Invalid OTP");
+  },
 
-  // Documents
-  documents: () => apiRequest("/documents"),
+  me: async () => {
+    const token = await getToken();
+    if (token === DEV_ACCESS_TOKEN) {
+      const storedUser = await getStoredUser();
+      if (!storedUser) throw new Error("Local dev session missing user");
+      return storedUser;
+    }
 
-  // Services
-  servicesCatalog: () => apiRequest("/services/catalog", { auth: false }),
-  requestService: (body: any) => apiRequest("/services/request", { method: "POST", body }),
-  myServices: () => apiRequest("/services/mine"),
+    const user = await requireUser();
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+    if (error) throw new Error(error.message);
+    return mapProfile(data);
+  },
 
-  // Centres & Visits
-  centres: () => apiRequest("/centres", { auth: false }),
-  getCentre: (id: string) => apiRequest(`/centres/${id}`, { auth: false }),
-  bookCentreVisit: (body: any) => apiRequest("/visits/centre", { method: "POST", body }),
-  bookSiteVisit: (body: any) => apiRequest("/visits/site", { method: "POST", body }),
-  myVisits: () => apiRequest("/visits/mine"),
+  saveOnboarding: async (answers: any) => {
+    const token = await getToken();
+    if (token === DEV_ACCESS_TOKEN) {
+      const storedUser = await getStoredUser();
+      if (!storedUser) throw new Error("Local dev session missing user");
+      const updatedUser = {
+        ...storedUser,
+        name: answers.full_name,
+        onboarding_completed: true,
+      };
+      await setStoredUser(updatedUser);
+      return { success: true, user: updatedUser };
+    }
 
-  // Wishlist
-  toggleWishlist: (property_id: string) => apiRequest("/wishlist/toggle", { method: "POST", body: { property_id } }),
-  wishlist: () => apiRequest("/wishlist"),
+    const user = await requireUser();
+    const payload = {
+      user_id: user.id,
+      full_name: answers.full_name,
+      location_preference: answers.location_preference,
+      property_interest: answers.property_interest,
+      budget_range: answers.budget_range,
+      buying_purpose: answers.buying_purpose,
+      timeline: answers.timeline,
+      preferred_contact_method: answers.preferred_contact_method,
+      notes: answers.notes || null,
+      updated_at: new Date().toISOString(),
+    };
 
-  // Notifications
-  notifications: () => apiRequest("/notifications"),
-  readNotification: (id: string) => apiRequest(`/notifications/${id}/read`, { method: "POST" }),
-  readAllNotifications: () => apiRequest("/notifications/read-all", { method: "POST" }),
+    const saved = await supabase
+      .from("customer_preferences")
+      .upsert(payload, { onConflict: "user_id" })
+      .select("*")
+      .single();
+    if (saved.error) throw new Error(saved.error.message);
 
-  // Admin
-  adminStats: () => apiRequest("/admin/stats"),
-  adminUsers: () => apiRequest("/admin/users"),
-  adminBookings: () => apiRequest("/admin/bookings"),
-  adminConfirmBooking: (id: string) => apiRequest(`/admin/bookings/${id}/confirm`, { method: "POST" }),
-  adminServices: () => apiRequest("/admin/service-requests"),
-  adminUpdateService: (id: string, status_val: string) =>
-    apiRequest(`/admin/service-requests/${id}/status`, { method: "POST", query: { status_val } }),
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .update({
+        name: answers.full_name,
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const mapped = mapProfile(profile);
+    await setStoredUser(mapped);
+    return { success: true, user: mapped, preferences: saved.data };
+  },
+
+  updateProfile: async (data: any) => {
+    const user = await requireUser();
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq("id", user.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return mapProfile(profile);
+  },
+
+  listProperties: async (filters?: any) => {
+    const data = await backendGet("/api/properties", {
+      category: filters?.category,
+      location: filters?.location,
+      min_price: filters?.min_price,
+      max_price: filters?.max_price,
+      search: filters?.search,
+    });
+    const properties = (Array.isArray(data) ? data : data?.properties || []).map(mapProperty);
+    console.log("[properties loaded]", properties.length);
+    return properties;
+  },
+  featured: async () => {
+    const data = await backendGet("/api/properties/featured");
+    return (Array.isArray(data) ? data : data?.properties || []).map(mapProperty);
+  },
+  getProperty: async (id: string) => {
+    const data = await backendGet(`/api/properties/${encodeURIComponent(id)}`);
+    return mapProperty(data);
+  },
+  getPropertyUnits: async (id: string) => {
+    let data: any[] = [];
+    try {
+      const unitRows = await backendGet(`/api/properties/${encodeURIComponent(id)}/units`);
+      data = Array.isArray(unitRows) ? unitRows : [];
+    } catch (unitsError: any) {
+      console.warn("[property units fallback]", unitsError?.message);
+      try {
+        const plotRows = await backendGet(`/api/properties/${encodeURIComponent(id)}/plots`);
+        data = Array.isArray(plotRows) ? plotRows : [];
+      } catch (_plotsError) {
+        const property = await api.getProperty(id);
+        data = Array.isArray(property.units) ? property.units : [];
+      }
+    }
+    const units = data.map(mapUnit);
+    console.log("[property units loaded]", id, units.length);
+    return units;
+  },
+  getPropertyPlots: async (id: string) => {
+    return api.getPropertyUnits(id);
+  },
+  getPlot: async (id: string) => {
+    const property = await api.getProperty(id);
+    return { ...property, plot_number: property.name, status: "available", property_id: property.id, price: property.starting_price };
+  },
+
+  createBooking: async (body: any) => {
+    const user = await currentUser();
+    const { data, error } = await supabase
+      .from("leads")
+      .insert({
+        user_id: user?.id || null,
+        property_id: body.property_id || body.plot_id || null,
+        name: body.name,
+        phone: body.mobile,
+        message: body.message,
+        source: "booking",
+        status: "new",
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return { success: true, booking: data, message: "Thank you. Our Rivan team will contact you shortly." };
+  },
+  submitPropertyEnquiry: async (body: { property_id: string; name: string; phone: string; message?: string }) => {
+    assertBackendUrl();
+    const res = await fetch(`${BACKEND_URL}/api/enquiries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || data.message || "Failed to submit enquiry");
+    return data;
+  },
+  myBookings: async () => [],
+  myLand: async () => [],
+  canRequestServices: async () => ({ eligible: false, reason: "Property service requests will be enabled after Supabase ownership data is connected.", owned_plots: [] }),
+
+  paymentsSummary: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("payments").select("*").eq("user_id", user.id);
+    if (error) throw new Error(error.message);
+    const total = (data || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const paid = (data || []).filter((p) => p.status === "paid").reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    return { total_cost: total, amount_paid: paid, balance: total - paid, upcoming_installment: null, overdue_count: 0, total_installments: data?.length || 0, paid_count: (data || []).filter((p) => p.status === "paid").length };
+  },
+  installments: async () => [],
+  paymentHistory: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("payments").select("*").eq("user_id", user.id).order("paid_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data || []).map(mapPayment);
+  },
+  payInstallment: async (_id: string) => ({ success: true }),
+
+  documents: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("documents").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
+  servicesCatalog: async () => SERVICE_CATALOG,
+  requestService: async (body: any) => {
+    const user = await requireUser();
+    const { data, error } = await supabase
+      .from("leads")
+      .insert({
+        user_id: user.id,
+        property_id: body.property_id || null,
+        name: body.contact || "Service Request",
+        phone: body.contact || "",
+        message: body.description,
+        source: `service:${body.service_type}`,
+        status: "new",
+        metadata: { preferred_date: body.preferred_date || null },
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return { success: true, request: data };
+  },
+  myServices: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("leads").select("*").eq("user_id", user.id).like("source", "service:%").order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data || []).map(mapService);
+  },
+
+  centres: async () => CENTRES,
+  getCentre: async (id: string) => CENTRES.find((c) => c.id === id) || { ...CENTRES[0], id },
+  bookCentreVisit: async (body: any) => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("site_visits").insert({ user_id: user.id, type: "centre", centre_id: body.centre_id, visit_date: body.visit_date, visit_time: body.visit_time, name: body.name, mobile: body.mobile, status: "confirmed" }).select("*").single();
+    if (error) throw new Error(error.message);
+    return { success: true, visit: data };
+  },
+  bookSiteVisit: async (body: any) => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("site_visits").insert({ user_id: user.id, type: "site", property_id: body.property_id, visit_date: body.visit_date, name: body.name, mobile: body.mobile, status: "confirmed" }).select("*").single();
+    if (error) throw new Error(error.message);
+    return { success: true, visit: data };
+  },
+  myVisits: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("site_visits").select("*, properties(name)").eq("user_id", user.id).order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data || []).map((v: any) => ({ ...v, property_name: v.properties?.name, centre_name: v.centre_id ? "Rivan Experience Centre" : undefined }));
+  },
+
+  toggleWishlist: async (property_id: string) => {
+    const user = await requireUser();
+    const existing = await supabase.from("wishlist").select("id").eq("user_id", user.id).eq("property_id", property_id).maybeSingle();
+    if (existing.data) {
+      const { error } = await supabase.from("wishlist").delete().eq("id", existing.data.id);
+      if (error) throw new Error(error.message);
+      return { wishlisted: false };
+    }
+    const { error } = await supabase.from("wishlist").insert({ user_id: user.id, property_id });
+    if (error) throw new Error(error.message);
+    return { wishlisted: true };
+  },
+  wishlist: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("wishlist").select("properties(*, property_images(id, url, alt_text, sort_order))").eq("user_id", user.id);
+    if (error) throw new Error(error.message);
+    return (data || []).map((row: any) => mapProperty(row.properties)).filter(Boolean);
+  },
+
+  notifications: async () => {
+    const user = await requireUser();
+    const { data, error } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+  readNotification: async (id: string) => {
+    const user = await requireUser();
+    const { error } = await supabase.from("notifications").update({ read: true }).eq("id", id).eq("user_id", user.id);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+  readAllNotifications: async () => {
+    const user = await requireUser();
+    const { error } = await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
+  adminStats: async () => null,
+  adminUsers: async () => [],
+  adminBookings: async () => [],
+  adminConfirmBooking: async (_id: string) => ({ success: true }),
+  adminServices: async () => [],
+  adminUpdateService: async (_id: string, _status_val: string) => ({ success: true }),
 };

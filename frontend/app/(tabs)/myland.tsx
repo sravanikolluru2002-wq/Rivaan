@@ -20,7 +20,7 @@ const SERVICE_ICONS: Record<string, any> = {
   "Legal Documentation": "file-text",
 };
 
-// Demo data shown when user has no booked properties yet
+// Preview data shown when user has no booked properties yet
 const DEMO_PURCHASED = {
   id: "demo-purchased",
   unit_type: "villa",
@@ -37,8 +37,8 @@ const DEMO_PURCHASED = {
   property_id: "prop-2",
   property: {
     id: "prop-2",
-    name: "Rivan Heritage Villas",
-    location: "Kompally, Hyderabad",
+    name: "Rivan Beachside Villas",
+    location: "Rushikonda, Vizag",
     image: "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png",
   },
 };
@@ -59,8 +59,8 @@ const DEMO_ONGOING = {
   property_id: "prop-1",
   property: {
     id: "prop-1",
-    name: "Rivan Greens",
-    location: "Shadnagar, Hyderabad",
+    name: "Rivan Riverfront Plots",
+    location: "Gannavaram, Vijayawada",
     image: "https://images.unsplash.com/photo-1677137263546-8695fb895a9d",
   },
   next_due: {
@@ -146,8 +146,8 @@ export default function MyLandScreen() {
             <View style={styles.previewBanner} testID="myland-preview-banner">
               <View style={styles.previewIcon}><Feather name="eye" size={16} color={colors.white} /></View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.previewTitle}>Preview: My Land Experience</Text>
-                <Text style={styles.previewSub}>Once you book a property, this is how your dashboard will look</Text>
+                <Text style={styles.previewTitle}>Your ownership dashboard starts here</Text>
+                <Text style={styles.previewSub}>After booking a Vizag or Vijayawada property, payments, documents and milestones appear here.</Text>
               </View>
             </View>
             <View style={styles.list}>
@@ -161,7 +161,7 @@ export default function MyLandScreen() {
               <OngoingCard
                 land={DEMO_ONGOING}
                 router={router}
-                onPay={() => Alert.alert("Demo Preview", "Book a real property to start paying installments.")}
+                onPay={() => Alert.alert("Preview", "Book a real property to start paying installments.")}
                 paying={null}
                 notifications={notifications}
                 isDemo
@@ -169,8 +169,8 @@ export default function MyLandScreen() {
             </View>
             <View style={styles.empty}>
               <Feather name="map" size={48} color={colors.stone300} />
-              <Text style={styles.emptyTitle}>Start your Rivan journey</Text>
-              <Text style={styles.emptyText}>Book your first plot, villa or flat to unlock your real My Land dashboard.</Text>
+              <Text style={styles.emptyTitle}>No owned properties yet</Text>
+              <Text style={styles.emptyText}>Explore coastal Vizag and growth-corridor Vijayawada projects, then your booked property will appear here with milestones.</Text>
               <TouchableOpacity testID="myland-browse-button" style={styles.exploreBtn} onPress={() => router.push("/(tabs)")}>
                 <Text style={styles.exploreBtnText}>Explore Properties</Text>
                 <Feather name="arrow-right" size={16} color={colors.white} />

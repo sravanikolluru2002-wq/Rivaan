@@ -56,7 +56,11 @@ export default function DocumentsScreen() {
           <View style={styles.empty}>
             <Feather name="folder" size={56} color={colors.stone300} />
             <Text style={styles.emptyTitle}>No documents yet</Text>
-            <Text style={styles.emptyText}>Your property documents will appear here once uploaded by the Rivan team.</Text>
+            <Text style={styles.emptyText}>After you book a Vizag or Vijayawada property, agreements, receipts and approvals will be stored here.</Text>
+            <TouchableOpacity testID="documents-browse-properties" style={styles.exploreBtn} onPress={() => router.push("/(tabs)")}>
+              <Text style={styles.exploreBtnText}>Browse Properties</Text>
+              <Feather name="arrow-right" size={16} color={colors.white} />
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={{ gap: spacing.sm }}>
@@ -110,6 +114,8 @@ const styles = StyleSheet.create({
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm, marginTop: spacing.xl },
   emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700", marginTop: spacing.md },
   emptyText: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 280 },
+  exploreBtn: { marginTop: spacing.sm, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 12, borderRadius: radii.md },
+  exploreBtnText: { ...typography.body, color: colors.white, fontWeight: "700" },
   secureBanner: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.lg, padding: spacing.md, backgroundColor: "#E6F4EA", borderRadius: radii.md },
   secureText: { flex: 1, ...typography.small, color: colors.primary, fontWeight: "600" },
 });

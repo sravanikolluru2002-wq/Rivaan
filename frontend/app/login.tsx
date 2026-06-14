@@ -41,7 +41,9 @@ export default function LoginScreen() {
     try {
       const cleaned = phone.replace(/\D/g, "").slice(-10);
       const res: any = await api.sendOtp(cleaned);
-      setDevOtp(res.dev_otp || "123456");
+      setPhone(cleaned);
+      setOtp(["", "", "", "", "", ""]);
+      setDevOtp(res.dev_otp || null);
       setStep("otp");
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (e: any) {
@@ -69,7 +71,17 @@ export default function LoginScreen() {
   }
 
   function handleOtpChange(idx: number, value: string) {
-    const v = value.replace(/\D/g, "").slice(0, 1);
+    const digits = value.replace(/\D/g, "");
+    if (digits.length > 1) {
+      const next = ["", "", "", "", "", ""];
+      digits.slice(0, 6).split("").forEach((digit, digitIdx) => {
+        next[digitIdx] = digit;
+      });
+      setOtp(next);
+      otpRefs.current[Math.min(digits.length, 6) - 1]?.focus();
+      return;
+    }
+    const v = digits.slice(0, 1);
     const next = [...otp];
     next[idx] = v;
     setOtp(next);
@@ -115,7 +127,7 @@ export default function LoginScreen() {
                 <TextInput
                   testID="login-name-input"
                   style={styles.input}
-                  placeholder="e.g. Rajesh Kumar"
+                  placeholder="e.g. Sita Rao"
                   placeholderTextColor={colors.stone400}
                   value={name}
                   onChangeText={setName}
@@ -134,7 +146,7 @@ export default function LoginScreen() {
               <View style={styles.hintBox}>
                 <Feather name="info" size={14} color={colors.primary} />
                 <Text style={styles.hintText}>
-                  Try the demo account: <Text style={styles.hintBold}>9999900001</Text> (Rajesh Kumar with active plot, payments & documents)
+                  For local testing, enter any 10-digit number and use the dev OTP shown after sending.
                 </Text>
               </View>
             </View>

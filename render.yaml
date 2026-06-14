@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: rivan-api
+    env: python
+    rootDir: backend
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: rivan_reality
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OTP_DEV_MODE
+        value: "false"
+      - key: CORS_ORIGINS
+        sync: false

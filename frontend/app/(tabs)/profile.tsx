@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, TextInput, Modal } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, TextInput, Modal, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -32,11 +32,16 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleLogout() {
-    Alert.alert("Sign out?", "You'll need to verify OTP to sign in again.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: () => signOut() },
-    ]);
+  function handleLogout() {
+    console.log("SIGNOUT CLICKED");
+    console.log("[auth-flow] profile logout handler -> signOut");
+    signOut();
+    console.log("[auth-flow] profile logout handler -> router.replace('/login')");
+    router.replace("/login");
+    if (typeof window !== "undefined") {
+      console.log("[auth-flow] profile logout handler -> history.replaceState('/login')");
+      window.history.replaceState(null, "", "/login");
+    }
   }
 
   const initials = (user?.name || "U").split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -100,14 +105,19 @@ export default function ProfileScreen() {
           <View style={styles.menu}>
             <MenuItem icon="info" label="About Rivan Reality" testID="profile-about" onPress={() => Alert.alert("Rivan Reality LLP", "Legacy of trust, legacy of wealth.\n\nRivan Reality LLP is a premium real estate company committed to building landmark projects and delivering long-term value to our customers.")} />
             <MenuItem icon="message-square" label="Customer Support" testID="profile-support" onPress={() => Alert.alert("Support", "Call: +91 9876543210\nEmail: support@rivanreality.com")} />
-            <MenuItem icon="award" label="Testimonials" testID="profile-testimonials" onPress={() => Alert.alert("Customer Love", "Rated 4.8/5 by 1200+ happy customers across Hyderabad.")} />
+            <MenuItem icon="award" label="Testimonials" testID="profile-testimonials" onPress={() => Alert.alert("Customer Love", "Rated 4.8/5 by customers exploring Vizag and Vijayawada projects.")} />
           </View>
         </View>
 
-        <TouchableOpacity testID="profile-logout-button" style={styles.logoutBtn} onPress={handleLogout}>
+        <Pressable
+          testID="profile-logout-button"
+          accessibilityRole="button"
+          style={styles.logoutBtn}
+          onPress={handleLogout}
+        >
           <Feather name="log-out" size={16} color={colors.danger} />
           <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+        </Pressable>
 
         <Text style={styles.footer}>Rivan Reality LLP · Legacy of trust, legacy of wealth</Text>
       </ScrollView>

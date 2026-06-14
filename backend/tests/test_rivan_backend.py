@@ -5,15 +5,20 @@ import requests
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[1] / '.env')
+REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(REPO_ROOT / 'backend' / '.env')
+load_dotenv(REPO_ROOT / 'frontend' / '.env')
 
 BASE_URL = os.environ['EXPO_PUBLIC_BACKEND_URL'].rstrip('/') if os.environ.get('EXPO_PUBLIC_BACKEND_URL') else None
 if not BASE_URL:
     # Fall back to frontend env (preview URL)
-    fenv = Path('/app/frontend/.env')
-    for line in fenv.read_text().splitlines():
-        if line.startswith('EXPO_PUBLIC_BACKEND_URL='):
-            BASE_URL = line.split('=', 1)[1].strip().strip('"').rstrip('/')
+    fenv = REPO_ROOT / 'frontend' / '.env'
+    if fenv.exists():
+        for line in fenv.read_text().splitlines():
+            if line.startswith('EXPO_PUBLIC_BACKEND_URL='):
+                BASE_URL = line.split('=', 1)[1].strip().strip('"').rstrip('/')
+if not BASE_URL:
+    pytest.skip("Set EXPO_PUBLIC_BACKEND_URL to run backend API tests.", allow_module_level=True)
 
 DEMO_PHONE = "9999900001"
 ADMIN_PHONE = "9000000000"

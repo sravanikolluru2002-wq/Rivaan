@@ -19,17 +19,15 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { colors, radii, spacing, typography, shadow, formatINR } from "@/src/theme";
 
-const LOCATIONS = ["Hyderabad", "Shadnagar", "Gachibowli", "Kompally", "Madhapur"];
+const LOCATIONS = ["Vizag", "Vijayawada"];
 
 const CATEGORIES = [
   { key: "all", label: "All", icon: "grid" as const },
-  { key: "Apartments", label: "Apartments", icon: "home" as const },
-  { key: "Flats", label: "Flats", icon: "layers" as const },
-  { key: "Villas", label: "Villas", icon: "home" as const },
-  { key: "Open Plots", label: "Open Plots", icon: "square" as const },
-  { key: "Layouts", label: "Layouts", icon: "map" as const },
-  { key: "Commercial Properties", label: "Commercial", icon: "briefcase" as const },
+  { key: "Apartment", label: "Apartment", icon: "home" as const },
+  { key: "Villa", label: "Villa", icon: "home" as const },
+  { key: "Plot", label: "Plot", icon: "square" as const },
   { key: "Farm Lands", label: "Farm Lands", icon: "sun" as const },
+  { key: "Commercial", label: "Commercial", icon: "briefcase" as const },
 ];
 
 export default function HomeScreen() {
@@ -37,7 +35,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [location, setLocation] = useState("Hyderabad");
+  const [location, setLocation] = useState("Vizag");
   const [locationOpen, setLocationOpen] = useState(false);
   const [properties, setProperties] = useState<any[]>([]);
   const [featured, setFeatured] = useState<any[]>([]);
@@ -47,21 +45,24 @@ export default function HomeScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [props, feat, notifs] = await Promise.all([
-        api.listProperties({ category: category === "all" ? undefined : category, search }),
-        api.featured(),
-        api.notifications().catch(() => []),
-      ]);
+      const props = await api.listProperties({ category: category === "all" ? undefined : category, location, search });
       setProperties(props as any[]);
-      setFeatured(feat as any[]);
-      setUnreadCount((notifs as any[]).filter((n) => !n.read).length);
     } catch (e: any) {
       console.warn("home fetch", e?.message);
+      setProperties([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [category, search]);
+
+    api.featured()
+      .then((feat) => setFeatured(feat as any[]))
+      .catch(() => setFeatured([]));
+
+    api.notifications()
+      .then((notifs) => setUnreadCount((notifs as any[]).filter((n) => !n.read).length))
+      .catch(() => setUnreadCount(0));
+  }, [category, location, search]);
 
   useEffect(() => {
     fetchData();
@@ -285,12 +286,18 @@ export default function HomeScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                {category === "all" ? "All Properties" : category} ({properties.length})
+                {category === "all" ? `${location} Properties` : category} ({properties.length})
               </Text>
             </View>
           </View>
         }
-        renderItem={({ item }) => <PropertyCard property={item} onPress={() => router.push(`/property/${item.id}`)} />}
+        renderItem={({ item }) => (
+          <PropertyCard
+            property={item}
+            onPress={() => router.push(`/property/${item.id}`)}
+            onAvailability={() => router.push(`/property/${item.id}/availability-map`)}
+          />
+        )}
         ListEmptyComponent={
           loading ? (
             <View style={styles.empty}>
@@ -299,7 +306,20 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.empty}>
               <Feather name="inbox" size={48} color={colors.stone300} />
-              <Text style={styles.emptyText}>No properties match your filters</Text>
+              <Text style={styles.emptyTitle}>No properties found</Text>
+              <Text style={styles.emptyText}>Try another Vizag or Vijayawada location, or clear your search to see available projects.</Text>
+              {(search || category !== "all") ? (
+                <TouchableOpacity
+                  testID="home-clear-filters"
+                  style={styles.clearFiltersBtn}
+                  onPress={() => {
+                    setSearch("");
+                    setCategory("all");
+                  }}
+                >
+                  <Text style={styles.clearFiltersText}>Clear Filters</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           )
         }
@@ -308,7 +328,7 @@ export default function HomeScreen() {
   );
 }
 
-function PropertyCard({ property, onPress }: { property: any; onPress: () => void }) {
+function PropertyCard({ property, onPress, onAvailability }: { property: any; onPress: () => void; onAvailability: () => void }) {
   return (
     <TouchableOpacity
       testID={`home-property-${property.id}`}
@@ -355,6 +375,15 @@ function PropertyCard({ property, onPress }: { property: any; onPress: () => voi
             <Feather name="arrow-right" size={14} color={colors.white} />
           </View>
         </View>
+        <TouchableOpacity
+          testID={`home-property-map-${property.id}`}
+          style={styles.availabilityMapBtn}
+          onPress={onAvailability}
+          activeOpacity={0.85}
+        >
+          <Feather name="grid" size={14} color={colors.primary} />
+          <Text style={styles.availabilityMapText}>View Availability Map</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -472,6 +501,11 @@ const styles = StyleSheet.create({
   price: { ...typography.h4, color: colors.primary, fontWeight: "700" },
   viewBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md },
   viewBtnText: { ...typography.body, color: colors.white, fontWeight: "700" },
+  availabilityMapBtn: { marginTop: spacing.sm, minHeight: 42, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#E6F4EA" },
+  availabilityMapText: { ...typography.small, color: colors.primary, fontWeight: "700" },
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
-  emptyText: { ...typography.body, color: colors.stone500 },
+  emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
+  emptyText: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 280 },
+  clearFiltersBtn: { marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radii.md, backgroundColor: colors.primary },
+  clearFiltersText: { ...typography.small, color: colors.white, fontWeight: "700" },
 });

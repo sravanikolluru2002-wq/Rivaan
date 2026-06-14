@@ -31,6 +31,9 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
+.env
+.env.*
+!.env.example
 
 *token.json*
 *credentials.json*
@@ -75,6 +78,8 @@ agenthub/agents/youtube/db
 
 # Build caches
 .cache/
+.metro-cache/
+frontend/.metro-cache/
 
 memory/test_credentials.md
 
