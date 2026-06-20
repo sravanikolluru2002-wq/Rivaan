@@ -5,17 +5,21 @@ import { NativeModules, Platform } from "react-native";
 
 import { storage } from "@/src/utils/storage";
 
-function readPublicEnv(name: string) {
-  return (process.env[name] || "").trim().replace(/^['"]|['"]$/g, "");
+function normalizePublicEnv(value?: string) {
+  return (value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
-const ENV_BACKEND_URL = readPublicEnv("EXPO_PUBLIC_BACKEND_URL");
+const ENV_BACKEND_URL = normalizePublicEnv(process.env.EXPO_PUBLIC_BACKEND_URL);
 const HOSTED_PRODUCTION_BACKEND_URL = "https://rivan.onrender.com";
 const TOKEN_KEY = "rivan_token";
 const GET_CACHE_TTL_MS = 120000;
-const REQUEST_TIMEOUT_MS = 12000;
+const REQUEST_TIMEOUT_MS = 20000;
+const BACKEND_WAKE_TIMEOUT_MS = 45000;
+const BACKEND_WAKE_POLL_MS = 3000;
 const PERSISTED_CACHE_PREFIX = "rivan_get_cache:";
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const warmedBaseUrls = new Set<string>();
+const backendWarmupPromises = new Map<string, Promise<void>>();
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -165,8 +169,50 @@ function isReachabilityError(error: unknown) {
     message.includes("network request failed") ||
     message.includes("load failed") ||
     message.includes("networkerror") ||
-    message.includes("abort")
+    message.includes("abort") ||
+    message.includes("temporary_backend_unavailable")
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForBackendReady(baseUrl: string) {
+  if (!baseUrl || warmedBaseUrls.has(baseUrl)) return;
+  const existingWarmup = backendWarmupPromises.get(baseUrl);
+  if (existingWarmup) return existingWarmup;
+
+  const warmup = (async () => {
+    const deadline = Date.now() + BACKEND_WAKE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetch(`${baseUrl}/api/health`, { method: "GET" });
+        if (response.ok) {
+          warmedBaseUrls.add(baseUrl);
+          return;
+        }
+      } catch {
+        // Keep polling until the backend wakes up or the deadline expires.
+      }
+
+      await sleep(BACKEND_WAKE_POLL_MS);
+    }
+  })().finally(() => {
+    backendWarmupPromises.delete(baseUrl);
+  });
+
+  backendWarmupPromises.set(baseUrl, warmup);
+  return warmup;
+}
+
+export function warmBackendReady() {
+  if (!BASE_URL_CANDIDATES.length) return;
+
+  for (const baseUrl of BASE_URL_CANDIDATES) {
+    if (!baseUrl.startsWith("https://") && isHostedHttpsWeb()) continue;
+    void waitForBackendReady(baseUrl);
+  }
 }
 
 async function getPersistedCache<T>(url: string): Promise<T | null> {
@@ -249,46 +295,67 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
   let lastError: unknown = null;
   for (const baseUrl of BASE_URL_CANDIDATES) {
     const url = urlForBase(baseUrl);
-    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timeout = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
+    let attemptedWarmup = false;
 
-    try {
-      const res = await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller?.signal,
-      });
-      if (timeout) clearTimeout(timeout);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        let detail = errText;
-        try {
-          const parsed = JSON.parse(errText);
-          detail = parsed.detail || parsed.message || errText;
-        } catch {
-          // Keep raw response text.
+      try {
+        const res = await fetch(url, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller?.signal,
+        });
+        if (timeout) clearTimeout(timeout);
+
+        if (!res.ok) {
+          if ([502, 503, 504, 522, 524].includes(res.status)) {
+            throw new Error(`temporary_backend_unavailable:${res.status}`);
+          }
+
+          const errText = await res.text().catch(() => "");
+          let detail = errText;
+          try {
+            const parsed = JSON.parse(errText);
+            detail = parsed.detail || parsed.message || errText;
+          } catch {
+            // Keep raw response text.
+          }
+          throw new Error(detail || `HTTP ${res.status}`);
         }
-        throw new Error(detail || `HTTP ${res.status}`);
-      }
 
-      if (res.status === 204) return undefined as T;
-      const data = (await res.json()) as T;
-      if (shouldCacheGet) {
-        responseCache.set(url, { expiresAt: Date.now() + GET_CACHE_TTL_MS, value: data });
-        await setPersistedCache(url, data);
-      } else {
-        responseCache.clear();
+        if (res.status === 204) return undefined as T;
+        const data = (await res.json()) as T;
+        warmedBaseUrls.add(baseUrl);
+        if (shouldCacheGet) {
+          responseCache.set(url, { expiresAt: Date.now() + GET_CACHE_TTL_MS, value: data });
+          await setPersistedCache(url, data);
+        } else {
+          responseCache.clear();
+        }
+        return data;
+      } catch (error: any) {
+        if (timeout) clearTimeout(timeout);
+        lastError = error;
+        if (__DEV__) {
+          console.warn(`Rivan API request failed for ${method} ${url}:`, error?.message || error);
+        }
+        if (!isReachabilityError(error)) throw error;
+
+        const shouldWarmHostedBackend =
+          !attemptedWarmup &&
+          isHostedHttpsWeb() &&
+          baseUrl.startsWith("https://") &&
+          attempt === 0;
+
+        if (shouldWarmHostedBackend) {
+          attemptedWarmup = true;
+          await waitForBackendReady(baseUrl);
+          continue;
+        }
       }
-      return data;
-    } catch (error: any) {
-      if (timeout) clearTimeout(timeout);
-      lastError = error;
-      if (__DEV__) {
-        console.warn(`Rivan API request failed for ${method} ${url}:`, error?.message || error);
-      }
-      if (!isReachabilityError(error)) throw error;
     }
   }
 
@@ -312,6 +379,7 @@ export const api = {
     apiRequest<{ access_token: string; user: any }>("/auth/verify-otp", { method: "POST", body: { phone, otp, name }, auth: false }),
   me: () => apiRequest("/auth/me"),
   protected: () => apiRequest("/auth/protected"),
+  customerRelationship: () => apiRequest("/crm/customer-relationship"),
   updateProfile: (data: any) => apiRequest("/auth/profile", { method: "PUT", body: data }),
 
   listProperties: (filters?: any) => apiRequest("/properties", { auth: false, query: filters }),

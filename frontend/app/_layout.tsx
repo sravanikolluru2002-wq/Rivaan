@@ -23,16 +23,16 @@ function RootLayoutInner() {
     if (isLoading) return;
     const rootSegment = segments[0];
     const isAgent = user?.role === "agent" || user?.role === "sub_agent";
-    const inAuthGroup = rootSegment === "login" || rootSegment === "agent-login";
+    const isPublicEntry = !rootSegment || rootSegment === "login" || rootSegment === "agent-login";
     const allowPublicAgentPreview = Platform.OS === "web" && !isAuthed && rootSegment === "agent";
     const agentAllowedSegments = new Set(["agent", "layout", "booking", "property", "notifications"]);
     const customerRestrictedSegments = new Set(["agent", "agent-login", "admin"]);
     const inAgentArea = agentAllowedSegments.has(rootSegment || "");
     const inCustomerRestrictedArea = customerRestrictedSegments.has(rootSegment || "");
 
-    if (!isAuthed && !inAuthGroup && !allowPublicAgentPreview) {
-      router.replace("/login");
-    } else if (isAuthed && inAuthGroup) {
+    if (!isAuthed && !isPublicEntry && !allowPublicAgentPreview) {
+      router.replace("/");
+    } else if (isAuthed && isPublicEntry) {
       router.replace(isAgent ? "/agent" : "/");
     } else if (isAuthed && isAgent && !inAgentArea) {
       router.replace("/agent");

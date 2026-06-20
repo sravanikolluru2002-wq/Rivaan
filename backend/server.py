@@ -55,10 +55,19 @@ def get_env_bool(key: str, default: bool = False) -> bool:
     return raw.strip().strip("\"'").lower() in {"1", "true", "yes", "on"}
 
 
+def require_env(key: str) -> str:
+    value = os.environ.get(key, "").strip().strip("\"'")
+    if not value:
+        raise RuntimeError(
+            f"Missing required environment variable '{key}'. Add it to backend/.env before starting the backend."
+        )
+    return value
+
+
 # ---------- Config ----------
-MONGO_URL = os.environ["MONGO_URL"]
+MONGO_URL = require_env("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME", "rivaan")
-JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_SECRET = require_env("JWT_SECRET")
 JWT_EXPIRES_MIN = int(os.environ.get("JWT_EXPIRE_MINUTES", "10080"))
 ALLOW_LOCAL_AUTH_FALLBACK = get_env_bool("ALLOW_LOCAL_AUTH_FALLBACK", True)
 GOOGLE_WEB_CLIENT_ID = get_env_value("GOOGLE_WEB_CLIENT_ID", "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID")
@@ -140,6 +149,7 @@ def load_local_store() -> Dict[str, Any]:
             "opportunities": [],
             "tasks": [],
             "activities": [],
+            "customer_agent_links": [],
         }
 
     try:
@@ -150,6 +160,7 @@ def load_local_store() -> Dict[str, Any]:
         store.setdefault("opportunities", [])
         store.setdefault("tasks", [])
         store.setdefault("activities", [])
+        store.setdefault("customer_agent_links", [])
         return store
     except (json.JSONDecodeError, OSError):
         return {
@@ -162,6 +173,7 @@ def load_local_store() -> Dict[str, Any]:
             "opportunities": [],
             "tasks": [],
             "activities": [],
+            "customer_agent_links": [],
         }
 
 
@@ -768,6 +780,18 @@ class SiteVisitReq(BaseModel):
     name: str
     mobile: str
 
+
+class CustomerRelationshipResp(BaseModel):
+    customer_id: str
+    links: List[Dict[str, Any]]
+    primary_link: Optional[Dict[str, Any]] = None
+    assigned_agent: Optional[Dict[str, Any]] = None
+    assigned_sub_agent: Optional[Dict[str, Any]] = None
+    lead: Optional[Dict[str, Any]] = None
+    open_opportunities: List[Dict[str, Any]] = Field(default_factory=list)
+    open_tasks: List[Dict[str, Any]] = Field(default_factory=list)
+    recent_activity: List[Dict[str, Any]] = Field(default_factory=list)
+
 class AgentBookingCreateReq(BaseModel):
     plot_id: str = Field(min_length=2)
     customer_name: str = Field(min_length=2, max_length=120)
@@ -1069,6 +1093,93 @@ async def crm_save_lead(payload: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+async def crm_list_customer_agent_links(customer_id: str) -> List[Dict[str, Any]]:
+    if await is_database_available():
+        items = await db.customer_agent_links.find({"customer_id": customer_id}, {"_id": 0}).to_list(100)
+    else:
+        items = [item for item in local_list_collection("customer_agent_links") if item.get("customer_id") == customer_id]
+    items.sort(key=lambda item: item.get("last_activity_at") or item.get("updated_at") or "", reverse=True)
+    return items
+
+
+async def crm_save_customer_agent_link(payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload["updated_at"] = now_utc().isoformat()
+    if await is_database_available():
+        await db.customer_agent_links.update_one({"id": payload["id"]}, {"$set": payload}, upsert=True)
+        return await db.customer_agent_links.find_one({"id": payload["id"]}, {"_id": 0})
+    local_save_collection_item("customer_agent_links", payload)
+    return payload
+
+
+async def crm_upsert_customer_agent_link(
+    *,
+    customer_id: str,
+    lead_id: Optional[str],
+    property_id: Optional[str],
+    plot_id: Optional[str],
+    assigned_agent_id: Optional[str],
+    assigned_sub_agent_id: Optional[str] = None,
+    relationship_type: str,
+    source: str,
+    status: str,
+) -> Dict[str, Any]:
+    use_db = await is_database_available()
+    existing: Optional[Dict[str, Any]] = None
+
+    if use_db:
+        queries = []
+        if lead_id:
+            queries.append({"customer_id": customer_id, "lead_id": lead_id})
+        if property_id:
+            queries.append({"customer_id": customer_id, "property_id": property_id, "plot_id": plot_id})
+        for query in queries:
+            existing = await db.customer_agent_links.find_one(query, {"_id": 0})
+            if existing:
+                break
+    else:
+        for item in local_list_collection("customer_agent_links"):
+            if item.get("customer_id") != customer_id:
+                continue
+            if lead_id and item.get("lead_id") == lead_id:
+                existing = item
+                break
+            if property_id and item.get("property_id") == property_id and item.get("plot_id") == plot_id:
+                existing = item
+                break
+
+    timestamp = now_utc().isoformat()
+    if existing:
+        existing.update({
+            "lead_id": lead_id or existing.get("lead_id"),
+            "property_id": property_id or existing.get("property_id"),
+            "plot_id": plot_id or existing.get("plot_id"),
+            "assigned_agent_id": assigned_agent_id or existing.get("assigned_agent_id"),
+            "assigned_sub_agent_id": assigned_sub_agent_id or existing.get("assigned_sub_agent_id"),
+            "relationship_type": relationship_type or existing.get("relationship_type"),
+            "source": source or existing.get("source"),
+            "status": status or existing.get("status"),
+            "last_activity_at": timestamp,
+        })
+        return await crm_save_customer_agent_link(existing)
+
+    payload = {
+        "id": str(uuid.uuid4()),
+        "customer_id": customer_id,
+        "lead_id": lead_id,
+        "property_id": property_id,
+        "plot_id": plot_id,
+        "assigned_agent_id": assigned_agent_id,
+        "assigned_sub_agent_id": assigned_sub_agent_id,
+        "relationship_type": relationship_type,
+        "source": source,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "last_activity_at": timestamp,
+    }
+    return await crm_save_customer_agent_link(payload)
+
+
 async def crm_create_activity(
     *,
     lead_id: str,
@@ -1104,6 +1215,7 @@ async def crm_upsert_lead(
     name: str,
     phone: Optional[str],
     email: Optional[str],
+    customer_id: Optional[str],
     source: str,
     created_by_user_id: str,
     assigned_agent_id: Optional[str] = None,
@@ -1121,6 +1233,7 @@ async def crm_upsert_lead(
             "name": existing.get("name") or name,
             "phone": existing.get("phone") or phone,
             "email": existing.get("email") or (normalize_email(email) if email else None),
+            "customer_id": customer_id or existing.get("customer_id"),
             "source": existing.get("source") or source,
             "assigned_agent_id": assigned_agent_id or existing.get("assigned_agent_id"),
             "assigned_sub_agent_id": assigned_sub_agent_id or existing.get("assigned_sub_agent_id"),
@@ -1139,6 +1252,7 @@ async def crm_upsert_lead(
         "name": name,
         "phone": phone,
         "email": normalize_email(email) if email else None,
+        "customer_id": customer_id,
         "source": source,
         "status": status,
         "assigned_agent_id": assigned_agent_id,
@@ -1320,11 +1434,22 @@ async def crm_sync_booking(
         name=customer.get("name") or booking.get("name") or "Customer",
         phone=customer.get("phone") or booking.get("mobile"),
         email=customer.get("email") or booking.get("customer_email"),
+        customer_id=customer.get("id") or booking.get("customer_id") or booking.get("user_id"),
         source=source,
         created_by_user_id=actor_user_id,
         assigned_agent_id=assigned_agent_id,
         notes_summary=booking.get("message") or booking.get("notes"),
         tags=["booking"],
+    )
+    relationship = await crm_upsert_customer_agent_link(
+        customer_id=customer.get("id") or booking.get("customer_id") or booking.get("user_id"),
+        lead_id=lead["id"],
+        property_id=booking.get("property_id"),
+        plot_id=booking.get("plot_id"),
+        assigned_agent_id=assigned_agent_id,
+        relationship_type="booking",
+        source=source,
+        status=str(booking.get("status") or "pending").lower(),
     )
     stage_map = {
         "pending": "booking_requested",
@@ -1356,7 +1481,7 @@ async def crm_sync_booking(
         message=f"Booking {booking['id']} synced to CRM as {opportunity['stage'].replace('_', ' ')}.",
         metadata={"booking_status": booking.get("status")},
     )
-    if source == "agent_booking":
+    if source in {"agent_booking", "customer_booking"}:
         follow_up_due = (now_utc() + timedelta(days=1)).isoformat()
         await crm_create_task(
             title="Follow up on booking request",
@@ -1369,7 +1494,7 @@ async def crm_sync_booking(
             due_at=follow_up_due,
             priority="high",
         )
-    return {"lead": lead, "opportunity": opportunity}
+    return {"lead": lead, "opportunity": opportunity, "relationship": relationship}
 
 
 async def crm_sync_site_visit(
@@ -1383,11 +1508,22 @@ async def crm_sync_site_visit(
         name=customer.get("name") or visit.get("name") or "Customer",
         phone=customer.get("phone") or visit.get("mobile"),
         email=customer.get("email"),
+        customer_id=customer.get("id") or visit.get("customer_id") or visit.get("user_id"),
         source="site_visit",
         created_by_user_id=actor_user_id,
         assigned_agent_id=assigned_agent_id,
         tags=["site visit"],
         next_follow_up_at=(now_utc() + timedelta(days=2)).isoformat(),
+    )
+    relationship = await crm_upsert_customer_agent_link(
+        customer_id=customer.get("id") or visit.get("customer_id") or visit.get("user_id"),
+        lead_id=lead["id"],
+        property_id=visit.get("property_id"),
+        plot_id=visit.get("plot_id"),
+        assigned_agent_id=assigned_agent_id,
+        relationship_type="site_visit",
+        source="site_visit",
+        status=str(visit.get("status") or "confirmed").lower(),
     )
     opportunity = await crm_create_or_update_opportunity(
         lead=lead,
@@ -1420,7 +1556,105 @@ async def crm_sync_site_visit(
         message=f"Site visit scheduled for {visit.get('visit_date')}.",
         metadata={"property_id": visit.get("property_id")},
     )
-    return {"lead": lead, "opportunity": opportunity}
+    return {"lead": lead, "opportunity": opportunity, "relationship": relationship}
+
+
+async def crm_sync_centre_visit(
+    *,
+    visit: Dict[str, Any],
+    customer: Dict[str, Any],
+    actor_user_id: str,
+) -> Dict[str, Any]:
+    lead = await crm_upsert_lead(
+        name=customer.get("name") or visit.get("name") or "Customer",
+        phone=customer.get("phone") or visit.get("mobile"),
+        email=customer.get("email"),
+        customer_id=customer.get("id") or visit.get("customer_id") or visit.get("user_id"),
+        source="centre_visit",
+        created_by_user_id=actor_user_id,
+        assigned_agent_id=None,
+        tags=["centre visit"],
+        next_follow_up_at=(now_utc() + timedelta(days=1)).isoformat(),
+        notes_summary=f"Experience centre visit scheduled for {visit.get('visit_date')} at {visit.get('visit_time')}.",
+    )
+    relationship = await crm_upsert_customer_agent_link(
+        customer_id=customer.get("id") or visit.get("customer_id") or visit.get("user_id"),
+        lead_id=lead["id"],
+        property_id=None,
+        plot_id=None,
+        assigned_agent_id=None,
+        relationship_type="centre_visit",
+        source="centre_visit",
+        status=str(visit.get("status") or "confirmed").lower(),
+    )
+    await crm_create_task(
+        title="Qualify centre visit lead",
+        task_type="follow_up",
+        assigned_to_user_id=actor_user_id,
+        actor_user_id=actor_user_id,
+        lead_id=lead["id"],
+        description="Contact the customer after the experience centre visit and map property interest.",
+        due_at=(now_utc() + timedelta(days=1)).isoformat(),
+        priority="medium",
+    )
+    await crm_create_activity(
+        lead_id=lead["id"],
+        visit_id=visit["id"],
+        actor_user_id=actor_user_id,
+        activity_type="centre_visit_synced",
+        message=f"Experience centre visit scheduled for {visit.get('visit_date')} at {visit.get('visit_time')}.",
+        metadata={"centre_id": visit.get("centre_id"), "centre_name": visit.get("centre_name")},
+    )
+    return {"lead": lead, "relationship": relationship}
+
+
+async def crm_sync_service_request(
+    *,
+    service_request: Dict[str, Any],
+    customer: Dict[str, Any],
+    actor_user_id: str,
+) -> Dict[str, Any]:
+    assigned_agent_id = await crm_find_agent_for_property(property_id=service_request.get("property_id"))
+    lead = await crm_upsert_lead(
+        name=customer.get("name") or "Customer",
+        phone=customer.get("phone") or service_request.get("contact"),
+        email=customer.get("email"),
+        customer_id=customer.get("id") or service_request.get("user_id"),
+        source="service_request",
+        created_by_user_id=actor_user_id,
+        assigned_agent_id=assigned_agent_id,
+        tags=["service", service_request.get("service_type", "").lower()],
+        notes_summary=service_request.get("description"),
+        next_follow_up_at=(now_utc() + timedelta(days=1)).isoformat(),
+    )
+    relationship = await crm_upsert_customer_agent_link(
+        customer_id=customer.get("id") or service_request.get("user_id"),
+        lead_id=lead["id"],
+        property_id=service_request.get("property_id"),
+        plot_id=None,
+        assigned_agent_id=assigned_agent_id,
+        relationship_type="service_request",
+        source="service_request",
+        status=str(service_request.get("status") or "pending").lower(),
+    )
+    await crm_create_task(
+        title=f"Respond to {service_request.get('service_type')} request",
+        task_type="service_follow_up",
+        assigned_to_user_id=assigned_agent_id or actor_user_id,
+        actor_user_id=actor_user_id,
+        lead_id=lead["id"],
+        description=service_request.get("description") or "Contact the customer and confirm service scope.",
+        due_at=(now_utc() + timedelta(hours=12)).isoformat(),
+        priority="medium",
+    )
+    await crm_create_activity(
+        lead_id=lead["id"],
+        actor_user_id=actor_user_id,
+        activity_type="service_request_synced",
+        message=f"Service request received: {service_request.get('service_type')}.",
+        metadata={"service_request_id": service_request.get("id"), "property_id": service_request.get("property_id")},
+    )
+    return {"lead": lead, "relationship": relationship}
 
 
 async def crm_get_visible_records(collection_name: str, user: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1433,6 +1667,60 @@ async def crm_get_visible_records(collection_name: str, user: Dict[str, Any]) ->
     if user.get("is_admin"):
         return items
     return [item for item in items if crm_is_record_visible_to_user(user, item)]
+
+
+async def crm_get_customer_relationship(customer: Dict[str, Any]) -> Dict[str, Any]:
+    customer_id = customer.get("id")
+    if not customer_id:
+        return {
+            "customer_id": "",
+            "links": [],
+            "primary_link": None,
+            "assigned_agent": None,
+            "assigned_sub_agent": None,
+            "lead": None,
+            "open_opportunities": [],
+            "open_tasks": [],
+            "recent_activity": [],
+        }
+
+    links = await crm_list_customer_agent_links(customer_id)
+    primary_link = links[0] if links else None
+    lead = await crm_get_lead_by_identity(
+        lead_id=primary_link.get("lead_id") if primary_link else None,
+        phone=customer.get("phone"),
+        email=customer.get("email"),
+    )
+    lead_id = lead.get("id") if lead else None
+
+    if await is_database_available():
+        assigned_agent = await db.users.find_one({"id": primary_link.get("assigned_agent_id")}, {"_id": 0}) if primary_link and primary_link.get("assigned_agent_id") else None
+        assigned_sub_agent = await db.users.find_one({"id": primary_link.get("assigned_sub_agent_id")}, {"_id": 0}) if primary_link and primary_link.get("assigned_sub_agent_id") else None
+        open_opportunities = await db.opportunities.find({"lead_id": lead_id, "stage": {"$nin": list(CRM_CLOSED_STAGES)}}, {"_id": 0}).to_list(20) if lead_id else []
+        open_tasks = await db.tasks.find({"lead_id": lead_id, "status": {"$ne": "completed"}}, {"_id": 0}).to_list(20) if lead_id else []
+        recent_activity = await db.activities.find({"lead_id": lead_id}, {"_id": 0}).to_list(20) if lead_id else []
+    else:
+        assigned_agent = local_find_user(user_id=primary_link.get("assigned_agent_id")) if primary_link and primary_link.get("assigned_agent_id") else None
+        assigned_sub_agent = local_find_user(user_id=primary_link.get("assigned_sub_agent_id")) if primary_link and primary_link.get("assigned_sub_agent_id") else None
+        open_opportunities = [item for item in local_list_collection("opportunities") if item.get("lead_id") == lead_id and item.get("stage") not in CRM_CLOSED_STAGES] if lead_id else []
+        open_tasks = [item for item in local_list_collection("tasks") if item.get("lead_id") == lead_id and item.get("status") != "completed"] if lead_id else []
+        recent_activity = [item for item in local_list_collection("activities") if item.get("lead_id") == lead_id] if lead_id else []
+
+    open_opportunities.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    open_tasks.sort(key=lambda item: item.get("due_at") or "9999")
+    recent_activity.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+
+    return {
+        "customer_id": customer_id,
+        "links": links,
+        "primary_link": primary_link,
+        "assigned_agent": clean_user(assigned_agent) if assigned_agent else None,
+        "assigned_sub_agent": clean_user(assigned_sub_agent) if assigned_sub_agent else None,
+        "lead": lead,
+        "open_opportunities": open_opportunities[:5],
+        "open_tasks": open_tasks[:5],
+        "recent_activity": recent_activity[:8],
+    }
 
 
 async def crm_build_agent_dashboard(user: Dict[str, Any]) -> Dict[str, Any]:
@@ -1867,6 +2155,8 @@ async def ensure_indexes() -> None:
         await db.tasks.create_index("id", unique=True)
         await db.tasks.create_index([("assigned_to_user_id", 1), ("due_at", 1)])
         await db.activities.create_index([("lead_id", 1), ("created_at", -1)])
+        await db.customer_agent_links.create_index("id", unique=True)
+        await db.customer_agent_links.create_index([("customer_id", 1), ("last_activity_at", -1)])
         await ensure_property_media_defaults()
         await crm_backfill_existing_records()
     except Exception as exc:
@@ -2029,6 +2319,11 @@ async def protected_example(user: Dict[str, Any] = Depends(get_current_user)):
     return {"authenticated": True, "user_id": user["id"], "auth_methods": user.get("auth_methods", [])}
 
 
+@api_router.get("/crm/customer-relationship", response_model=CustomerRelationshipResp)
+async def crm_customer_relationship(user: Dict[str, Any] = Depends(get_current_user)):
+    return await crm_get_customer_relationship(user)
+
+
 @api_router.put("/auth/profile")
 async def update_profile(req: UpdateProfileReq, user: Dict[str, Any] = Depends(get_current_user)):
     update = {k: v for k, v in req.dict().items() if v is not None}
@@ -2057,6 +2352,7 @@ async def crm_create_lead(req: CRMLeadUpsertReq, user: Dict[str, Any] = Depends(
         name=req.name.strip(),
         phone=normalize_phone(req.phone) if req.phone else None,
         email=req.email,
+        customer_id=None,
         source=req.source or "manual",
         created_by_user_id=user["id"],
         assigned_agent_id=assigned_agent_id,
@@ -2849,6 +3145,11 @@ async def request_service(req: ServiceReq, user: Dict[str, Any] = Depends(get_cu
         "read": False,
         "created_at": now_utc().isoformat(),
     })
+    await crm_sync_service_request(
+        service_request=sr,
+        customer=user,
+        actor_user_id=user["id"],
+    )
     return {"success": True, "request": sr}
 
 
@@ -2903,6 +3204,11 @@ async def book_centre_visit(req: VisitBookingReq, user: Dict[str, Any] = Depends
         "read": False,
         "created_at": now_utc().isoformat(),
     })
+    await crm_sync_centre_visit(
+        visit=visit,
+        customer=user,
+        actor_user_id=user["id"],
+    )
     return {"success": True, "visit": visit}
 
 

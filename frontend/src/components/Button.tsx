@@ -66,28 +66,28 @@ function getVariantStyles(variant: Variant): { container: ViewStyle; text: TextS
   switch (variant) {
     case "primary":
       return {
-        container: { backgroundColor: colors.primary, borderWidth: 0 },
-        text: { color: colors.white, fontWeight: "700" },
+        container: { backgroundColor: colors.primary, borderWidth: 1, borderColor: colors.primaryLight },
+        text: { color: colors.white, fontWeight: "800" },
       };
     case "secondary":
       return {
-        container: { backgroundColor: "transparent", borderWidth: 1.5, borderColor: colors.accent },
-        text: { color: colors.accent, fontWeight: "600" },
+        container: { backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: colors.stone300 },
+        text: { color: colors.white, fontWeight: "700" },
       };
     case "accent":
       return {
-        container: { backgroundColor: colors.accent, borderWidth: 0 },
-        text: { color: colors.white, fontWeight: "700" },
+        container: { backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.accentLight },
+        text: { color: colors.white, fontWeight: "800" },
       };
     case "ghost":
       return {
         container: { backgroundColor: "transparent", borderWidth: 0 },
-        text: { color: colors.primary, fontWeight: "600" },
+        text: { color: colors.white, fontWeight: "700" },
       };
     case "danger":
       return {
-        container: { backgroundColor: colors.danger, borderWidth: 0 },
-        text: { color: colors.white, fontWeight: "700" },
+        container: { backgroundColor: colors.danger, borderWidth: 1, borderColor: "#F07A74" },
+        text: { color: colors.white, fontWeight: "800" },
       };
   }
 }
@@ -106,7 +106,7 @@ function getSizeStyles(size: "sm" | "md" | "lg"): { container: ViewStyle; text: 
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radii.md,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },

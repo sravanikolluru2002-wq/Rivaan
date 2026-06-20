@@ -2,19 +2,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { FirebaseApp } from "firebase/app";
 import { initializeApp, getApps } from "firebase/app";
 import { Platform } from "react-native";
-import { getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
 
-function readPublicEnv(name: string) {
-  return (process.env[name] || "").trim().replace(/^['"]|['"]$/g, "");
+function normalizePublicEnv(value?: string) {
+  return (value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
 const firebaseConfig = {
-  apiKey: readPublicEnv("EXPO_PUBLIC_FIREBASE_API_KEY"),
-  authDomain: readPublicEnv("EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN"),
-  projectId: readPublicEnv("EXPO_PUBLIC_FIREBASE_PROJECT_ID"),
-  storageBucket: readPublicEnv("EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET"),
-  messagingSenderId: readPublicEnv("EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"),
-  appId: readPublicEnv("EXPO_PUBLIC_FIREBASE_APP_ID"),
+  apiKey: normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_API_KEY),
+  authDomain: normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  projectId: normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID),
+  storageBucket: normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+  appId: normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_APP_ID),
 };
 
 export const hasFirebaseConfig = Boolean(
@@ -31,9 +30,17 @@ export const firebaseApp: FirebaseApp | null = hasFirebaseConfig
     : initializeApp(firebaseConfig)
   : null;
 
-let firebaseAuthInstance: ReturnType<typeof getAuth> | null = null;
+let firebaseAuthInstance: any | null = null;
+let firebaseAuthModulePromise: Promise<any> | null = null;
 
-export function getFirebaseAuth() {
+async function loadFirebaseAuthModule() {
+  if (!firebaseAuthModulePromise) {
+    firebaseAuthModulePromise = import("firebase/auth");
+  }
+  return firebaseAuthModulePromise;
+}
+
+export async function getFirebaseAuth() {
   if (firebaseAuthInstance) {
     return firebaseAuthInstance;
   }
@@ -42,9 +49,27 @@ export function getFirebaseAuth() {
     throw new Error(firebaseConfigError || "Firebase configuration is unavailable.");
   }
 
+  const { browserLocalPersistence, getAuth, getReactNativePersistence, initializeAuth } =
+    await loadFirebaseAuthModule();
+
   if (Platform.OS === "web") {
-    firebaseAuthInstance = getAuth(firebaseApp);
-    return firebaseAuthInstance;
+    try {
+      firebaseAuthInstance = initializeAuth(firebaseApp, {
+        persistence: browserLocalPersistence,
+      });
+      return firebaseAuthInstance;
+    } catch (error: any) {
+      const message = String(error?.message || "");
+      if (
+        message.includes("already exists") ||
+        message.includes("has already been initialized") ||
+        message.includes("already-initialized")
+      ) {
+        firebaseAuthInstance = getAuth(firebaseApp);
+        return firebaseAuthInstance;
+      }
+      throw error;
+    }
   }
 
   try {
@@ -64,6 +89,15 @@ export function getFirebaseAuth() {
     }
     throw error;
   }
+}
+
+export async function getFirebasePhoneAuthHelpers() {
+  const authModule = await loadFirebaseAuthModule();
+  return {
+    RecaptchaVerifier: authModule.RecaptchaVerifier,
+    signInWithPhoneNumber: authModule.signInWithPhoneNumber,
+    getIdToken: authModule.getIdToken,
+  };
 }
 
 export { firebaseConfig };

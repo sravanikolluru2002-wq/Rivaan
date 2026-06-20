@@ -1,8 +1,6 @@
 import { Platform } from "react-native";
 
-// Rivan Reality design tokens
 export const colors = {
-  // Brand
   primary: "#0B5D1E",
   primaryDark: "#074116",
   primaryDeepest: "#052F0F",
@@ -12,7 +10,6 @@ export const colors = {
   accentDark: "#C96D1E",
   accentLight: "#F6B473",
   accentSoft: "#FDE6D2",
-  // Neutrals
   white: "#FFFFFF",
   offWhite: "#F9FAF9",
   stone50: "#F4F5F4",
@@ -25,12 +22,10 @@ export const colors = {
   stone700: "#374151",
   stone900: "#111827",
   black: "#000000",
-  // Plot status
   available: "#10B981",
   reserved: "#F59E0B",
   booked: "#3B82F6",
   sold: "#EF4444",
-  // Semantic
   success: "#10B981",
   warning: "#F59E0B",
   danger: "#EF4444",
@@ -55,7 +50,6 @@ export const radii = {
 };
 
 export const fonts = {
-  // System fallbacks since we don't load custom fonts
   heading: "serif" as const,
   body: "System" as const,
 };
@@ -122,11 +116,11 @@ export const plotStatusLabel = (status: string): string => {
 };
 
 export const formatINR = (amount: number): string => {
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
-  return `₹${amount.toLocaleString("en-IN")}`;
+  if (amount >= 10000000) return `Rs ${Number(amount / 10000000).toFixed(2)} Cr`;
+  if (amount >= 100000) return `Rs ${Number(amount / 100000).toFixed(2)} L`;
+  return `Rs ${amount.toLocaleString("en-IN")}`;
 };
 
 export const formatINRFull = (amount: number): string => {
-  return `₹${Math.round(amount).toLocaleString("en-IN")}`;
+  return `Rs ${Math.round(amount).toLocaleString("en-IN")}`;
 };

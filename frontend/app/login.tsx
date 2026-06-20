@@ -20,13 +20,12 @@ import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import Constants from "expo-constants";
-import { getIdToken, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 
 import { Button } from "@/src/components/Button";
 import { PropertyMedia } from "@/src/components/PropertyMedia";
 import { useAuth } from "@/src/auth-context";
-import { firebaseConfigError, getFirebaseAuth, hasFirebaseConfig } from "@/src/firebase";
-import { api } from "@/src/api";
+import { firebaseConfigError, getFirebaseAuth, getFirebasePhoneAuthHelpers, hasFirebaseConfig } from "@/src/firebase";
+import { api, warmBackendReady } from "@/src/api";
 import { colors, radii, spacing, typography } from "@/src/theme";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -42,8 +41,8 @@ const LOGIN_VIDEO_URL = "https://res.cloudinary.com/dzisksq78/video/upload/v1780
 const LOGIN_VIDEO_POSTER = "https://images.unsplash.com/photo-1512917774080-9991f1c4c750";
 const WEB_RECAPTCHA_CONTAINER_ID_PREFIX = "firebase-phone-recaptcha";
 
-function readPublicEnv(name: string) {
-  return (process.env[name] || "").trim().replace(/^['"]|['"]$/g, "");
+function normalizePublicEnv(value?: string) {
+  return (value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
 export default function LoginScreen() {
@@ -72,9 +71,9 @@ export default function LoginScreen() {
   const [recaptchaReady, setRecaptchaReady] = useState(false);
   const [recaptchaSolved, setRecaptchaSolved] = useState(false);
 
-  const googleWebClientId = readPublicEnv("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
-  const googleAndroidClientId = readPublicEnv("EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID");
-  const googleIosClientId = readPublicEnv("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID");
+  const googleWebClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+  const googleAndroidClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID);
+  const googleIosClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
   const isExpoGo = Constants.appOwnership === "expo";
   const isLocalhostWeb =
     Platform.OS === "web" &&
@@ -90,7 +89,7 @@ export default function LoginScreen() {
     default: googleWebClientId,
   });
   const googleRedirectUri =
-    readPublicEnv("EXPO_PUBLIC_GOOGLE_REDIRECT_URI") ||
+    normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI) ||
     (Platform.OS === "web"
       ? isHostedWeb && typeof window !== "undefined"
         ? `${window.location.origin}${window.location.pathname || "/login"}`
@@ -154,7 +153,11 @@ export default function LoginScreen() {
   const phoneDigits = useMemo(() => phone.replace(/\D/g, "").slice(-10), [phone]);
   const validOtp = otp.every((digit) => digit.length === 1);
   const useFirebaseTestPhoneAuth =
-    isLocalhostWeb && readPublicEnv("EXPO_PUBLIC_FIREBASE_USE_TEST_PHONE_AUTH") === "true";
+    isLocalhostWeb && normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_USE_TEST_PHONE_AUTH) === "true";
+
+  useEffect(() => {
+    warmBackendReady();
+  }, []);
 
   useEffect(() => {
     if (!isLocalhostWeb || activeTab !== "phone" || !useFirebaseTestPhoneAuth) return;
@@ -255,7 +258,8 @@ export default function LoginScreen() {
   }
 
   async function getFreshWebRecaptchaVerifier() {
-    const auth = getFirebaseAuth();
+    const auth = await getFirebaseAuth();
+    const { RecaptchaVerifier } = await getFirebasePhoneAuthHelpers();
     auth.languageCode = "en";
     auth.settings.appVerificationDisabledForTesting = useFirebaseTestPhoneAuth;
 
@@ -316,7 +320,8 @@ export default function LoginScreen() {
         return showFormError("Please complete the reCAPTCHA verification before sending OTP.");
       }
 
-      const auth = getFirebaseAuth();
+      const auth = await getFirebaseAuth();
+      const { signInWithPhoneNumber } = await getFirebasePhoneAuthHelpers();
       confirmationResultRef.current = await signInWithPhoneNumber(auth, `+91${phoneDigits}`, verifier);
       setOtpSent(true);
       setOtpSentToPhone(`+91${phoneDigits}`);
@@ -744,6 +749,7 @@ async function verifyFirebasePhoneOtp(
   }
 
   const credential = await confirmationResult.confirm(otpValue);
+  const { getIdToken } = await getFirebasePhoneAuthHelpers();
   const idToken = await getIdToken(credential.user, true);
   return api.firebaseAuth(idToken, phoneNumber, name);
 }

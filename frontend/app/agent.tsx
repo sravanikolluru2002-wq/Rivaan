@@ -52,7 +52,7 @@ type PageKey =
   | "bookings"
   | "visits"
   | "leads"
-  | "pipeline"
+  | "deals"
   | "tasks"
   | "activities"
   | "agents"
@@ -67,7 +67,6 @@ const NAV_ITEMS: { key: PageKey; label: string; icon: any }[] = [
   { key: "bookings", label: "Bookings", icon: "file-text" },
   { key: "visits", label: "Site Visits", icon: "calendar" },
   { key: "leads", label: "Leads", icon: "users" },
-  { key: "pipeline", label: "Pipeline", icon: "bar-chart-2" },
   { key: "tasks", label: "Tasks", icon: "check-square" },
   { key: "activities", label: "Activities", icon: "clock" },
   { key: "agents", label: "My Agents", icon: "users" },
@@ -98,7 +97,7 @@ const demoCustomers = [
 ];
 
 const TEMP_PUBLIC_AGENT_PREVIEW =
-  Platform.OS === "web" && typeof window !== "undefined" && ["rivan-auth-live.web.app", "rivan-auth-live.firebaseapp.com"].includes(window.location.hostname);
+  Platform.OS === "web" && normalizeFlag(process.env.EXPO_PUBLIC_ENABLE_AGENT_PREVIEW) === "true";
 
 const previewAgentUser = {
   id: "agent-preview-001",
@@ -251,12 +250,12 @@ const emptyAgentForm = {
 };
 
 const pageTitles: Record<PageKey, { title: string; subtitle: string }> = {
-  home: { title: "Agent Command Center", subtitle: "Pipeline, inventory, bookings, visits, and customer activity at a glance." },
+  home: { title: "Agent Command Center", subtitle: "Deals, inventory, bookings, visits, and customer activity at a glance." },
   properties: { title: "Properties", subtitle: "Search inventory, manage plots, and work from a visual layout." },
   bookings: { title: "Bookings", subtitle: "Track customer bookings from request to closure." },
   visits: { title: "Site Visits", subtitle: "Plan, reschedule, route, and review visit outcomes." },
   leads: { title: "CRM Leads", subtitle: "All prospects, owners, follow-up dates, and sales ownership in one place." },
-  pipeline: { title: "Pipeline", subtitle: "Track every opportunity from first contact to booking or loss." },
+  deals: { title: "Deals", subtitle: "Track every customer deal from first contact to booking or loss." },
   tasks: { title: "CRM Tasks", subtitle: "Follow-ups due today, overdue reminders, and deal actions." },
   activities: { title: "CRM Activity", subtitle: "A chronological timeline of updates across leads and opportunities." },
   agents: { title: "My Agents", subtitle: "Manage sub-agents, portfolio coverage, activity, and account status." },
@@ -448,7 +447,7 @@ export default function AgentDashboardScreen() {
         ...(current.activities || []),
       ].slice(0, 50),
     } : current);
-    pulse(`Pipeline updated: ${titleCase(stage.replace(/_/g, " "))}`);
+    pulse(`Deal updated: ${titleCase(stage.replace(/_/g, " "))}`);
     try {
       await api.updateOpportunityStage(opportunityId, {
         stage,
@@ -1006,6 +1005,7 @@ export default function AgentDashboardScreen() {
               <HomePage
                 theme={theme}
                 isTablet={isTablet}
+                isDesktop={isDesktop}
                 metrics={metrics}
                 properties={propertyGroups}
                 bookings={enrichedBookings}
@@ -1070,10 +1070,10 @@ export default function AgentDashboardScreen() {
             ) : null}
 
             {activePage === "leads" ? (
-              <CrmLeadsPage theme={theme} leads={crmLeads} />
+              <CrmLeadsPage theme={theme} leads={crmLeads} opportunities={crmOpportunities} tasks={crmTasks} />
             ) : null}
 
-            {activePage === "pipeline" ? (
+            {activePage === "deals" ? (
               <CrmPipelinePage
                 theme={theme}
                 leads={crmLeads}
@@ -1187,31 +1187,71 @@ export default function AgentDashboardScreen() {
   );
 }
 
-function CrmLeadsPage({ theme, leads }: any) {
+function CrmLeadsPage({ theme, leads, opportunities, tasks }: any) {
+  const opportunityMap = new Map<string, any>();
+  const nextTaskMap = new Map<string, any>();
+
+  (opportunities || []).forEach((opportunity: any) => {
+    if (opportunity?.lead_id && !opportunityMap.has(opportunity.lead_id)) {
+      opportunityMap.set(opportunity.lead_id, opportunity);
+    }
+  });
+
+  (tasks || [])
+    .filter((task: any) => task?.status !== "completed")
+    .sort((left: any, right: any) => new Date(left?.due_at || 0).getTime() - new Date(right?.due_at || 0).getTime())
+    .forEach((task: any) => {
+      if (task?.lead_id && !nextTaskMap.has(task.lead_id)) {
+        nextTaskMap.set(task.lead_id, task);
+      }
+    });
+
+  const qualifiedCount = leads.filter((lead: any) => ["qualified", "contacted"].includes(String(lead.status || "").toLowerCase())).length;
+  const followUpDueCount = Array.from(nextTaskMap.values()).filter((task: any) => isDueDateOverdue(task?.due_at)).length;
+  const activeDealsCount = Array.from(opportunityMap.values()).length;
+
   return (
-    <SectionShell theme={theme} title={`Lead Registry (${leads.length})`}>
+    <SectionShell theme={theme} title={`Lead Desk (${leads.length})`}>
+      <View style={[styles.kpiGrid, styles.kpiGridTablet]}>
+        <MetricCard theme={theme} label="Total Leads" value={leads.length} icon="users" color={theme.brand} />
+        <MetricCard theme={theme} label="Qualified" value={qualifiedCount} icon="check-circle" color={theme.success} />
+        <MetricCard theme={theme} label="Active Deals" value={activeDealsCount} icon="bar-chart-2" color={theme.info} />
+        <MetricCard theme={theme} label="Follow-up Due" value={followUpDueCount} icon="clock" color={theme.warning} />
+      </View>
       <View style={styles.listStack}>
         {leads.length === 0 ? (
           <EmptyPanel theme={theme} title="No CRM leads yet" text="Leads will appear here from bookings, visits, and manual CRM creation." />
-        ) : leads.map((lead: any) => (
-          <View key={lead.id} style={[styles.visitCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.cardHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>{lead.name}</Text>
-                <Text style={[styles.cardMeta, { color: theme.subtle }]}>{lead.phone || lead.email || "No contact"}</Text>
-                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Source: {titleCase(String(lead.source || "manual"))}</Text>
+        ) : leads.map((lead: any) => {
+          const opportunity = opportunityMap.get(lead.id);
+          const nextTask = nextTaskMap.get(lead.id);
+          return (
+            <View key={lead.id} style={[styles.visitCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>{lead.name}</Text>
+                  <Text style={[styles.cardMeta, { color: theme.subtle }]}>{lead.phone || lead.email || "No contact"}</Text>
+                  <Text style={[styles.cardMeta, { color: theme.subtle }]}>
+                    Source: {titleCase(String(lead.source || "manual"))} | Updated {formatDate(lead.updated_at || lead.created_at)}
+                  </Text>
+                </View>
+                <StatusPill theme={theme} status={lead.status || "new"} />
               </View>
-              <StatusPill theme={theme} status={lead.status || "new"} />
+              <View style={styles.infoGrid}>
+                <InfoLine theme={theme} label="Assigned Owner" value={formatOwnerName(lead.assigned_agent_id)} />
+                <InfoLine theme={theme} label="Current Deal" value={opportunity ? formatDealStage(opportunity.stage) : "Lead only"} />
+                <InfoLine theme={theme} label="Expected Value" value={opportunity?.expected_value ? formatINRFull(opportunity.expected_value) : "To be confirmed"} />
+                <InfoLine theme={theme} label="Next Follow-up" value={nextTask?.due_at ? formatDate(nextTask.due_at) : lead.next_follow_up_at ? formatDate(lead.next_follow_up_at) : "Not set"} />
+              </View>
+              <View style={styles.actionRow}>
+                <InfoTag theme={theme} label={`Tags: ${(lead.tags || []).join(", ") || "None"}`} />
+                {opportunity?.property_name ? <InfoTag theme={theme} label={`Project: ${opportunity.property_name}`} /> : null}
+                {nextTask?.title ? <InfoTag theme={theme} label={`Next task: ${nextTask.title}`} /> : null}
+              </View>
+              <ContactActions theme={theme} phone={lead.phone} email={lead.email} />
+              {lead.notes_summary ? <Text style={[styles.cardMeta, { color: theme.subtle }]}>{lead.notes_summary}</Text> : null}
             </View>
-            <View style={styles.actionRow}>
-              <InfoTag theme={theme} label={`Owner: ${lead.assigned_agent_id || "Unassigned"}`} />
-              <InfoTag theme={theme} label={`Follow-up: ${lead.next_follow_up_at ? formatDate(lead.next_follow_up_at) : "Not set"}`} />
-              <InfoTag theme={theme} label={`Tags: ${(lead.tags || []).join(", ") || "None"}`} />
-            </View>
-            <ContactActions theme={theme} phone={lead.phone} email={lead.email} />
-            {lead.notes_summary ? <Text style={[styles.cardMeta, { color: theme.subtle }]}>{lead.notes_summary}</Text> : null}
-          </View>
-        ))}
+          );
+        })}
       </View>
     </SectionShell>
   );
@@ -1234,10 +1274,10 @@ function CrmPipelinePage({ theme, leads, opportunities, onStageChange }: any) {
           <>
             <View style={styles.cardHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>{lead?.name || opportunity.property_id}</Text>
-                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Property: {opportunity.property_id}</Text>
-                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Lead ID: {opportunity.lead_id}</Text>
-                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Owner: {opportunity.assigned_agent_id || "Unassigned"}</Text>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>{lead?.name || "CRM Customer"}</Text>
+                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Project: {opportunity.property_name || opportunity.property_id || "Project pending"}</Text>
+                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Lead Ref: {formatReference(opportunity.lead_id, "Lead")}</Text>
+                <Text style={[styles.cardMeta, { color: theme.subtle }]}>Owner: {formatOwnerName(opportunity.assigned_agent_id)}</Text>
               </View>
               <StatusPill theme={theme} status={opportunity.stage} />
             </View>
@@ -1250,7 +1290,7 @@ function CrmPipelinePage({ theme, leads, opportunities, onStageChange }: any) {
               {nextPipelineActions(opportunity.stage).map((nextStage) => (
                 <Button
                   key={nextStage}
-                  title={titleCase(nextStage.replace(/_/g, " "))}
+                  title={formatDealStage(nextStage)}
                   variant="secondary"
                   onPress={() => onStageChange(opportunity.id, nextStage, nextStage === "closed_lost" ? "other" : undefined)}
                 />
@@ -1269,7 +1309,7 @@ function CrmPipelinePage({ theme, leads, opportunities, onStageChange }: any) {
           {grouped.map((group) => (
             <View key={group.stage} style={[styles.pipelineColumn, { backgroundColor: theme.panel, borderColor: theme.border }]}>
               <View style={[styles.pipelineColumnHeader, { borderColor: theme.border }]}>
-                <Text style={[styles.pipelineColumnTitle, { color: theme.text }]}>{titleCase(group.stage.replace(/_/g, " "))}</Text>
+                <Text style={[styles.pipelineColumnTitle, { color: theme.text }]}>{formatDealStage(group.stage)}</Text>
                 <View style={[styles.pipelineStageCount, { backgroundColor: theme.brandSoft }]}>
                   <Text style={[styles.pipelineStageCountText, { color: theme.brand }]}>{group.items.length}</Text>
                 </View>
@@ -1284,7 +1324,7 @@ function CrmPipelinePage({ theme, leads, opportunities, onStageChange }: any) {
         </ScrollView>
       ) : (
         grouped.map((group) => (
-          <SectionShell key={group.stage} theme={theme} title={`${titleCase(group.stage.replace(/_/g, " "))} (${group.items.length})`}>
+          <SectionShell key={group.stage} theme={theme} title={`${formatDealStage(group.stage)} (${group.items.length})`}>
             <View style={styles.listStack}>
               {group.items.length === 0 ? (
                 <Text style={[styles.cardMeta, { color: theme.subtle }]}>No opportunities in this stage.</Text>
@@ -1303,6 +1343,11 @@ function CrmTasksPage({ theme, tasks, onComplete }: any) {
   return (
     <View style={styles.pageGap}>
       <SectionShell theme={theme} title={`Open Tasks (${openTasks.length})`}>
+        <View style={[styles.kpiGrid, styles.kpiGridTablet]}>
+          <MetricCard theme={theme} label="Open Tasks" value={openTasks.length} icon="check-square" color={theme.brand} />
+          <MetricCard theme={theme} label="Overdue" value={openTasks.filter((task: any) => isDueDateOverdue(task.due_at)).length} icon="alert-circle" color={theme.danger} />
+          <MetricCard theme={theme} label="Due Today" value={openTasks.filter((task: any) => isDueDateToday(task.due_at)).length} icon="calendar" color={theme.warning} />
+        </View>
         <View style={styles.listStack}>
           {openTasks.length === 0 ? (
             <EmptyPanel theme={theme} title="No open follow-ups" text="Upcoming CRM reminders will show up here." />
@@ -1313,7 +1358,9 @@ function CrmTasksPage({ theme, tasks, onComplete }: any) {
                 <View style={styles.cardHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.cardTitle, { color: theme.text }]}>{task.title}</Text>
-                    <Text style={[styles.cardMeta, { color: theme.subtle }]}>{task.task_type} · {task.assigned_to_user_id}</Text>
+                    <Text style={[styles.cardMeta, { color: theme.subtle }]}>
+                      {titleCase(String(task.task_type || "follow up").replace(/_/g, " "))} | {formatOwnerName(task.assigned_to_user_id)}
+                    </Text>
                   </View>
                   <StatusPill theme={theme} status={overdue ? "overdue" : task.priority || "medium"} />
                 </View>
@@ -1351,7 +1398,8 @@ function CrmActivitiesPage({ theme, activities }: any) {
             theme={theme}
             icon="clock"
             title={activity.message}
-            meta={`${activity.activity_type} · ${formatDate(activity.created_at)}`}
+            detail={formatReference(activity.lead_id, "Lead")}
+            time={`${titleCase(String(activity.activity_type || "activity").replace(/_/g, " "))} | ${formatDate(activity.created_at)}`}
           />
         ))}
       </View>
@@ -1378,69 +1426,97 @@ function EmptyPanel({ theme, title, text }: any) {
 
 function Sidebar({ theme, activePage, profile, onNavigate, onLogout }: any) {
   const primaryItems = NAV_ITEMS.slice(0, 5);
-  const crmItems = NAV_ITEMS.slice(5);
+  const crmItems = NAV_ITEMS.filter((item) => ["tasks", "activities", "agents"].includes(item.key));
+  const utilityItems = NAV_ITEMS.filter((item) => ["notifications", "profile"].includes(item.key));
 
   return (
     <View style={[styles.sidebar, { backgroundColor: theme.sidebar, borderColor: theme.border }]}>
-      <View style={[styles.brandPanel, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <View style={styles.brandBlock}>
-          <Image source={require("../assets/images/rivan-logo.png")} style={styles.brandLogo} resizeMode="contain" />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.brandName, { color: theme.text }]}>Rivan</Text>
-            <Text style={[styles.brandSub, { color: theme.subtle }]}>Agent OS</Text>
+      <ScrollView
+        style={styles.sidebarScroll}
+        contentContainerStyle={styles.sidebarScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.brandPanel, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.brandBlock}>
+            <Image source={require("../assets/images/rivan-logo.png")} style={styles.brandLogo} resizeMode="contain" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.brandName, { color: theme.text }]}>Rivan</Text>
+              <Text style={[styles.brandSub, { color: theme.subtle }]}>Agent OS</Text>
+            </View>
+          </View>
+          <View style={[styles.desktopBadge, { backgroundColor: theme.brandSoft }]}>
+            <Feather name="zap" size={12} color={theme.brand} />
+            <Text style={[styles.desktopBadgeText, { color: theme.brand }]}>Premium Web Workspace</Text>
           </View>
         </View>
-        <View style={[styles.desktopBadge, { backgroundColor: theme.brandSoft }]}>
-          <Feather name="zap" size={12} color={theme.brand} />
-          <Text style={[styles.desktopBadgeText, { color: theme.brand }]}>Premium Web Workspace</Text>
-        </View>
-      </View>
 
-      <View style={[styles.agentMiniCard, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
-        <Avatar name={profile?.name || "Agent"} theme={theme} />
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.agentMiniName, { color: theme.text }]} numberOfLines={1}>{profile?.name || "Agent"}</Text>
-          <Text style={[styles.agentMiniRole, { color: theme.subtle }]}>Verified workspace</Text>
-          <Text style={[styles.agentMiniMeta, { color: theme.muted }]} numberOfLines={1}>
-            {profile?.agent_brand_name || "Sales pipeline and customer operations"}
-          </Text>
+        <View style={[styles.agentMiniCard, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
+          <Avatar name={profile?.name || "Agent"} theme={theme} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.agentMiniName, { color: theme.text }]} numberOfLines={1}>{profile?.name || "Agent"}</Text>
+            <Text style={[styles.agentMiniRole, { color: theme.subtle }]}>Verified workspace</Text>
+            <Text style={[styles.agentMiniMeta, { color: theme.muted }]} numberOfLines={2}>
+              {profile?.agent_brand_name || "Sales and customer operations"}
+            </Text>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.navStack}>
-        <View style={styles.navGroup}>
-          <Text style={[styles.navGroupLabel, { color: theme.muted }]}>Core Workspace</Text>
-          {primaryItems.map((item) => (
-            <NavButton key={item.key} item={item} active={activePage === item.key} theme={theme} onPress={() => onNavigate(item.key)} />
-          ))}
+        <View style={styles.navStack}>
+          <View style={styles.navGroup}>
+            <Text style={[styles.navGroupLabel, { color: theme.muted }]}>Core Workspace</Text>
+            {primaryItems.map((item) => (
+              <NavButton key={item.key} item={item} active={activePage === item.key} theme={theme} onPress={() => onNavigate(item.key)} />
+            ))}
+          </View>
+          <View style={styles.navGroup}>
+            <Text style={[styles.navGroupLabel, { color: theme.muted }]}>CRM Control</Text>
+            {crmItems.map((item) => (
+              <NavButton key={item.key} item={item} active={activePage === item.key} theme={theme} onPress={() => onNavigate(item.key)} />
+            ))}
+          </View>
+          <View style={styles.navGroup}>
+            <Text style={[styles.navGroupLabel, { color: theme.muted }]}>Utility</Text>
+            {utilityItems.map((item) => (
+              <NavButton key={item.key} item={item} active={activePage === item.key} theme={theme} onPress={() => onNavigate(item.key)} />
+            ))}
+          </View>
         </View>
-        <View style={styles.navGroup}>
-          <Text style={[styles.navGroupLabel, { color: theme.muted }]}>CRM Control</Text>
-          {crmItems.map((item) => (
-            <NavButton key={item.key} item={item} active={activePage === item.key} theme={theme} onPress={() => onNavigate(item.key)} />
-          ))}
-        </View>
-      </View>
 
-      <TouchableOpacity style={[styles.logoutButton, { borderColor: theme.border }]} onPress={onLogout}>
-        <Feather name="log-out" size={17} color={theme.subtle} />
-        <Text style={[styles.logoutText, { color: theme.subtle }]}>Logout</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={[styles.logoutButton, { borderColor: theme.border }]} onPress={onLogout}>
+          <Feather name="log-out" size={17} color={theme.subtle} />
+          <Text style={[styles.logoutText, { color: theme.subtle }]}>Logout</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
 
 function TopBar({ theme, title, subtitle, profile, isDesktop, onMenu, onLogout }: any) {
+  if (!isDesktop) {
+    return (
+      <View style={[styles.topBar, styles.topBarMobile, { backgroundColor: theme.panel, borderColor: theme.border }]}>
+        <View style={styles.topBarMobileRow}>
+          <TouchableOpacity style={[styles.iconButton, styles.iconButtonMobile, { borderColor: theme.border }]} onPress={onMenu}>
+            <Feather name="menu" size={18} color={theme.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.iconButton, styles.iconButtonMobile, { borderColor: theme.border }]}>
+            <Feather name="bell" size={17} color={theme.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.pageCopyMobile}>
+          <Text style={[styles.pageEyebrow, { color: theme.brand }]}>Agent workspace</Text>
+          <Text style={[styles.pageTitle, styles.pageTitleMobile, { color: theme.text }]}>{title}</Text>
+          <Text style={[styles.pageSubtitle, styles.pageSubtitleMobile, { color: theme.subtle }]}>{subtitle}</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.topBar, { backgroundColor: theme.panel, borderColor: theme.border }]}>
       <View style={styles.topLeft}>
-        {!isDesktop ? (
-          <TouchableOpacity style={[styles.iconButton, { borderColor: theme.border }]} onPress={onMenu}>
-            <Feather name="menu" size={20} color={theme.text} />
-          </TouchableOpacity>
-        ) : null}
         <View style={styles.pageCopy}>
-          {isDesktop ? <Text style={[styles.pageEyebrow, { color: theme.brand }]}>Agent workspace</Text> : null}
+          <Text style={[styles.pageEyebrow, { color: theme.brand }]}>Agent workspace</Text>
           <Text style={[styles.pageTitle, { color: theme.text }]}>{title}</Text>
           <Text style={[styles.pageSubtitle, { color: theme.subtle }]} numberOfLines={2}>{subtitle}</Text>
         </View>
@@ -1469,7 +1545,7 @@ function TopBar({ theme, title, subtitle, profile, isDesktop, onMenu, onLogout }
   );
 }
 
-function HomePage({ theme, isTablet, metrics, properties, bookings, visits, onProperty, onLayout, onBook, onVisit }: any) {
+function HomePage({ theme, isTablet, isDesktop, metrics, properties, bookings, visits, onProperty, onLayout, onBook, onVisit }: any) {
   const cards = [
     { label: "Total Properties", value: metrics.totalProperties, icon: "briefcase", color: theme.brand },
     { label: "Portfolio Assets", value: metrics.active, icon: "activity", color: theme.success },
@@ -1480,12 +1556,12 @@ function HomePage({ theme, isTablet, metrics, properties, bookings, visits, onPr
 
   return (
     <View style={styles.pageGap}>
-      <SpotlightHero theme={theme} metrics={metrics} />
+      <SpotlightHero theme={theme} metrics={metrics} compact={!isTablet} />
       <View style={[styles.kpiGrid, isTablet ? styles.kpiGridTablet : null]}>
         {cards.map((card) => <MetricCard key={card.label} theme={theme} {...card} />)}
       </View>
 
-      <View style={[styles.twoColumn, isTablet ? styles.twoColumnWide : null]}>
+      <View style={[styles.twoColumn, isDesktop ? styles.twoColumnWide : null]}>
         <SectionShell theme={theme} title="Featured Inventory" action="View all">
           <View style={[styles.propertyGrid, isTablet ? styles.propertyGridWide : null]}>
             {properties.slice(0, 4).map((property: any) => (
@@ -1513,12 +1589,12 @@ function HomePage({ theme, isTablet, metrics, properties, bookings, visits, onPr
   );
 }
 
-function SpotlightHero({ theme, metrics }: any) {
+function SpotlightHero({ theme, metrics, compact }: any) {
   return (
-    <View style={[styles.spotlightHero, { backgroundColor: theme.panel, borderColor: theme.border }]}>
+    <View style={[styles.spotlightHero, compact ? styles.spotlightHeroCompact : null, { backgroundColor: theme.panel, borderColor: theme.border }]}>
       <View style={styles.spotlightCopy}>
         <Text style={[styles.spotlightEyebrow, { color: theme.brandAlt }]}>Premium Sales Command</Text>
-        <Text style={[styles.spotlightTitle, { color: theme.text }]}>Run inventory, follow-ups, and closures from one live workspace.</Text>
+        <Text style={[styles.spotlightTitle, compact ? styles.spotlightTitleCompact : null, { color: theme.text }]}>Run inventory, follow-ups, and closures from one live workspace.</Text>
         <Text style={[styles.spotlightSubtitle, { color: theme.subtle }]}>
           Designed for fast-moving site sales teams with clearer ownership, faster customer actions, and a cleaner premium experience.
         </Text>
@@ -2277,7 +2353,10 @@ function InfoDrawer({ theme, open, mode, asset, property, profile, onClose, onBo
 }
 
 function BottomNav({ theme, activePage, onNavigate }: any) {
-  const items = NAV_ITEMS.slice(0, 5);
+  const items = NAV_ITEMS.slice(0, 5).map((item) => ({
+    ...item,
+    label: item.key === "visits" ? "Visits" : item.label,
+  }));
   return (
     <View style={[styles.bottomNav, { backgroundColor: theme.panel, borderColor: theme.border }]}>
       {items.map((item) => (
@@ -2295,7 +2374,11 @@ function MobileMenu({ theme, open, activePage, profile, onClose, onNavigate, onL
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <TouchableOpacity style={styles.modalScrim} onPress={onClose} />
-        <View style={[styles.mobileSheet, { backgroundColor: theme.panel }]}>
+        <ScrollView
+          style={[styles.mobileSheet, { backgroundColor: theme.panel }]}
+          contentContainerStyle={styles.mobileSheetContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.drawerHeader}>
             <View style={[styles.agentMiniCard, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
               <Avatar name={profile?.name || "Agent"} theme={theme} />
@@ -2314,7 +2397,7 @@ function MobileMenu({ theme, open, activePage, profile, onClose, onNavigate, onL
             ))}
           </View>
           <Button title="Logout" variant="danger" onPress={onLogout} />
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -2360,7 +2443,7 @@ function AgentEditorModal({ theme, open, form, editing, saving, onChange, onClos
 
 function NavButton({ item, active, theme, onPress }: any) {
   return (
-    <TouchableOpacity style={[styles.navButton, active && [styles.navButtonActive, { backgroundColor: theme.brandSoft, borderColor: theme.brand }]]} onPress={onPress}>
+    <TouchableOpacity style={[styles.navButton, { backgroundColor: active ? theme.brandSoft : "transparent" }, active && [styles.navButtonActive, { borderColor: theme.brand }]]} onPress={onPress}>
       <Feather name={item.icon} size={18} color={active ? theme.brand : theme.subtle} />
       <Text style={[styles.navButtonText, { color: active ? theme.brand : theme.subtle }]}>{item.label}</Text>
     </TouchableOpacity>
@@ -2384,7 +2467,11 @@ function SectionShell({ theme, title, action, children }: any) {
     <View style={[styles.sectionShell, { backgroundColor: theme.panel, borderColor: theme.border }]}>
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
-        {action ? <Text style={[styles.sectionAction, { color: theme.brand }]}>{action}</Text> : null}
+        {action ? (
+          <View style={[styles.sectionActionPill, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
+            <Text style={[styles.sectionAction, { color: theme.brand }]}>{action}</Text>
+          </View>
+        ) : null}
       </View>
       {children}
     </View>
@@ -2470,8 +2557,6 @@ function ActivityRow({ theme, icon, title, detail, time }: any) {
 function ContactActions({ theme, phone, email }: any) {
   const actions = [
     phone ? { key: "call", icon: "phone-call" as const, label: "Call", onPress: () => openDialer(phone) } : null,
-    phone ? { key: "whatsapp", icon: "message-circle" as const, label: "WhatsApp", onPress: () => openWhatsApp(phone) } : null,
-    email ? { key: "mail", icon: "mail" as const, label: "Email", onPress: () => openEmail(email) } : null,
   ].filter(Boolean) as Array<{ key: string; icon: any; label: string; onPress: () => void }>;
 
   if (!actions.length) return null;
@@ -2554,23 +2639,23 @@ function Avatar({ theme, name, small, large }: any) {
 
 function createTheme(isDark: boolean) {
   return {
-    bg: isDark ? "#0B1110" : "#F5F7F4",
-    panel: isDark ? "#121A18" : "#FFFFFF",
-    card: isDark ? "#17211E" : "#FFFFFF",
-    cardAlt: isDark ? "#1D2824" : "#F0F4EF",
-    sidebar: isDark ? "#0F1815" : "#FFFFFF",
-    text: isDark ? "#F3F7F1" : "#102018",
-    subtle: isDark ? "#AAB8B0" : "#5E6B63",
-    muted: isDark ? "#728077" : "#96A098",
-    border: isDark ? "#27352F" : "#DDE5DD",
-    brand: "#0B6B35",
-    brandAlt: "#C66A2E",
-    brandSoft: isDark ? "#113A28" : "#E5F5EB",
-    success: "#159A5B",
-    warning: "#D99B20",
-    danger: "#D94D45",
-    info: "#3478D6",
-    road: isDark ? "#26342F" : "#D9DED6",
+    bg: isDark ? "#08110F" : "#F4F7F3",
+    panel: isDark ? "#0F1916" : "#FFFFFF",
+    card: isDark ? "#121F1B" : "#FFFFFF",
+    cardAlt: isDark ? "#182622" : "#EEF4EF",
+    sidebar: isDark ? "#0B1411" : "#FFFFFF",
+    text: isDark ? "#F6FAF7" : "#0E1B16",
+    subtle: isDark ? "#9CADA5" : "#5B6A62",
+    muted: isDark ? "#6F8178" : "#8C988F",
+    border: isDark ? "#22312C" : "#D8E2DA",
+    brand: "#1FAA64",
+    brandAlt: "#E39A44",
+    brandSoft: isDark ? "#103826" : "#E3F5EA",
+    success: "#21B26B",
+    warning: "#E4A53B",
+    danger: "#DD5B54",
+    info: "#4D87FF",
+    road: isDark ? "#24312C" : "#D9DED6",
     roadText: isDark ? "#AAB8B0" : "#6B756E",
   };
 }
@@ -2610,11 +2695,55 @@ function nextPipelineActions(stage?: string) {
   return actions.slice(0, 2);
 }
 
+function formatDealStage(stage?: string) {
+  const value = String(stage || "new").toLowerCase();
+  const labels: Record<string, string> = {
+    new: "New Enquiry",
+    contacted: "Contacted",
+    qualified: "Qualified",
+    site_visit_scheduled: "Visit Scheduled",
+    site_visit_completed: "Visit Completed",
+    negotiation: "Negotiation",
+    booking_requested: "Booking Requested",
+    booked: "Booked",
+    closed_won: "Closed Won",
+    closed_lost: "Closed Lost",
+  };
+  return labels[value] || titleCase(value.replace(/_/g, " "));
+}
+
 function isDueDateOverdue(value?: string) {
   if (!value) return false;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
   return date.getTime() < Date.now();
+}
+
+function isDueDateToday(value?: string) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
+
+function formatOwnerName(value?: string) {
+  if (!value) return "Unassigned";
+  const normalized = String(value).replace(/[_-]+/g, " ").trim();
+  if (normalized.toLowerCase().includes("preview")) return "Preview Team";
+  return titleCase(normalized);
+}
+
+function formatReference(value?: string, prefix?: string) {
+  if (!value) return prefix ? `${prefix} pending` : "Pending";
+  const compactValue = String(value).trim();
+  if (!prefix) return compactValue;
+  if (compactValue.toLowerCase().startsWith(prefix.toLowerCase())) return compactValue;
+  return `${prefix}: ${compactValue}`;
 }
 
 function initials(name: string) {
@@ -2631,6 +2760,10 @@ function titleCase(value: string) {
     .split(" ")
     .map((word) => word ? word[0].toUpperCase() + word.slice(1) : "")
     .join(" ");
+}
+
+function normalizeFlag(value?: string) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function formatDate(value?: string) {
@@ -2663,7 +2796,7 @@ async function openEmail(email?: string) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  shell: { flex: 1, flexDirection: "row", backgroundColor: "#0C120F" },
+  shell: { flex: 1, flexDirection: "row" },
   workspace: { flex: 1, minWidth: 0 },
   pageGapSm: { gap: spacing.md },
   bookingModalSafe: { flex: 1 },
@@ -2673,9 +2806,9 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -2684,33 +2817,35 @@ const styles = StyleSheet.create({
   liveBannerText: { fontSize: 13, lineHeight: 18, fontWeight: "800", flex: 1 },
   liveBannerSubtle: { fontSize: 12, lineHeight: 16, fontWeight: "600" },
   sidebar: {
-    width: 300,
+    width: 288,
     borderRightWidth: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-    gap: spacing.lg,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 20,
   },
-  brandPanel: { borderWidth: 1, borderRadius: 20, padding: spacing.md, gap: spacing.md, ...shadow.sm },
+  sidebarScroll: { flex: 1 },
+  sidebarScrollContent: { flexGrow: 1, gap: 20 },
+  brandPanel: { borderWidth: 1, borderRadius: 24, padding: spacing.md, gap: spacing.md, ...shadow.md },
   brandBlock: { flexDirection: "row", alignItems: "center", gap: 12 },
-  brandLogo: { width: 52, height: 52, borderRadius: 16 },
-  brandName: { fontSize: 24, lineHeight: 28, fontWeight: "900", letterSpacing: 0 },
+  brandLogo: { width: 56, height: 56, borderRadius: 18 },
+  brandName: { fontSize: 18, lineHeight: 23, fontWeight: "900", letterSpacing: 0 },
   brandSub: { fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0 },
-  desktopBadge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
+  desktopBadge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   desktopBadgeText: { fontSize: 11, lineHeight: 14, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" },
   agentMiniCard: { flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderRadius: 20, padding: spacing.md },
   agentMiniName: { fontSize: 14, lineHeight: 18, fontWeight: "700", letterSpacing: 0 },
   agentMiniRole: { fontSize: 12, lineHeight: 16, letterSpacing: 0 },
   agentMiniMeta: { fontSize: 11, lineHeight: 15, fontWeight: "600", marginTop: 3 },
   navStack: { gap: spacing.md, flex: 1 },
-  navGroup: { gap: 8 },
+  navGroup: { gap: 10 },
   navGroupLabel: { fontSize: 11, lineHeight: 14, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase", paddingHorizontal: 12 },
-  navButton: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: "transparent" },
-  navButtonActive: { ...shadow.sm },
+  navButton: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, borderColor: "transparent" },
+  navButtonActive: { ...shadow.md },
   navButtonText: { fontSize: 14, lineHeight: 18, fontWeight: "700", letterSpacing: 0 },
   logoutButton: { flexDirection: "row", gap: 10, alignItems: "center", borderTopWidth: 1, paddingTop: spacing.md },
   logoutText: { fontSize: 14, lineHeight: 18, fontWeight: "700", letterSpacing: 0 },
   topBar: {
-    minHeight: 94,
+    minHeight: 92,
     borderBottomWidth: 1,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
@@ -2719,60 +2854,80 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  topBarMobile: {
+    minHeight: 0,
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    flexDirection: "column",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  topBarMobileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   topLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md, minWidth: 0 },
   pageCopy: { flex: 1, gap: 4, minWidth: 0 },
+  pageCopyMobile: { gap: 6 },
   pageEyebrow: { fontSize: 11, lineHeight: 14, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" },
   topActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  desktopStatusChip: { minHeight: 40, borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 8 },
+  desktopStatusChip: { minHeight: 42, borderRadius: 999, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 8 },
   desktopStatusChipText: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  iconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  pageTitle: { fontSize: 32, lineHeight: 38, fontWeight: "900", letterSpacing: -0.4 },
-  pageSubtitle: { fontSize: 13, lineHeight: 18, letterSpacing: 0 },
-  profileChip: { flexDirection: "row", alignItems: "center", gap: 10, maxWidth: 240, minHeight: 48, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1 },
+  iconButton: { width: 44, height: 44, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  iconButtonMobile: { width: 40, height: 40, borderRadius: 12 },
+  pageTitle: { fontSize: 26, lineHeight: 32, fontWeight: "900", letterSpacing: 0 },
+  pageTitleMobile: { fontSize: 20, lineHeight: 26 },
+  pageSubtitle: { fontSize: 14, lineHeight: 20, letterSpacing: 0 },
+  pageSubtitleMobile: { fontSize: 13, lineHeight: 19, maxWidth: 320 },
+  profileChip: { flexDirection: "row", alignItems: "center", gap: 10, maxWidth: 260, minHeight: 52, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1 },
   profileChipText: { fontSize: 13, lineHeight: 18, fontWeight: "700", letterSpacing: 0 },
   profileChipSubtext: { fontSize: 11, lineHeight: 14, fontWeight: "600" },
   contentScroll: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg },
-  contentDesktop: { width: "100%", maxWidth: 1560, alignSelf: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
-  contentMobile: { padding: spacing.md },
+  contentDesktop: { width: "100%", maxWidth: 1480, alignSelf: "center", paddingHorizontal: 28, paddingTop: 28 },
+  contentMobile: { padding: 14 },
   pageGap: { gap: spacing.lg },
   spotlightHero: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: spacing.lg,
+    borderRadius: 28,
+    padding: 24,
     gap: spacing.lg,
-    ...shadow.sm,
+    ...shadow.md,
   },
+  spotlightHeroCompact: { padding: 18, gap: spacing.md },
   spotlightCopy: { gap: spacing.sm },
-  spotlightEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.1 },
-  spotlightTitle: { fontSize: 28, lineHeight: 34, fontWeight: "900", maxWidth: 680 },
-  spotlightSubtitle: { fontSize: 14, lineHeight: 22, maxWidth: 680 },
+  spotlightEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.3 },
+  spotlightTitle: { fontSize: 30, lineHeight: 36, fontWeight: "900", maxWidth: 760 },
+  spotlightTitleCompact: { fontSize: 18, lineHeight: 24 },
+  spotlightSubtitle: { fontSize: 15, lineHeight: 23, maxWidth: 700 },
   spotlightStats: { flexDirection: "row", gap: spacing.md, flexWrap: "wrap" },
-  spotlightStatCard: { minWidth: 180, borderRadius: 18, padding: spacing.md, gap: 6 },
-  spotlightStatValue: { fontSize: 28, lineHeight: 34, fontWeight: "900" },
+  spotlightStatCard: { flexGrow: 1, flexBasis: 220, minWidth: 180, borderRadius: 22, padding: spacing.md, gap: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.04)" },
+  spotlightStatValue: { fontSize: 26, lineHeight: 32, fontWeight: "900" },
   spotlightStatLabel: { fontSize: 12, lineHeight: 16, fontWeight: "700" },
   kpiGrid: { gap: spacing.md },
   kpiGridTablet: { flexDirection: "row", flexWrap: "wrap" },
-  metricCard: { flexGrow: 1, flexBasis: 180, minWidth: 160, borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: 10, ...shadow.sm },
-  metricIcon: { width: 38, height: 38, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  metricCard: { flexGrow: 1, flexBasis: 220, minWidth: 170, borderWidth: 1, borderRadius: 22, padding: 20, gap: 12, ...shadow.sm },
+  metricIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   metricValue: { fontSize: 23, lineHeight: 28, fontWeight: "800", letterSpacing: 0 },
   metricLabel: { fontSize: 12, lineHeight: 16, fontWeight: "700", letterSpacing: 0 },
   twoColumn: { gap: spacing.lg },
   twoColumnWide: { flexDirection: "row", alignItems: "flex-start" },
-  sectionShell: { flex: 1, borderWidth: 1, borderRadius: 22, padding: spacing.lg, gap: spacing.md, ...shadow.md },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingBottom: spacing.sm, marginBottom: spacing.xs, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
-  sectionTitle: { fontSize: 20, lineHeight: 26, fontWeight: "900", letterSpacing: -0.2 },
+  sectionShell: { flex: 1, borderWidth: 1, borderRadius: 24, padding: 22, gap: spacing.md, ...shadow.md },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingBottom: spacing.md, marginBottom: spacing.xs, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.05)" },
+  sectionTitle: { fontSize: 18, lineHeight: 24, fontWeight: "900", letterSpacing: 0 },
+  sectionActionPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   sectionAction: { fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0 },
   propertyGrid: { gap: spacing.md },
   propertyGridWide: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  propertyCard: { flexBasis: 260, flexGrow: 1, borderWidth: 1, borderRadius: 8, overflow: "hidden", ...shadow.sm },
+  propertyCard: { flexBasis: 300, flexGrow: 1, borderWidth: 1, borderRadius: 18, overflow: "hidden", ...shadow.sm },
   propertyCardCompact: { flexDirection: "row", minHeight: 150 },
   propertyImage: { height: 150, width: "100%" },
   propertyImageCompact: { width: 150, height: "100%" },
   propertyBody: { padding: spacing.md, gap: spacing.sm, flex: 1 },
   cardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.sm },
-  cardTitle: { fontSize: 14, lineHeight: 19, fontWeight: "800", letterSpacing: 0 },
-  cardMeta: { fontSize: 12, lineHeight: 17, letterSpacing: 0 },
+  cardTitle: { fontSize: 14, lineHeight: 20, fontWeight: "800", letterSpacing: 0 },
+  cardMeta: { fontSize: 12, lineHeight: 18, letterSpacing: 0 },
   priceText: { fontSize: 18, lineHeight: 24, fontWeight: "800", letterSpacing: 0 },
   cardStats: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   miniStat: { flex: 1, minWidth: 76, borderRadius: 8, padding: spacing.sm },
@@ -2780,7 +2935,7 @@ const styles = StyleSheet.create({
   miniStatLabel: { fontSize: 10, lineHeight: 14, fontWeight: "700", letterSpacing: 0 },
   actionRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" },
   pipelineBoard: { gap: spacing.lg, alignItems: "flex-start", paddingBottom: spacing.sm },
-  pipelineColumn: { width: 360, minHeight: 480, borderWidth: 1, borderRadius: 22, padding: spacing.md, gap: spacing.md, ...shadow.sm },
+  pipelineColumn: { width: 336, minHeight: 420, borderWidth: 1, borderRadius: 22, padding: spacing.md, gap: spacing.md, ...shadow.sm },
   pipelineColumnHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1 },
   pipelineColumnTitle: { fontSize: 16, lineHeight: 21, fontWeight: "900" },
   pipelineStageCount: { minWidth: 32, height: 32, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
@@ -2802,24 +2957,24 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   telecomButtonText: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
-  toolbar: { borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.md, flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  toolbar: { borderWidth: 1, borderRadius: 20, padding: spacing.md, gap: spacing.md, flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
   toolbarActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
-  searchBox: { flex: 1, minWidth: 220, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderRadius: 8, paddingHorizontal: spacing.md, minHeight: 44 },
+  searchBox: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderRadius: 16, paddingHorizontal: spacing.md, minHeight: 48 },
   searchInput: { flex: 1, fontSize: 14, lineHeight: 18, letterSpacing: 0 },
   segmentButton: { width: 40, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   filterRow: { gap: spacing.sm, alignItems: "center" },
   filterPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: 9 },
   filterText: { fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0 },
   listStack: { gap: spacing.md },
-  layoutPanel: { borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.md, minHeight: 430 },
-  plotBoard: { width: 600, padding: spacing.md, gap: spacing.md },
+  layoutPanel: { borderWidth: 1, borderRadius: 20, padding: spacing.md, gap: spacing.md, minHeight: 430 },
+  plotBoard: { width: 560, padding: spacing.md, gap: spacing.md },
   road: { height: 42, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   roadText: { fontSize: 11, lineHeight: 14, fontWeight: "800", letterSpacing: 0 },
   plotGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   plotCell: { width: 86, height: 72, borderWidth: 1.5, borderRadius: 6, padding: 7, justifyContent: "space-between" },
   plotNo: { fontSize: 13, lineHeight: 17, fontWeight: "900", letterSpacing: 0 },
   plotSize: { fontSize: 10, lineHeight: 13, fontWeight: "700", letterSpacing: 0 },
-  emptyPanel: { borderWidth: 1, borderRadius: 8, padding: spacing.lg, alignItems: "center" },
+  emptyPanel: { borderWidth: 1, borderRadius: 16, padding: spacing.lg, alignItems: "center" },
   workflowSteps: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   workflowStep: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: spacing.sm },
   stepDot: { width: 28, height: 28, borderRadius: 999, alignItems: "center", justifyContent: "center" },
@@ -2827,12 +2982,12 @@ const styles = StyleSheet.create({
   stepText: { fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0 },
   bookingWorkflow: { gap: spacing.md },
   bookingWorkflowWide: { flexDirection: "row", alignItems: "stretch" },
-  workflowPanel: { flex: 1.4, borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.md },
-  reviewPanel: { flex: 1, borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.md },
-  customerRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center", borderWidth: 1, borderRadius: 8, padding: spacing.sm },
+  workflowPanel: { flex: 1.4, borderWidth: 1, borderRadius: 20, padding: spacing.md, gap: spacing.md },
+  reviewPanel: { flex: 1, borderWidth: 1, borderRadius: 20, padding: spacing.md, gap: spacing.md },
+  customerRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center", borderWidth: 1, borderRadius: 16, padding: spacing.sm },
   formGrid: { gap: spacing.sm },
   formField: { gap: 6 },
-  formInput: { minHeight: 44, borderWidth: 1, borderRadius: 8, paddingHorizontal: spacing.md, fontSize: 14, lineHeight: 18, letterSpacing: 0 },
+  formInput: { minHeight: 52, borderWidth: 1, borderRadius: 16, paddingHorizontal: spacing.md, fontSize: 15, lineHeight: 20, letterSpacing: 0 },
   statusSelector: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   radio: { width: 18, height: 18, borderRadius: 999, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
   radioDot: { width: 9, height: 9, borderRadius: 999 },
@@ -2865,31 +3020,31 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     ...shadow.lg,
   },
-  table: { minWidth: 920, borderWidth: 1, borderRadius: 8, overflow: "hidden" },
+  table: { minWidth: 920, borderWidth: 1, borderRadius: 18, overflow: "hidden" },
   tableRow: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1, minHeight: 54 },
   tableHeaderRow: { minHeight: 42 },
   tableHeaderCell: { width: 128, paddingHorizontal: spacing.sm, fontSize: 11, lineHeight: 14, fontWeight: "900", letterSpacing: 0 },
   tableCell: { width: 128, paddingHorizontal: spacing.sm, fontSize: 12, lineHeight: 16, fontWeight: "700", letterSpacing: 0 },
   tableActionCell: { width: 128, paddingHorizontal: spacing.sm },
-  visitCard: { borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.md },
+  visitCard: { borderWidth: 1, borderRadius: 20, padding: spacing.md, gap: spacing.md, ...shadow.sm },
   infoGrid: { gap: spacing.sm },
   infoCardWithAction: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: spacing.sm },
   infoLine: { gap: 2 },
-  infoLabel: { fontSize: 10, lineHeight: 13, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0 },
-  infoValue: { fontSize: 13, lineHeight: 18, fontWeight: "700", letterSpacing: 0 },
+  infoLabel: { fontSize: 11, lineHeight: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.6 },
+  infoValue: { fontSize: 14, lineHeight: 20, fontWeight: "700", letterSpacing: 0 },
   timeline: { gap: spacing.sm },
   timelineItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   timelineDot: { width: 9, height: 9, borderRadius: 999 },
   timelineText: { fontSize: 12, lineHeight: 16, fontWeight: "700", letterSpacing: 0 },
   agentGrid: { gap: spacing.md },
   agentGridWide: { flexDirection: "row", flexWrap: "wrap" },
-  agentCard: { flexBasis: 300, flexGrow: 1, borderWidth: 1, borderRadius: 8, padding: spacing.md, gap: spacing.md, ...shadow.sm },
+  agentCard: { flexBasis: 300, flexGrow: 1, borderWidth: 1, borderRadius: 16, padding: spacing.md, gap: spacing.md, ...shadow.sm },
   agentIdentity: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
   agentStats: { flexDirection: "row", gap: spacing.sm },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  notificationRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 1, borderRadius: 8, padding: spacing.md },
+  notificationRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 1, borderRadius: 20, padding: spacing.md },
   notificationIcon: { width: 42, height: 42, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  profileHero: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 1, borderRadius: 8, padding: spacing.md, flexWrap: "wrap" },
+  profileHero: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 1, borderRadius: 22, padding: spacing.md, flexWrap: "wrap" },
   profileName: { fontSize: 24, lineHeight: 30, fontWeight: "900", letterSpacing: 0 },
   profileDetails: { gap: spacing.md },
   statusPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
@@ -2902,22 +3057,23 @@ const styles = StyleSheet.create({
   drawerHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md },
   drawerTitle: { fontSize: 21, lineHeight: 27, fontWeight: "900", letterSpacing: 0 },
   drawerBody: { gap: spacing.md, paddingBottom: spacing.lg },
-  drawerMedia: { width: "100%", height: 180, borderRadius: 8, overflow: "hidden" },
+  drawerMedia: { width: "100%", height: 196, borderRadius: 16, overflow: "hidden" },
   drawerActions: { gap: spacing.sm },
   sectionMini: { borderTopWidth: 1, paddingTop: spacing.md, gap: spacing.sm },
-  mobileSheet: { width: "86%", maxWidth: 360, padding: spacing.lg, gap: spacing.lg },
+  mobileSheet: { width: "86%", maxWidth: 336, padding: spacing.lg, gap: spacing.lg },
+  mobileSheetContent: { gap: spacing.lg, paddingBottom: spacing.lg },
   bottomNav: {
     position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 10,
-    minHeight: 66,
+    left: 12,
+    right: 12,
+    bottom: 12,
+    minHeight: 68,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     ...shadow.lg,
   },
   bottomNavItem: { alignItems: "center", justifyContent: "center", gap: 4, flex: 1, minWidth: 0 },
@@ -2929,3 +3085,4 @@ const styles = StyleSheet.create({
   emptyTitleSmall: { fontSize: 15, lineHeight: 20, fontWeight: "900", letterSpacing: 0, textAlign: "center" },
   emptyText: { fontSize: 14, lineHeight: 20, textAlign: "center", letterSpacing: 0 },
 });
+

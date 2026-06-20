@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { api, clearToken, getToken, setToken } from "@/src/api";
+import { api, clearToken, getToken, setToken, warmBackendReady } from "@/src/api";
 import { storage } from "@/src/utils/storage";
 
 type User = {
@@ -38,12 +38,25 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const USER_CACHE_KEY = "rivan_user_cache";
 
+function isTemporaryBackendError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || "").toLowerCase();
+  return (
+    message.includes("unable to reach the rivan backend") ||
+    message.includes("temporary_backend_unavailable") ||
+    message.includes("failed to fetch") ||
+    message.includes("network request failed") ||
+    message.includes("abort")
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   async function load() {
+    let usedCachedUser = false;
     try {
+      warmBackendReady();
       const token = await getToken();
       if (!token) {
         setUser(null);
@@ -54,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const cachedUser = JSON.parse(cachedUserRaw) as User;
           setUser(cachedUser);
+          usedCachedUser = true;
           setIsLoading(false);
         } catch {
           // ignore malformed cache and continue with live fetch
@@ -62,7 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = await api.me();
       setUser(u as User);
       await storage.secureSet(USER_CACHE_KEY, JSON.stringify(u));
-    } catch (_e) {
+    } catch (error) {
+      if (usedCachedUser && isTemporaryBackendError(error)) {
+        return;
+      }
       await clearToken();
       await storage.secureRemove(USER_CACHE_KEY);
       setUser(null);

@@ -14,9 +14,7 @@ export default function AgentLoginScreen() {
   const { signIn } = useAuth();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
-  const isHostedWebPreview =
-    typeof window !== "undefined" &&
-    ["rivan-auth-live.web.app", "rivan-auth-live.firebaseapp.com"].includes(window.location.hostname);
+  const isHostedWebPreview = normalizeFlag(process.env.EXPO_PUBLIC_ENABLE_AGENT_PREVIEW) === "true";
   const [email, setEmail] = useState("agent@rivaan.com");
   const [password, setPassword] = useState("Agent@123");
   const [loading, setLoading] = useState(false);
@@ -160,6 +158,10 @@ export default function AgentLoginScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function normalizeFlag(value?: string) {
+  return String(value || "").trim().toLowerCase();
 }
 
 const styles = StyleSheet.create({

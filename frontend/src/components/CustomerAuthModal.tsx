@@ -1,0 +1,721 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import * as AuthSession from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
+import Constants from "expo-constants";
+
+import { Button } from "@/src/components/Button";
+import { useAuth } from "@/src/auth-context";
+import { api, warmBackendReady } from "@/src/api";
+import {
+  firebaseConfigError,
+  getFirebaseAuth,
+  getFirebasePhoneAuthHelpers,
+  hasFirebaseConfig,
+} from "@/src/firebase";
+import { colors, radii, spacing, typography } from "@/src/theme";
+
+type AuthTab = "phone" | "google";
+
+type Props = {
+  visible: boolean;
+  initialTab?: AuthTab;
+  mode?: "login" | "signup";
+  onClose: () => void;
+  onSuccess?: () => void;
+};
+
+const AUTH_TABS: { key: AuthTab; label: string }[] = [
+  { key: "phone", label: "Phone OTP" },
+  { key: "google", label: "Google" },
+];
+
+const WEB_RECAPTCHA_CONTAINER_ID_PREFIX = "customer-auth-recaptcha";
+
+function normalizePublicEnv(value?: string) {
+  return (value || "").trim().replace(/^['"]|['"]$/g, "");
+}
+
+export default function CustomerAuthModal({
+  visible,
+  initialTab = "phone",
+  mode = "login",
+  onClose,
+  onSuccess,
+}: Props) {
+  const { signIn } = useAuth();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 980;
+  const [activeTab, setActiveTab] = useState<AuthTab>(initialTab);
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneName, setPhoneName] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpSentToPhone, setOtpSentToPhone] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [otpCooldownSeconds, setOtpCooldownSeconds] = useState(0);
+  const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const [recaptchaSolved, setRecaptchaSolved] = useState(false);
+
+  const otpRefs = useRef<(TextInput | null)[]>([]);
+  const confirmationResultRef = useRef<any>(null);
+  const recaptchaVerifierRef = useRef<any>(null);
+  const recaptchaNodeIdRef = useRef<string | null>(null);
+  const recaptchaNodeCounterRef = useRef(0);
+
+  const googleWebClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+  const googleAndroidClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID);
+  const googleIosClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
+  const isExpoGo = Constants.appOwnership === "expo";
+  const isLocalhostWeb =
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const isHostedWeb =
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const googleRedirectUri =
+    normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI) ||
+    (Platform.OS === "web"
+      ? isHostedWeb && typeof window !== "undefined"
+        ? `${window.location.origin}/login`
+        : ""
+      : AuthSession.makeRedirectUri({
+          native: "frontend://google-auth",
+          scheme: "frontend",
+          path: "google-auth",
+        }));
+  const phoneDigits = useMemo(() => phone.replace(/\D/g, "").slice(-10), [phone]);
+  const validOtp = otp.every((digit) => digit.length === 1);
+  const useFirebaseTestPhoneAuth =
+    isLocalhostWeb && normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_USE_TEST_PHONE_AUTH) === "true";
+
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
+    webClientId: googleWebClientId,
+    iosClientId: googleIosClientId || undefined,
+    androidClientId: googleAndroidClientId || undefined,
+    redirectUri: googleRedirectUri || undefined,
+    scopes: ["openid", "profile", "email"],
+    selectAccount: true,
+  });
+
+  useEffect(() => {
+    if (!visible) return;
+    warmBackendReady();
+  }, [visible]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const runGoogleAuth = async () => {
+      if (!googleResponse) return;
+
+      if (googleResponse.type !== "success") {
+        if (googleResponse.type !== "dismiss") {
+          setErrorMessage(formatGoogleLoginError((googleResponse as any)?.error, googleRedirectUri, isLocalhostWeb));
+        }
+        setGoogleLoading(false);
+        return;
+      }
+
+      const result: any = googleResponse;
+      const idToken = result.params?.id_token || result.authentication?.idToken;
+      if (!idToken) {
+        setGoogleLoading(false);
+        setErrorMessage("Google did not return a valid identity token.");
+        return;
+      }
+
+      try {
+        const session = await api.googleAuth(idToken);
+        await signIn(session.access_token, session.user);
+        handleSuccess();
+      } catch (error: any) {
+        setErrorMessage(error?.message || "Google sign-in failed");
+      } finally {
+        setGoogleLoading(false);
+      }
+    };
+
+    void runGoogleAuth();
+  }, [googleRedirectUri, googleResponse, isLocalhostWeb, signIn, visible]);
+
+  useEffect(() => {
+    if (otpCooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCooldownSeconds((current) => (current > 0 ? current - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpCooldownSeconds]);
+
+  useEffect(() => {
+    if (!visible) return;
+    return () => {
+      cleanupWebRecaptchaArtifacts();
+    };
+  }, [visible]);
+
+  function handleSuccess() {
+    resetTransientState(activeTab);
+    onSuccess?.();
+    onClose();
+  }
+
+  function resetTransientState(nextTab: AuthTab) {
+    setActiveTab(nextTab);
+    setErrorMessage("");
+    setLoading(false);
+    setGoogleLoading(false);
+    setOtpSent(false);
+    setOtpSentToPhone("");
+    setOtp(["", "", "", "", "", ""]);
+    confirmationResultRef.current = null;
+  }
+
+  function cleanupWebRecaptchaArtifacts() {
+    setRecaptchaReady(false);
+    setRecaptchaSolved(false);
+
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear();
+      } catch {}
+      recaptchaVerifierRef.current = null;
+    }
+
+    if (typeof document !== "undefined" && recaptchaNodeIdRef.current) {
+      const existingNode = document.getElementById(recaptchaNodeIdRef.current);
+      if (existingNode?.parentNode) {
+        existingNode.parentNode.removeChild(existingNode);
+      }
+      recaptchaNodeIdRef.current = null;
+    }
+  }
+
+  function ensureWebRecaptchaHost() {
+    if (typeof document === "undefined") {
+      throw new Error("Web verification is unavailable outside the browser.");
+    }
+
+    recaptchaNodeCounterRef.current += 1;
+    const nodeId = `${WEB_RECAPTCHA_CONTAINER_ID_PREFIX}-${recaptchaNodeCounterRef.current}`;
+    const host = document.createElement("div");
+    host.id = nodeId;
+    host.style.position = "fixed";
+    host.style.right = "24px";
+    host.style.bottom = "24px";
+    host.style.width = "304px";
+    host.style.height = "78px";
+    host.style.zIndex = "2147483647";
+    host.style.background = "rgba(255,255,255,0.98)";
+    host.style.borderRadius = "16px";
+    host.style.padding = "8px";
+    host.style.boxShadow = "0 10px 30px rgba(0,0,0,0.18)";
+    document.body.appendChild(host);
+    recaptchaNodeIdRef.current = nodeId;
+    return nodeId;
+  }
+
+  async function getFreshWebRecaptchaVerifier() {
+    const auth = await getFirebaseAuth();
+    const { RecaptchaVerifier } = await getFirebasePhoneAuthHelpers();
+    auth.languageCode = "en";
+    auth.settings.appVerificationDisabledForTesting = useFirebaseTestPhoneAuth;
+
+    cleanupWebRecaptchaArtifacts();
+    const nodeId = ensureWebRecaptchaHost();
+
+    recaptchaVerifierRef.current = new RecaptchaVerifier(auth, nodeId, {
+      size: isLocalhostWeb ? "normal" : "invisible",
+      callback: () => setRecaptchaSolved(true),
+      "expired-callback": () => setRecaptchaSolved(false),
+    });
+
+    await recaptchaVerifierRef.current.render();
+    setRecaptchaReady(true);
+    return recaptchaVerifierRef.current;
+  }
+
+  async function handleSendOtp() {
+    setErrorMessage("");
+    if (!hasFirebaseConfig) {
+      return showFormError(firebaseConfigError || "Firebase web configuration is missing.");
+    }
+    if (phoneDigits.length !== 10) return showFormError("Please enter a valid 10-digit mobile number.");
+    if (otpCooldownSeconds > 0) return showFormError(`Please wait ${otpCooldownSeconds}s before requesting another OTP.`);
+
+    setLoading(true);
+    try {
+      if (Platform.OS !== "web") {
+        return showFormError("Firebase phone OTP is currently supported on web in this build.");
+      }
+      if (isLocalhostWeb && !useFirebaseTestPhoneAuth) {
+        return showFormError("Use the hosted site for real OTP. On localhost, use Firebase test phone numbers only.");
+      }
+
+      let verifier = recaptchaVerifierRef.current;
+      if (!verifier) {
+        verifier = await getFreshWebRecaptchaVerifier();
+      }
+      if (useFirebaseTestPhoneAuth && (!recaptchaReady || !recaptchaSolved)) {
+        return showFormError("Complete the reCAPTCHA verification first.");
+      }
+
+      const auth = await getFirebaseAuth();
+      const { signInWithPhoneNumber } = await getFirebasePhoneAuthHelpers();
+      confirmationResultRef.current = await signInWithPhoneNumber(auth, `+91${phoneDigits}`, verifier);
+      setOtpSent(true);
+      setOtpSentToPhone(`+91${phoneDigits}`);
+      setOtpCooldownSeconds(45);
+      setTimeout(() => otpRefs.current[0]?.focus(), 80);
+    } catch (error: any) {
+      setOtpSent(false);
+      setOtp(["", "", "", "", "", ""]);
+      showFormError(formatPhoneOtpError(error, isLocalhostWeb, useFirebaseTestPhoneAuth, setOtpCooldownSeconds));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    setErrorMessage("");
+    if (!validOtp) return showFormError("Please enter the 6-digit OTP.");
+
+    setLoading(true);
+    try {
+      const credential = await confirmationResultRef.current.confirm(otp.join(""));
+      const { getIdToken } = await getFirebasePhoneAuthHelpers();
+      const idToken = await getIdToken(credential.user, true);
+      const session = await api.firebaseAuth(idToken, `+91${phoneDigits}`, phoneName.trim() || undefined);
+      await signIn(session.access_token, session.user);
+      handleSuccess();
+    } catch (error: any) {
+      showFormError(formatPhoneOtpError(error, isLocalhostWeb, useFirebaseTestPhoneAuth, setOtpCooldownSeconds));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleLogin() {
+    setErrorMessage("");
+    if (!hasFirebaseConfig) {
+      return showFormError(firebaseConfigError || "Firebase web configuration is missing.");
+    }
+    if (!googleWebClientId) {
+      return showFormError("Google client ID is missing from the app configuration.");
+    }
+    if (Platform.OS === "web" && isLocalhostWeb) {
+      return showFormError("Google sign-in should be tested on the hosted HTTPS site, not localhost.");
+    }
+    if (isExpoGo) {
+      return showFormError("Google sign-in is not supported in Expo Go for this flow.");
+    }
+
+    setGoogleLoading(true);
+    try {
+      const result = await promptGoogleAsync();
+      if (result.type !== "success" && result.type !== "dismiss") {
+        setErrorMessage("Google sign-in was cancelled or could not be completed.");
+      }
+      if (result.type !== "success") {
+        setGoogleLoading(false);
+      }
+    } catch (error: any) {
+      setGoogleLoading(false);
+      showFormError(formatGoogleLoginError(error?.message || error, googleRedirectUri, isLocalhostWeb));
+    }
+  }
+
+  function handleOtpChange(index: number, value: string) {
+    const clean = value.replace(/\D/g, "").slice(0, 1);
+    const next = [...otp];
+    next[index] = clean;
+    setOtp(next);
+    if (clean && index < 5) otpRefs.current[index + 1]?.focus();
+    if (!clean && index > 0) otpRefs.current[index - 1]?.focus();
+  }
+
+  function showFormError(message: string) {
+    setErrorMessage(message);
+    Alert.alert("Authentication", message);
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.root}>
+        <View style={[styles.backdrop, Platform.OS === "web" ? ({ backdropFilter: "blur(16px)" } as any) : null]} />
+        <View style={styles.centerWrap}>
+          <View style={[styles.card, isWide && styles.cardWide]}>
+            <View style={[styles.brandPanel, isWide && styles.brandPanelWide]}>
+              <Text style={styles.brandEyebrow}>Rivan Customer Access</Text>
+              <Text style={styles.brandTitle}>
+                {mode === "signup" ? "Create your account without leaving the app." : "Login without leaving the property experience."}
+              </Text>
+              <Text style={styles.brandText}>
+                The homepage stays visible in the background while you sign in to save, book, view availability,
+                and continue your property journey smoothly.
+              </Text>
+              <View style={styles.brandPoints}>
+                <View style={styles.brandPoint}>
+                  <Feather name="map-pin" size={16} color={colors.accentLight} />
+                  <Text style={styles.brandPointText}>Browse projects first, unlock details only when needed</Text>
+                </View>
+                <View style={styles.brandPoint}>
+                  <Feather name="shield" size={16} color={colors.accentLight} />
+                  <Text style={styles.brandPointText}>Secure OTP and Google sign-in from the same screen</Text>
+                </View>
+                <View style={styles.brandPoint}>
+                  <Feather name="bookmark" size={16} color={colors.accentLight} />
+                  <Text style={styles.brandPointText}>Continue straight into saved actions after authentication</Text>
+                </View>
+              </View>
+            </View>
+
+            <ScrollView
+              style={styles.formPanel}
+              contentContainerStyle={styles.cardContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.cardTop}>
+                <View style={styles.headings}>
+                  <Text style={styles.eyebrow}>{mode === "signup" ? "Create account" : "Customer login"}</Text>
+                  <Text style={styles.title}>{mode === "signup" ? "Sign up to continue" : "Login to continue"}</Text>
+                  <Text style={styles.subtitle}>
+                    Continue browsing in the background while you sign in to save, book, and view availability details.
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.closeButton} onPress={onClose} testID="auth-modal-close">
+                  <Feather name="x" size={18} color={colors.stone700} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.tabRow}>
+                {AUTH_TABS.map((tab) => (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.tabPill, activeTab === tab.key && styles.tabPillActive]}
+                    onPress={() => resetTransientState(tab.key)}
+                  >
+                    <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {errorMessage ? (
+                <View style={styles.errorBanner}>
+                  <Feather name="alert-circle" size={14} color={colors.danger} />
+                  <Text style={styles.errorBannerText}>{errorMessage}</Text>
+                </View>
+              ) : null}
+
+              {activeTab === "phone" ? (
+                <View style={styles.section}>
+                  <InputField
+                    label="Phone Number"
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    placeholder="Enter 10-digit mobile number"
+                    leftAdornment={<Text style={styles.phonePrefix}>+91</Text>}
+                  />
+                  <InputField
+                    label="Name"
+                    value={phoneName}
+                    onChangeText={setPhoneName}
+                    autoCapitalize="words"
+                    placeholder="Rajesh Kumar"
+                  />
+                  {isLocalhostWeb && !otpSent ? (
+                    <Text style={styles.recaptchaHint}>
+                      {useFirebaseTestPhoneAuth
+                        ? recaptchaReady
+                          ? recaptchaSolved
+                            ? "Verification complete. You can send OTP now."
+                            : "Complete the reCAPTCHA box shown at the bottom-right."
+                          : "Loading verification..."
+                        : "Use the hosted site for real OTPs. On localhost, use Firebase test phone numbers only."}
+                    </Text>
+                  ) : null}
+
+                  {otpSent ? (
+                    <>
+                      <Text style={styles.otpLabel}>Enter OTP sent to {otpSentToPhone}</Text>
+                      <View style={styles.otpRow}>
+                        {otp.map((digit, index) => (
+                          <TextInput
+                            key={index}
+                            ref={(input) => {
+                              otpRefs.current[index] = input;
+                            }}
+                            style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
+                            keyboardType="number-pad"
+                            maxLength={1}
+                            value={digit}
+                            onChangeText={(text) => handleOtpChange(index, text)}
+                          />
+                        ))}
+                      </View>
+                      <Button title="Verify OTP" onPress={handleVerifyOtp} loading={loading} />
+                      <TouchableOpacity onPress={handleSendOtp} disabled={otpCooldownSeconds > 0 || loading} style={styles.resend}>
+                        <Text style={styles.resendText}>
+                          {otpCooldownSeconds > 0 ? `Resend in ${otpCooldownSeconds}s` : "Resend OTP"}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <Button
+                      title={mode === "signup" ? "Create with OTP" : "Send OTP"}
+                      onPress={handleSendOtp}
+                      loading={loading}
+                      disabled={otpCooldownSeconds > 0 || (useFirebaseTestPhoneAuth && (!recaptchaReady || !recaptchaSolved))}
+                    />
+                  )}
+                </View>
+              ) : null}
+
+              {activeTab === "google" ? (
+                <View style={styles.section}>
+                  <View style={styles.infoCard}>
+                    <Feather name="globe" size={18} color={colors.primary} />
+                    <Text style={styles.infoText}>
+                      Use your Google account to continue with saved activity, property preferences, and customer actions.
+                    </Text>
+                  </View>
+                  <Button
+                    title={mode === "signup" ? "Sign up with Google" : "Continue with Google"}
+                    onPress={handleGoogleLogin}
+                    loading={googleLoading}
+                    disabled={!googleRequest || isExpoGo || (Platform.OS === "web" && isLocalhostWeb)}
+                    icon={<Feather name="chrome" size={16} color={colors.white} />}
+                  />
+                </View>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function InputField({
+  label,
+  leftAdornment,
+  style,
+  ...props
+}: TextInputProps & { label: string; leftAdornment?: React.ReactNode }) {
+  return (
+    <View style={styles.inputBlock}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.inputShell, leftAdornment ? styles.inputShellWithAdornment : null]}>
+        {leftAdornment ? <View style={styles.inputAdornment}>{leftAdornment}</View> : null}
+        <TextInput
+          {...props}
+          style={[styles.input, leftAdornment ? styles.inputWithAdornment : null, style]}
+          placeholderTextColor={colors.stone400}
+        />
+      </View>
+    </View>
+  );
+}
+
+function formatGoogleLoginError(error: any, redirectUri: string, isLocalhostWeb: boolean) {
+  const message = String(error || "");
+  const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes("redirect_uri_mismatch")) {
+    return `Google rejected the redirect URI. Add this exact URI to the Google OAuth web client: ${redirectUri}`;
+  }
+  if (lowerMessage.includes("invalid_request") || lowerMessage.includes("loopback flow")) {
+    return isLocalhostWeb
+      ? "Google blocked localhost sign-in for this OAuth flow. Use the hosted HTTPS web app."
+      : "Google rejected this OAuth request. Verify the hosted redirect URI configuration.";
+  }
+  return message || "Google sign-in could not be completed.";
+}
+
+function formatPhoneOtpError(
+  error: any,
+  isLocalhostWeb: boolean,
+  useFirebaseTestPhoneAuth: boolean,
+  setOtpCooldownSeconds: React.Dispatch<React.SetStateAction<number>>
+) {
+  const message = String(error?.message || error || "");
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes("captcha") || lowerMessage.includes("app verification")) {
+    return useFirebaseTestPhoneAuth
+      ? "Complete the reCAPTCHA box first, then try again."
+      : "Phone verification could not start because the app verification check did not complete.";
+  }
+  if (lowerMessage.includes("too many") || lowerMessage.includes("rate limit")) {
+    setOtpCooldownSeconds(300);
+    return isLocalhostWeb
+      ? "Too many OTP attempts on localhost. Wait a few minutes or use Firebase test phone numbers."
+      : "Too many OTP attempts. Please wait a few minutes and try again.";
+  }
+  if (lowerMessage.includes("expired")) return "This OTP has expired. Please request a new one.";
+  if (lowerMessage.includes("invalid") || lowerMessage.includes("incorrect")) return "The OTP you entered is incorrect.";
+  return message || "Phone OTP verification failed.";
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, justifyContent: "center", alignItems: "center" },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(9, 14, 20, 0.42)",
+  },
+  centerWrap: {
+    flex: 1,
+    width: "100%",
+    padding: spacing.lg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  card: {
+    width: "100%",
+    maxWidth: 720,
+    minHeight: 640,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+    overflow: "hidden",
+    flexDirection: "column",
+  },
+  cardWide: {
+    maxWidth: 1140,
+    minHeight: 720,
+    flexDirection: "row",
+  },
+  brandPanel: {
+    display: "none",
+  },
+  brandPanelWide: {
+    display: "flex",
+    width: 420,
+    backgroundColor: colors.primaryDeepest,
+    padding: spacing.xl,
+    justifyContent: "center",
+    gap: spacing.lg,
+  },
+  brandEyebrow: { ...typography.label, color: colors.accentLight },
+  brandTitle: { ...typography.h1, color: colors.white, fontWeight: "800" },
+  brandText: { ...typography.body, color: "rgba(255,255,255,0.82)", lineHeight: 22 },
+  brandPoints: { gap: spacing.md },
+  brandPoint: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  brandPointText: { flex: 1, ...typography.small, color: "rgba(255,255,255,0.82)", lineHeight: 19 },
+  formPanel: {
+    flex: 1,
+  },
+  cardContent: {
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  headings: { flex: 1, gap: 6 },
+  eyebrow: { ...typography.label, color: colors.accentDark },
+  title: { ...typography.h2, color: colors.primaryDeepest, fontWeight: "800" },
+  subtitle: { ...typography.body, color: colors.stone600, lineHeight: 21 },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.offWhite,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  tabPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+  },
+  tabPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
+  tabTextActive: { color: colors.white },
+  section: { gap: spacing.md },
+  inputBlock: { gap: 6 },
+  label: { ...typography.small, color: colors.stone600, fontWeight: "600" },
+  inputShell: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+    borderRadius: radii.md,
+  },
+  inputShellWithAdornment: { paddingLeft: spacing.md },
+  inputAdornment: { marginRight: spacing.sm },
+  input: { flex: 1, paddingHorizontal: spacing.md, paddingVertical: 14, fontSize: 16, color: colors.stone900 },
+  inputWithAdornment: { paddingLeft: 0 },
+  phonePrefix: { ...typography.body, color: colors.stone900, fontWeight: "700" },
+  infoCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: colors.offWhite,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.stone100,
+  },
+  infoText: { flex: 1, ...typography.small, color: colors.stone600, lineHeight: 18 },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#FEECEC",
+    borderRadius: radii.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: "#F6C7C7",
+  },
+  errorBannerText: { flex: 1, ...typography.small, color: colors.danger, fontWeight: "600", lineHeight: 18 },
+  otpLabel: { ...typography.small, color: colors.stone600, fontWeight: "600" },
+  otpRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  otpBox: {
+    width: 48,
+    height: 56,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.stone200,
+    backgroundColor: colors.white,
+    textAlign: "center",
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  otpBoxFilled: { borderColor: colors.primary, backgroundColor: "#F7FCF8" },
+  resend: { alignItems: "center", paddingVertical: spacing.xs },
+  resendText: { ...typography.body, color: colors.primary, fontWeight: "600" },
+  recaptchaHint: { ...typography.small, color: colors.stone600, lineHeight: 18 },
+});

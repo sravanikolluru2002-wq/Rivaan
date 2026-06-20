@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, TextInput, Modal, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -17,6 +17,11 @@ export default function ProfileScreen() {
   const [email, setEmail] = useState(user?.email || "");
   const [address, setAddress] = useState(user?.address || "");
   const [saving, setSaving] = useState(false);
+  const [relationship, setRelationship] = useState<any>(null);
+
+  useEffect(() => {
+    api.customerRelationship().then(setRelationship).catch(() => {});
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -114,6 +119,31 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {relationship?.assigned_agent || relationship?.assigned_sub_agent || relationship?.primary_link ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Relationship Owner</Text>
+            <View style={styles.relationshipCard}>
+              <View style={styles.relationshipIcon}>
+                <Feather name="users" size={16} color={colors.white} />
+              </View>
+              <View style={styles.relationshipBody}>
+                <Text style={styles.relationshipName}>
+                  {relationship?.assigned_sub_agent?.name || relationship?.assigned_agent?.name || "Rivan Advisor"}
+                </Text>
+                <Text style={styles.relationshipMeta}>
+                  {relationship?.assigned_sub_agent ? "Sub-agent" : "Primary agent"}
+                </Text>
+                <Text style={styles.relationshipStatus}>
+                  {formatRelationshipStatus(relationship?.primary_link?.relationship_type, relationship?.primary_link?.status)}
+                </Text>
+                {relationship?.open_tasks?.[0]?.title ? (
+                  <Text style={styles.relationshipHint}>Next step: {relationship.open_tasks[0].title}</Text>
+                ) : null}
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About Rivan</Text>
           <View style={styles.menu}>
@@ -159,6 +189,16 @@ export default function ProfileScreen() {
   );
 }
 
+function formatRelationshipStatus(type?: string, status?: string) {
+  const prettyType = String(type || "relationship")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const prettyStatus = String(status || "active")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return `${prettyType} · ${prettyStatus}`;
+}
+
 function MenuItem({ icon, label, testID, onPress, accent }: { icon: any; label: string; testID: string; onPress: () => void; accent?: boolean }) {
   return (
     <TouchableOpacity testID={testID} style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
@@ -186,6 +226,13 @@ const styles = StyleSheet.create({
   editBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.offWhite, alignItems: "center", justifyContent: "center" },
   section: { paddingHorizontal: spacing.lg, marginTop: spacing.md },
   sectionTitle: { ...typography.label, color: colors.stone500, marginBottom: spacing.sm },
+  relationshipCard: { flexDirection: "row", gap: spacing.sm, backgroundColor: colors.white, borderRadius: radii.md, padding: spacing.md, ...shadow.sm },
+  relationshipIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  relationshipBody: { flex: 1, gap: 2 },
+  relationshipName: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  relationshipMeta: { ...typography.small, color: colors.stone600 },
+  relationshipStatus: { ...typography.small, color: colors.accent, fontWeight: "700" },
+  relationshipHint: { ...typography.small, color: colors.stone500 },
   menu: { backgroundColor: colors.white, borderRadius: radii.md, overflow: "hidden", ...shadow.sm },
   menuItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.stone100 },
   menuIcon: { width: 32, height: 32, borderRadius: radii.sm, backgroundColor: colors.offWhite, alignItems: "center", justifyContent: "center" },

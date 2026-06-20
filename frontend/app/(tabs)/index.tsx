@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
+import CustomerAuthModal from "@/src/components/CustomerAuthModal";
 import { PropertyMedia } from "@/src/components/PropertyMedia";
 import { mockFeaturedProperties, mockProperties } from "@/src/mock-data";
 import { colors, radii, spacing, typography, shadow, formatINR } from "@/src/theme";
@@ -36,11 +37,14 @@ const CATEGORIES = [
   { key: "Farm Lands", label: "Farm Lands", icon: "sun" as const },
 ];
 
-export default function HomeScreen() {
+export function HomeScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthed } = useAuth();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const isTablet = width >= 680;
+  const useCompactPropertyCard = isTablet && !isDesktop;
+  const propertyColumns = isDesktop ? 2 : 1;
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [location, setLocation] = useState("Hyderabad");
@@ -50,17 +54,71 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [relationship, setRelationship] = useState<any>(null);
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+
+  const openAuthModal = useCallback((mode: "login" | "signup" = "login", nextRoute?: string) => {
+    setAuthModalMode(mode);
+    setPendingRoute(nextRoute || null);
+    setAuthModalVisible(true);
+  }, [router]);
+
+  const openProtectedRoute = useCallback(
+    (href: Parameters<typeof router.push>[0]) => {
+      if (!isAuthed) {
+        openAuthModal("login", String(href));
+        return;
+      }
+      router.push(href);
+    },
+    [isAuthed, openAuthModal, router]
+  );
+
+  const openPropertyDetails = useCallback(
+    (propertyId: string) => {
+      if (!isAuthed) {
+        openAuthModal("login", `/property/${propertyId}`);
+        return;
+      }
+      router.push(`/property/${propertyId}`);
+    },
+    [isAuthed, openAuthModal, router]
+  );
+
+  const openAvailability = useCallback(
+    (propertyId: string) => {
+      if (!isAuthed) {
+        openAuthModal("login", `/layout/${propertyId}`);
+        return;
+      }
+      router.push(`/layout/${propertyId}`);
+    },
+    [isAuthed, openAuthModal, router]
+  );
+
+  const handleAuthSuccess = useCallback(() => {
+    const nextRoute = pendingRoute;
+    setPendingRoute(null);
+    setAuthModalVisible(false);
+    if (nextRoute) {
+      router.push(nextRoute as any);
+    }
+  }, [pendingRoute, router]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [props, feat, notifs] = await Promise.all([
+      const [props, feat, notifs, crmRelationship] = await Promise.all([
         api.listProperties({ category: category === "all" ? undefined : category, search }),
         api.featured(),
         api.notifications().catch(() => []),
+        api.customerRelationship().catch(() => null),
       ]);
       setProperties(props as any[]);
       setFeatured(feat as any[]);
       setUnreadCount((notifs as any[]).filter((n) => !n.read).length);
+      setRelationship(crmRelationship);
     } catch (e: any) {
       console.warn("home fetch", e?.message);
     } finally {
@@ -81,45 +139,66 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="home-screen">
       <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
-        {/* Header */}
-        <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            testID="home-location-button"
-            style={styles.locationBtn}
-            onPress={() => setLocationOpen(!locationOpen)}
-          >
-            <Feather name="map-pin" size={14} color={colors.accent} />
-            <Text style={styles.locationText}>{location}</Text>
-            <Feather name={locationOpen ? "chevron-up" : "chevron-down"} size={14} color={colors.stone600} />
-          </TouchableOpacity>
-          <Text style={styles.greeting}>Hi, {user?.name?.split(" ")[0] || "Guest"} 👋</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            testID="home-wishlist-button"
-            style={styles.iconBtn}
-            onPress={() => router.push("/wishlist")}
-          >
-            <Feather name="heart" size={20} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            testID="home-notifications-button"
-            style={styles.iconBtn}
-            onPress={() => router.push("/notifications")}
-          >
-            <Feather name="bell" size={20} color={colors.primary} />
-            {unreadCount > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{unreadCount}</Text>
+        <View style={[styles.header, isDesktop && styles.headerDesktop]}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              testID="home-location-button"
+              style={styles.locationBtn}
+              onPress={() => setLocationOpen(!locationOpen)}
+            >
+              <Feather name="map-pin" size={14} color={colors.accent} />
+              <Text style={styles.locationText}>{location}</Text>
+              <Feather name={locationOpen ? "chevron-up" : "chevron-down"} size={14} color={colors.stone600} />
+            </TouchableOpacity>
+            <Text style={styles.greeting}>Hi, {user?.name?.split(" ")[0] || "Guest"}</Text>
+            <Text style={styles.headerSubtitle}>Find inventory, availability, and the next best property in one pass.</Text>
+          </View>
+          <View style={styles.headerRight}>
+            {isAuthed ? (
+              <>
+                <TouchableOpacity
+                  testID="home-wishlist-button"
+                  style={styles.iconBtn}
+                  onPress={() => openProtectedRoute("/wishlist")}
+                >
+                  <Feather name="heart" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="home-notifications-button"
+                  style={styles.iconBtn}
+                  onPress={() => openProtectedRoute("/notifications")}
+                >
+                  <Feather name="bell" size={20} color={colors.primary} />
+                  {unreadCount > 0 ? (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{unreadCount}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={styles.authActions}>
+                <TouchableOpacity
+                  testID="home-header-login"
+                  style={styles.authGhostBtn}
+                  onPress={() => openAuthModal("login")}
+                >
+                  <Text style={styles.authGhostText}>Login</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="home-header-signup"
+                  style={styles.authPrimaryBtn}
+                  onPress={() => openAuthModal("signup")}
+                >
+                  <Text style={styles.authPrimaryText}>Sign Up</Text>
+                </TouchableOpacity>
               </View>
-            ) : null}
-          </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
 
         {locationOpen ? (
-          <View style={styles.locationDropdown} testID="home-location-dropdown">
+          <View style={[styles.locationDropdown, isDesktop && styles.locationDropdownDesktop]} testID="home-location-dropdown">
             {LOCATIONS.map((l) => (
               <TouchableOpacity
                 key={l}
@@ -142,33 +221,124 @@ export default function HomeScreen() {
         ) : null}
 
       <FlatList
+        key={`properties-${propertyColumns}`}
         data={properties}
+        numColumns={propertyColumns}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, isDesktop && styles.listContentDesktop]}
+        columnWrapperStyle={propertyColumns > 1 ? styles.propertyRow : undefined}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         ListHeaderComponent={
           <View>
-            {/* Search */}
-            <View style={styles.searchBox}>
-              <Feather name="search" size={18} color={colors.stone400} />
-              <TextInput
-                testID="home-search-input"
-                style={styles.searchInput}
-                placeholder="Search properties, locations..."
-                placeholderTextColor={colors.stone400}
-                value={search}
-                onChangeText={setSearch}
-                returnKeyType="search"
-              />
-              {search ? (
-                <TouchableOpacity onPress={() => setSearch("")}>
-                  <Feather name="x" size={16} color={colors.stone400} />
-                </TouchableOpacity>
-              ) : null}
+            <View style={[styles.heroBand, isDesktop && styles.heroBandDesktop]}>
+              <View style={styles.heroCopy}>
+                <Text style={styles.heroEyebrow}>Curated property discovery</Text>
+                <Text style={styles.heroTitle}>Move faster from browsing to site visit.</Text>
+                <Text style={styles.heroText}>
+                  Search projects, review live availability, and keep your relationship owner and saved actions close by.
+                </Text>
+              </View>
+              <View style={styles.heroSearchCard}>
+                <View style={styles.searchBox}>
+                  <Feather name="search" size={18} color={colors.stone400} />
+                  <TextInput
+                    testID="home-search-input"
+                    style={styles.searchInput}
+                    placeholder="Search properties, locations..."
+                    placeholderTextColor={colors.stone400}
+                    value={search}
+                    onChangeText={setSearch}
+                    returnKeyType="search"
+                  />
+                  {search ? (
+                    <TouchableOpacity onPress={() => setSearch("")}>
+                      <Feather name="x" size={16} color={colors.stone400} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <View style={styles.quickActions}>
+                  <TouchableOpacity
+                    testID="home-quick-services"
+                    style={styles.quickAction}
+                    onPress={() => openProtectedRoute("/services")}
+                  >
+                    <View style={[styles.quickIcon, { backgroundColor: colors.accentSoft }]}>
+                      <Feather name="tool" size={18} color={colors.accent} />
+                    </View>
+                    <Text style={styles.quickLabel}>Services</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="home-quick-documents"
+                    style={styles.quickAction}
+                    onPress={() => openProtectedRoute("/documents")}
+                  >
+                    <View style={[styles.quickIcon, { backgroundColor: "#E6F4EA" }]}>
+                      <Feather name="folder" size={18} color={colors.primary} />
+                    </View>
+                    <Text style={styles.quickLabel}>Documents</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="home-quick-wishlist"
+                    style={styles.quickAction}
+                    onPress={() => openProtectedRoute("/wishlist")}
+                  >
+                    <View style={[styles.quickIcon, { backgroundColor: "#FEE2E2" }]}>
+                      <Feather name="heart" size={18} color={colors.danger} />
+                    </View>
+                    <Text style={styles.quickLabel}>Wishlist</Text>
+                  </TouchableOpacity>
+                  {user?.is_admin ? (
+                    <TouchableOpacity
+                      testID="home-quick-admin"
+                      style={styles.quickAction}
+                      onPress={() => router.push("/admin")}
+                    >
+                      <View style={[styles.quickIcon, { backgroundColor: "#FEF3C7" }]}>
+                        <Feather name="settings" size={18} color="#D97706" />
+                      </View>
+                      <Text style={styles.quickLabel}>Admin</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
             </View>
 
-            {/* Featured Carousel */}
+            {relationship?.assigned_agent || relationship?.assigned_sub_agent || relationship?.primary_link ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Your Relationship Team</Text>
+                <View style={styles.relationshipCard}>
+                  <View style={styles.relationshipAvatar}>
+                    <Feather name="user-check" size={18} color={colors.white} />
+                  </View>
+                  <View style={styles.relationshipBody}>
+                    <Text style={styles.relationshipName}>
+                      {relationship?.assigned_sub_agent?.name || relationship?.assigned_agent?.name || "Rivan Advisor"}
+                    </Text>
+                    <Text style={styles.relationshipMeta}>
+                      {relationship?.assigned_sub_agent ? "Sub-agent" : "Relationship owner"}
+                      {relationship?.assigned_agent?.agent_brand_name ? ` - ${relationship.assigned_agent.agent_brand_name}` : ""}
+                    </Text>
+                    <Text style={styles.relationshipStatus}>
+                      {formatRelationshipStatus(relationship?.primary_link?.relationship_type, relationship?.primary_link?.status)}
+                    </Text>
+                    {relationship?.open_tasks?.[0]?.title ? (
+                      <Text style={styles.relationshipHint}>
+                        Next step: {relationship.open_tasks[0].title}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <TouchableOpacity
+                    testID="home-relationship-profile"
+                    style={styles.relationshipAction}
+                    onPress={() => openProtectedRoute("/profile")}
+                  >
+                    <Feather name="arrow-right" size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
             {featured.length > 0 ? (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -183,14 +353,14 @@ export default function HomeScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.featuredScroll}
                   decelerationRate="fast"
-                  snapToInterval={296}
+                  snapToInterval={isDesktop ? 376 : 296}
                 >
                   {featured.map((p) => (
                     <TouchableOpacity
                       key={p.id}
                       testID={`home-featured-${p.id}`}
                       style={[styles.featuredCard, isDesktop && styles.featuredCardDesktop]}
-                      onPress={() => router.push(`/property/${p.id}`)}
+                      onPress={() => openPropertyDetails(p.id)}
                       activeOpacity={0.9}
                     >
                       <PropertyMedia image={p.image} videoUrl={p.videoUrl} style={styles.featuredImage} />
@@ -216,7 +386,6 @@ export default function HomeScreen() {
               </View>
             ) : null}
 
-            {/* Categories */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Browse Categories</Text>
               <ScrollView
@@ -244,52 +413,6 @@ export default function HomeScreen() {
               </ScrollView>
             </View>
 
-            {/* Quick Actions */}
-            <View style={styles.quickActions}>
-              <TouchableOpacity
-                testID="home-quick-services"
-                style={styles.quickAction}
-                onPress={() => router.push("/services")}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: colors.accentSoft }]}>
-                  <Feather name="tool" size={18} color={colors.accent} />
-                </View>
-                <Text style={styles.quickLabel}>Services</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                testID="home-quick-documents"
-                style={styles.quickAction}
-                onPress={() => router.push("/documents")}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: "#E6F4EA" }]}>
-                  <Feather name="folder" size={18} color={colors.primary} />
-                </View>
-                <Text style={styles.quickLabel}>Documents</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                testID="home-quick-wishlist"
-                style={styles.quickAction}
-                onPress={() => router.push("/wishlist")}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: "#FEE2E2" }]}>
-                  <Feather name="heart" size={18} color={colors.danger} />
-                </View>
-                <Text style={styles.quickLabel}>Wishlist</Text>
-              </TouchableOpacity>
-              {user?.is_admin ? (
-                <TouchableOpacity
-                  testID="home-quick-admin"
-                  style={styles.quickAction}
-                  onPress={() => router.push("/admin")}
-                >
-                  <View style={[styles.quickIcon, { backgroundColor: "#FEF3C7" }]}>
-                    <Feather name="settings" size={18} color="#D97706" />
-                  </View>
-                  <Text style={styles.quickLabel}>Admin</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 {category === "all" ? "All Properties" : category} ({properties.length})
@@ -298,11 +421,14 @@ export default function HomeScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <PropertyCard
-            property={item}
-            onPress={() => router.push(`/property/${item.id}`)}
-            onAvailability={() => router.push(`/layout/${item.id}`)}
-          />
+          <View style={[styles.propertyCell, propertyColumns > 1 && styles.propertyCellDesktop]}>
+            <PropertyCard
+              property={item}
+              onPress={() => openPropertyDetails(item.id)}
+              onAvailability={() => openAvailability(item.id)}
+              compact={useCompactPropertyCard}
+            />
+          </View>
         )}
         ListEmptyComponent={
           loading ? (
@@ -317,20 +443,41 @@ export default function HomeScreen() {
           )
         }
       />
+      <CustomerAuthModal
+        visible={authModalVisible}
+        mode={authModalMode}
+        onClose={() => {
+          setAuthModalVisible(false);
+          setPendingRoute(null);
+        }}
+        onSuccess={handleAuthSuccess}
+      />
       </View>
     </SafeAreaView>
   );
 }
 
-function PropertyCard({ property, onPress, onAvailability }: { property: any; onPress: () => void; onAvailability: () => void }) {
+export default HomeScreen;
+
+function formatRelationshipStatus(type?: string, status?: string) {
+  const prettyType = String(type || "relationship")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const prettyStatus = String(status || "active")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return `${prettyType} - ${prettyStatus}`;
+}
+
+function PropertyCard({ property, onPress, onAvailability, compact }: { property: any; onPress: () => void; onAvailability: () => void; compact?: boolean }) {
   return (
     <TouchableOpacity
       testID={`home-property-${property.id}`}
-      style={styles.propertyCard}
+      style={[styles.propertyCard, compact && styles.propertyCardCompact]}
       onPress={onPress}
       activeOpacity={0.9}
     >
-      <PropertyMedia image={property.image} videoUrl={property.videoUrl} style={styles.propertyImage} />
+      <PropertyMedia image={property.image} videoUrl={property.videoUrl} style={[styles.propertyImage, compact && styles.propertyImageCompact]} />
       <View style={styles.propertyImageOverlay}>
         <View style={styles.availabilityBadge}>
           <View style={styles.availabilityDot} />
@@ -356,7 +503,7 @@ function PropertyCard({ property, onPress, onAvailability }: { property: any; on
         </View>
         {property.highlights ? (
           <Text style={styles.highlights} numberOfLines={1}>
-            ✦ {property.highlights}
+            Featured: {property.highlights}
           </Text>
         ) : null}
         <View style={styles.propertyFooter}>
@@ -403,23 +550,48 @@ function PropertyCard({ property, onPress, onAvailability }: { property: any; on
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.offWhite },
   shell: { flex: 1, width: "100%", alignSelf: "center" },
-  shellDesktop: { paddingHorizontal: spacing.lg },
+  shellDesktop: { maxWidth: 1440, width: "100%", alignSelf: "center" },
   listContent: { paddingBottom: 80 },
-  listContentDesktop: { paddingBottom: 120 },
+  listContentDesktop: { paddingBottom: 120, paddingHorizontal: spacing.lg },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     paddingBottom: spacing.md,
     backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.stone100,
   },
-  headerLeft: { flex: 1 },
+  headerDesktop: { borderRadius: 0 },
+  headerLeft: { flex: 1, gap: 6 },
   headerRight: { flexDirection: "row", gap: 8 },
-  locationBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  authActions: { flexDirection: "row", gap: 10, alignItems: "center" },
+  authGhostBtn: {
+    minHeight: 40,
+    paddingHorizontal: 16,
+    borderRadius: radii.full,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  authGhostText: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  authPrimaryBtn: {
+    minHeight: 40,
+    paddingHorizontal: 16,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  authPrimaryText: { ...typography.body, color: colors.white, fontWeight: "700" },
+  locationBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", backgroundColor: colors.offWhite, paddingHorizontal: 10, paddingVertical: 7, borderRadius: radii.full },
   locationText: { ...typography.small, color: colors.stone900, fontWeight: "600" },
-  greeting: { ...typography.h4, color: colors.primaryDeepest, marginTop: 2 },
+  greeting: { ...typography.h2, color: colors.primaryDeepest, fontWeight: "800" },
+  headerSubtitle: { ...typography.body, color: colors.stone600, maxWidth: 560 },
   iconBtn: {
     width: 40,
     height: 40,
@@ -448,6 +620,29 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     ...shadow.md,
   },
+  locationDropdownDesktop: { maxWidth: 360 },
+  heroBand: { marginHorizontal: spacing.lg, marginTop: spacing.lg, gap: spacing.md },
+  heroBandDesktop: { flexDirection: "row", alignItems: "stretch" },
+  heroCopy: {
+    flex: 1.1,
+    backgroundColor: colors.primaryDeepest,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  heroEyebrow: { ...typography.label, color: colors.accentLight },
+  heroTitle: { ...typography.h2, color: colors.white, fontWeight: "800" },
+  heroText: { ...typography.body, color: "#D4E4D9", lineHeight: 21, maxWidth: 520 },
+  heroSearchCard: {
+    flex: 0.9,
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.stone100,
+    padding: spacing.md,
+    gap: spacing.md,
+    ...shadow.sm,
+  },
   locationItem: { flexDirection: "row", alignItems: "center", gap: 8, padding: spacing.sm },
   locationItemText: { ...typography.body, color: colors.stone700 },
   locationItemActive: { color: colors.primary, fontWeight: "600" },
@@ -455,8 +650,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
     backgroundColor: colors.white,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
@@ -497,12 +690,25 @@ const styles = StyleSheet.create({
   categoryTextActive: { color: colors.white },
   categoryPillSmall: { backgroundColor: "rgba(255,255,255,0.92)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.sm, alignSelf: "flex-start" },
   categoryPillTextSmall: { ...typography.label, color: colors.primary, fontSize: 9 },
-  quickActions: { flexDirection: "row", justifyContent: "space-around", marginTop: spacing.lg, paddingHorizontal: spacing.lg },
-  quickAction: { alignItems: "center", gap: 6 },
+  quickActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  quickAction: { minWidth: 88, flexGrow: 1, alignItems: "center", gap: 6, backgroundColor: colors.offWhite, borderRadius: radii.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
   quickIcon: { width: 52, height: 52, borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
   quickLabel: { ...typography.small, color: colors.stone700, fontWeight: "600" },
-  propertyCard: { backgroundColor: colors.white, marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radii.lg, overflow: "hidden", ...shadow.sm, width: "100%", maxWidth: 1200, alignSelf: "center" },
-  propertyImage: { width: "100%", height: 180, backgroundColor: colors.stone100 },
+  relationshipCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.white, borderRadius: radii.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.stone100, ...shadow.sm },
+  relationshipAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  relationshipBody: { flex: 1, gap: 2 },
+  relationshipName: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  relationshipMeta: { ...typography.small, color: colors.stone600 },
+  relationshipStatus: { ...typography.small, color: colors.accent, fontWeight: "700", marginTop: 2 },
+  relationshipHint: { ...typography.small, color: colors.stone500, marginTop: 2 },
+  relationshipAction: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.offWhite, alignItems: "center", justifyContent: "center" },
+  propertyRow: { gap: spacing.md, justifyContent: "space-between" },
+  propertyCell: { width: "100%", marginBottom: spacing.md },
+  propertyCellDesktop: { flex: 1 },
+  propertyCard: { backgroundColor: colors.white, borderRadius: radii.lg, overflow: "hidden", ...shadow.sm, width: "100%", alignSelf: "center", borderWidth: 1, borderColor: colors.stone100 },
+  propertyCardCompact: { minHeight: 100, flexDirection: "row" },
+  propertyImage: { width: "100%", height: 200, backgroundColor: colors.stone100 },
+  propertyImageCompact: { width: 220, height: "100%" },
   propertyImageOverlay: { position: "absolute", top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: "row", justifyContent: "space-between" },
   availabilityBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(16,185,129,0.95)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.sm },
   availabilityDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.white },
@@ -537,6 +743,7 @@ const styles = StyleSheet.create({
   availabilityPanel: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: spacing.sm,
     backgroundColor: colors.offWhite,
     borderRadius: radii.md,
@@ -554,6 +761,7 @@ const styles = StyleSheet.create({
   },
   availabilityPanelBody: {
     flex: 1,
+    minWidth: 180,
     gap: 3,
   },
   availabilityPanelTitle: {
@@ -573,6 +781,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     borderRadius: radii.md,
+    marginLeft: "auto",
   },
   availabilityActionText: {
     ...typography.body,
@@ -582,3 +791,4 @@ const styles = StyleSheet.create({
   empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
   emptyText: { ...typography.body, color: colors.stone500 },
 });
+

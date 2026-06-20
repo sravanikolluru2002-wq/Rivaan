@@ -8,6 +8,34 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const COOKIE_KEYS = new Set(["rivan_token", "rivan_user_cache"]);
+
+function canUseCookies() {
+  return typeof document !== "undefined";
+}
+
+function readCookie(key: string) {
+  if (!canUseCookies()) return null;
+  const encodedKey = encodeURIComponent(key);
+  const match = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${encodedKey}=`));
+  return match ? decodeURIComponent(match.slice(encodedKey.length + 1)) : null;
+}
+
+function writeCookie<Value extends StorageItemValue>(key: string, value: Value) {
+  if (!canUseCookies()) return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(JSON.stringify(value))}; Max-Age=${COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax${secure}`;
+}
+
+function deleteCookie(key: string) {
+  if (!canUseCookies()) return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${encodeURIComponent(key)}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+}
+
 export class Storage extends StorageBase {
   // General KV — backed by AsyncStorage (its built-in web shim uses IndexedDB).
   async getItem<Fallback extends StorageItemValue>(
@@ -15,6 +43,11 @@ export class Storage extends StorageBase {
     fallback: Fallback,
   ): Promise<Fallback | null> {
     try {
+      if (COOKIE_KEYS.has(key)) {
+        const cookieValue = readCookie(key);
+        if (cookieValue !== null) return this.retrieve(cookieValue, fallback);
+      }
+
       const raw = await AsyncStorage.getItem(key);
       return this.retrieve(raw, fallback);
     } catch (e) {
@@ -28,6 +61,7 @@ export class Storage extends StorageBase {
     value: Value,
   ): Promise<boolean> {
     try {
+      if (COOKIE_KEYS.has(key)) writeCookie(key, value);
       await AsyncStorage.setItem(key, JSON.stringify(value));
       return true;
     } catch (e) {
@@ -38,6 +72,7 @@ export class Storage extends StorageBase {
 
   async removeItem(key: string): Promise<boolean> {
     try {
+      if (COOKIE_KEYS.has(key)) deleteCookie(key);
       await AsyncStorage.removeItem(key);
       return true;
     } catch (e) {

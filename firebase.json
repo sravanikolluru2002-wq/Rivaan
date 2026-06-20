@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "rivan-auth-live",
     "public": "frontend/dist",
     "headers": [
       {
