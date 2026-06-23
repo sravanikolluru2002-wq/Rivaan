@@ -71,6 +71,9 @@ DB_NAME = os.environ.get("DB_NAME", "rivaan")
 JWT_SECRET = require_env("JWT_SECRET")
 JWT_EXPIRES_MIN = int(os.environ.get("JWT_EXPIRE_MINUTES", "10080"))
 ALLOW_LOCAL_AUTH_FALLBACK = get_env_bool("ALLOW_LOCAL_AUTH_FALLBACK", True)
+MONGO_SERVER_SELECTION_TIMEOUT_MS = int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "15000"))
+MONGO_CONNECT_TIMEOUT_MS = int(os.environ.get("MONGO_CONNECT_TIMEOUT_MS", "15000"))
+MONGO_SOCKET_TIMEOUT_MS = int(os.environ.get("MONGO_SOCKET_TIMEOUT_MS", "20000"))
 GOOGLE_WEB_CLIENT_ID = get_env_value("GOOGLE_WEB_CLIENT_ID", "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID")
 GOOGLE_ANDROID_CLIENT_ID = get_env_value("GOOGLE_ANDROID_CLIENT_ID", "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID")
 GOOGLE_IOS_CLIENT_ID = get_env_value("GOOGLE_IOS_CLIENT_ID", "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID")
@@ -141,9 +144,9 @@ CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX") or None
 
 client = AsyncIOMotorClient(
     MONGO_URL,
-    serverSelectionTimeoutMS=2000,
-    connectTimeoutMS=2000,
-    socketTimeoutMS=5000,
+    serverSelectionTimeoutMS=MONGO_SERVER_SELECTION_TIMEOUT_MS,
+    connectTimeoutMS=MONGO_CONNECT_TIMEOUT_MS,
+    socketTimeoutMS=MONGO_SOCKET_TIMEOUT_MS,
     appname="rivaan-backend",
 )
 db = client[DB_NAME]
@@ -158,7 +161,7 @@ DB_AVAILABILITY_TTL_SECONDS = float(os.environ.get("DB_AVAILABILITY_TTL_SECONDS"
 DB_AVAILABILITY_TIMEOUT_SECONDS = float(
     os.environ.get(
         "DB_AVAILABILITY_TIMEOUT_SECONDS",
-        "0.15" if ALLOW_LOCAL_AUTH_FALLBACK else "0.75",
+        "10",
     )
 )
 _db_availability_cache: Dict[str, Any] = {"value": None, "checked_at": 0.0}
@@ -813,7 +816,12 @@ def agent_accessible_ids(user: Dict[str, Any]) -> List[str]:
     return [user["id"], *sub_agent_ids]
 
 
-async def is_database_available(timeout_seconds: Optional[float] = None, force_refresh: bool = False) -> bool:
+async def is_database_available(
+    timeout_seconds: Optional[float] = None,
+    force_refresh: bool = False,
+    *,
+    log_failure: bool = False,
+) -> bool:
     now = time.monotonic()
     cached_value = _db_availability_cache["value"]
     if (
@@ -828,6 +836,18 @@ async def is_database_available(timeout_seconds: Optional[float] = None, force_r
         available = True
     except Exception:
         available = False
+        if log_failure:
+            logger.exception(
+                "MongoDB ping failed",
+                extra={
+                    "mongo_url_scheme": MONGO_URL.split("://", 1)[0] if "://" in MONGO_URL else "unknown",
+                    "db_name": DB_NAME,
+                    "timeout_seconds": timeout_seconds or DB_AVAILABILITY_TIMEOUT_SECONDS,
+                    "server_selection_timeout_ms": MONGO_SERVER_SELECTION_TIMEOUT_MS,
+                    "connect_timeout_ms": MONGO_CONNECT_TIMEOUT_MS,
+                    "socket_timeout_ms": MONGO_SOCKET_TIMEOUT_MS,
+                },
+            )
 
     _db_availability_cache["value"] = available
     _db_availability_cache["checked_at"] = now
@@ -2313,7 +2333,7 @@ async def ensure_property_media_defaults() -> None:
 async def ensure_indexes() -> None:
     ensure_local_demo_users()
 
-    if not await is_database_available():
+    if not await is_database_available(force_refresh=True, log_failure=True):
         if ALLOW_LOCAL_AUTH_FALLBACK:
             logger.warning("MongoDB unavailable at startup; skipping index sync and using local auth fallback.")
             await crm_backfill_existing_records()
@@ -2357,11 +2377,11 @@ async def ensure_indexes() -> None:
         await db.customer_agent_links.create_index([("customer_id", 1), ("last_activity_at", -1)])
         await ensure_property_media_defaults()
         await crm_backfill_existing_records()
-    except Exception as exc:
+    except Exception:
         if ALLOW_LOCAL_AUTH_FALLBACK:
-            logger.warning("MongoDB unavailable at startup; falling back to local auth store: %s", exc)
+            logger.exception("MongoDB unavailable at startup; falling back to local auth store.")
         else:
-            logger.warning("MongoDB unavailable at startup: %s", exc)
+            logger.exception("MongoDB unavailable at startup.")
 
 
 # ---------- Auth Routes ----------
