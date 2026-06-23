@@ -101,6 +101,23 @@ export default function AgentLoginScreen() {
     setOtp(["", "", "", "", "", ""]);
   }
 
+  async function handleDemoAgentLogin(email: string) {
+    setErrorMessage("");
+    setLoading(true);
+    try {
+      const session = await api.login(email, "Agent@123");
+      if (session.user?.role !== "agent" && session.user?.role !== "sub_agent") {
+        throw new Error("This account does not have agent access.");
+      }
+      await signIn(session.access_token, session.user);
+      router.replace("/agent");
+    } catch (error: any) {
+      showFormError(String(error?.message || "Demo agent login failed."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function cleanupWebRecaptchaArtifacts() {
     setRecaptchaReady(false);
     setRecaptchaSolved(false);
@@ -441,6 +458,30 @@ export default function AgentLoginScreen() {
                   <Text style={styles.infoText}>If a valid OTP succeeds but access is denied, the phone number is not yet approved inside the agent account records.</Text>
                 </>
               )}
+            </View>
+
+            <View style={styles.infoBox}>
+              <Text style={styles.infoTitle}>Emergency fallback access</Text>
+              <Text style={styles.infoText}>
+                If Firebase phone OTP is blocked or unstable, approved demo agents can still open the dashboard using the built-in email/password fallback.
+              </Text>
+              <View style={styles.quickRow}>
+                <TouchableOpacity
+                  style={styles.quickButton}
+                  onPress={() => handleDemoAgentLogin("agent@rivaan.com")}
+                  disabled={loading}
+                >
+                  <Text style={styles.quickButtonText}>Open Primary Agent</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickButton}
+                  onPress={() => handleDemoAgentLogin("subagent@rivaan.com")}
+                  disabled={loading}
+                >
+                  <Text style={styles.quickButtonText}>Open Sub-Agent</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.infoText}>Password used by this emergency fallback: Agent@123</Text>
             </View>
           </View>
         </View>

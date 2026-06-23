@@ -3642,6 +3642,25 @@ async def read_all_notifications(user: Dict[str, Any] = Depends(get_current_user
 # ---------- Admin ----------
 @api_router.get("/admin/stats")
 async def admin_stats(user: Dict[str, Any] = Depends(get_admin_user)):
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Admin statistics are unavailable")
+        plots = local_get_plots()
+        bookings = local_list_bookings()
+        visits = local_list_visits()
+        users = load_local_store().get("users", [])
+        return {
+            "users": len(users),
+            "properties": len(local_get_properties()),
+            "plots": len(plots),
+            "plots_sold": len([item for item in plots if item.get("status") == "sold"]),
+            "plots_booked": len([item for item in plots if item.get("status") == "booked"]),
+            "plots_reserved": len([item for item in plots if item.get("status") == "reserved"]),
+            "plots_available": len([item for item in plots if item.get("status") == "available"]),
+            "bookings": len(bookings),
+            "service_requests": 0,
+            "visits": len(visits),
+        }
     return {
         "users": await db.users.count_documents({}),
         "properties": await db.properties.count_documents({}),
@@ -3658,6 +3677,10 @@ async def admin_stats(user: Dict[str, Any] = Depends(get_admin_user)):
 
 @api_router.get("/admin/users")
 async def admin_users(user: Dict[str, Any] = Depends(get_admin_user)):
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="User database is unavailable")
+        return [clean_user(item) for item in load_local_store().get("users", [])]
     return await db.users.find({}, {"_id": 0}).to_list(500)
 
 
@@ -3792,6 +3815,10 @@ async def admin_approve_agent(agent_id: str, user: Dict[str, Any] = Depends(get_
 
 @api_router.get("/admin/service-requests")
 async def admin_services(user: Dict[str, Any] = Depends(get_admin_user)):
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Service request database is unavailable")
+        return []
     items = await db.service_requests.find({}, {"_id": 0}).to_list(500)
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items
@@ -4231,6 +4258,10 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
 async def admin_update_service_status(req_id: str, status_val: str = Query(...), user: Dict[str, Any] = Depends(get_admin_user)):
     if status_val not in ("pending", "in_progress", "completed"):
         raise HTTPException(status_code=400, detail="Invalid status")
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Service request database is unavailable")
+        raise HTTPException(status_code=404, detail="No local service request record exists for this item")
     await db.service_requests.update_one({"id": req_id}, {"$set": {"status": status_val}})
     return {"success": True}
 
