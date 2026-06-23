@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import React, { useMemo, useState } from "react";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -15,14 +15,23 @@ export default function AdminLoginScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
 
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const phoneDigits = useMemo(() => phone.replace(/\D/g, "").slice(-10), [phone]);
 
-  async function handleAdminPreviewAccess() {
+  async function handleAdminLogin() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const session = await api.adminDemoAccess();
+      if (phoneDigits.length !== 10) {
+        throw new Error("Enter the 10-digit admin number.");
+      }
+      if (!password.trim()) {
+        throw new Error("Enter the admin password.");
+      }
+      const session = await api.adminLogin(`+91${phoneDigits}`, password.trim());
       if (!session.user?.is_admin) {
         throw new Error("This account does not have admin access.");
       }
@@ -33,8 +42,8 @@ export default function AdminLoginScreen() {
       const normalized = rawMessage.toLowerCase();
       const message =
         normalized.includes("not found") || normalized.includes("404")
-          ? "The live backend has not been updated with admin preview access yet. Redeploy the Render backend, then try again."
-          : rawMessage || "Admin preview access failed.";
+          ? "The live backend has not been updated with admin phone login yet. Redeploy the Render backend, then try again."
+          : rawMessage || "Admin login failed.";
       setErrorMessage(message);
     } finally {
       setLoading(false);
@@ -76,7 +85,7 @@ export default function AdminLoginScreen() {
               <View style={styles.cardTop}>
                 <View>
                   <Text style={styles.cardTitle}>Admin Review Access</Text>
-                  <Text style={styles.cardSubtitle}>Open the seeded admin approval console in one step.</Text>
+                  <Text style={styles.cardSubtitle}>Use the real admin number to open the approval console.</Text>
                 </View>
                 <View style={styles.cardTopLinks}>
                   <TouchableOpacity onPress={() => router.replace("/")}>
@@ -95,16 +104,47 @@ export default function AdminLoginScreen() {
               <View style={styles.previewBanner}>
                 <Feather name="shield" size={18} color={colors.primary} />
                 <Text style={styles.previewBannerText}>
-                  Phone and password fields are removed here on purpose. This page is only for seeded admin preview access.
+                  Admin access is now tied to the seeded admin number so approvals and reminders stay connected to one real admin identity.
                 </Text>
               </View>
 
-              <Button title="Open Admin Dashboard" onPress={handleAdminPreviewAccess} loading={loading} />
+              <View style={styles.inputBlock}>
+                <Text style={styles.label}>Admin mobile number</Text>
+                <View style={styles.inputShell}>
+                  <Text style={styles.phonePrefix}>+91</Text>
+                  <TextInput
+                    value={phone}
+                    onChangeText={(text) => setPhone(text.replace(/\D/g, ""))}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    style={styles.input}
+                    placeholder="9491348973"
+                    placeholderTextColor={colors.stone400}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputBlock}>
+                <Text style={styles.label}>Admin password</Text>
+                <View style={styles.inputShell}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    style={styles.input}
+                    placeholder="Enter admin password"
+                    placeholderTextColor={colors.stone400}
+                  />
+                </View>
+              </View>
+
+              <Button title="Open Admin Dashboard" onPress={handleAdminLogin} loading={loading} />
 
               <View style={styles.infoBox}>
                 <Text style={styles.infoTitle}>Current testing flow</Text>
-                <Text style={styles.infoText}>Seeded admin preview phone: +94 991348973</Text>
-                <Text style={styles.infoText}>1. Agent applies from the live app.</Text>
+                <Text style={styles.infoText}>Admin number: +91 9491348973</Text>
+                <Text style={styles.infoText}>Admin password: Admin@123</Text>
+                <Text style={styles.infoText}>1. Agent applies from the live app with +91 6303210224.</Text>
                 <Text style={styles.infoText}>2. Open this admin console.</Text>
                 <Text style={styles.infoText}>3. Approve or reject the request.</Text>
                 <Text style={styles.infoText}>4. Return to agent login and verify access.</Text>
@@ -171,6 +211,19 @@ const styles = StyleSheet.create({
   cardTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "800" },
   cardSubtitle: { ...typography.body, color: colors.stone600, lineHeight: 21, maxWidth: 520 },
   backLink: { color: colors.primary, fontWeight: "700" },
+  inputBlock: { gap: 6 },
+  label: { ...typography.small, color: colors.stone600, fontWeight: "600" },
+  inputShell: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+  },
+  input: { flex: 1, paddingVertical: 14, fontSize: 16, color: colors.stone900 },
+  phonePrefix: { ...typography.body, color: colors.stone900, fontWeight: "700", marginRight: spacing.sm },
   previewBanner: {
     flexDirection: "row",
     alignItems: "flex-start",

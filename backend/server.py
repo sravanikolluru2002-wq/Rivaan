@@ -291,7 +291,7 @@ def ensure_local_demo_users() -> None:
             "id": "admin-user-001",
             "name": "Rivan Admin",
             "email": "admin@rivanreality.com",
-            "phone": "+94991348973",
+            "phone": "+919491348973",
             "role": "admin",
             "auth_methods": ["email"],
             "address": "Rivan HQ, Hyderabad",
@@ -308,7 +308,7 @@ def ensure_local_demo_users() -> None:
             "id": "agent-main-001",
             "name": "Arjun Reddy",
             "email": "agent@rivaan.com",
-            "phone": "+916303210224",
+            "phone": "+919900001111",
             "role": "agent",
             "age": 34,
             "aadhaar_number": "5555 6666 7777",
@@ -360,7 +360,7 @@ def ensure_local_demo_users() -> None:
             "id": "agent-pending-001",
             "name": "Sandeep Kumar",
             "email": "pendingagent@rivaan.com",
-            "phone": "+919922223333",
+            "phone": "+916303210224",
             "role": "agent",
             "age": 31,
             "aadhaar_number": "1111 2222 3333",
@@ -423,6 +423,132 @@ def ensure_local_demo_users() -> None:
             local_save_user(merged)
         else:
             local_save_user(demo_user)
+
+
+async def sync_demo_auth_users_to_db() -> None:
+    if not await is_database_available():
+        return
+
+    timestamp = now_utc().isoformat()
+    demo_users = [
+        {
+            "id": "admin-user-001",
+            "name": "Rivan Admin",
+            "email": "admin@rivanreality.com",
+            "phone": "+919491348973",
+            "role": "admin",
+            "auth_methods": ["email"],
+            "address": "Rivan HQ, Hyderabad",
+            "kyc_status": "verified",
+            "is_admin": True,
+            "email_verified": True,
+            "phone_verified": True,
+            "password_hash": hash_password("Admin@123"),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "last_login_at": timestamp,
+        },
+        {
+            "id": "agent-main-001",
+            "name": "Arjun Reddy",
+            "email": "agent@rivaan.com",
+            "phone": "+919900001111",
+            "role": "agent",
+            "age": 34,
+            "aadhaar_number": "5555 6666 7777",
+            "bank_details": "HDFC Bank · A/C XXXX1298 · IFSC HDFC0000456",
+            "manager_name": "Regional Sales Director",
+            "manager_id": None,
+            "agent_brand_name": "Rivan Crest Partners",
+            "sub_agent_ids": ["agent-sub-001"],
+            "approval_status": "approved",
+            "approved_by_manager": "Rivan Admin",
+            "auth_methods": ["email"],
+            "address": "Banjara Hills, Hyderabad",
+            "kyc_status": "verified",
+            "is_admin": False,
+            "email_verified": True,
+            "phone_verified": True,
+            "password_hash": hash_password("Agent@123"),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "last_login_at": timestamp,
+            "status": "active",
+        },
+        {
+            "id": "agent-sub-001",
+            "name": "Meghana Rao",
+            "email": "subagent@rivaan.com",
+            "phone": "+919911112222",
+            "role": "sub_agent",
+            "age": 28,
+            "aadhaar_number": "8888 9999 0000",
+            "bank_details": "ICICI Bank · A/C XXXX4432 · IFSC ICIC0000789",
+            "manager_name": "Arjun Reddy",
+            "manager_id": "agent-main-001",
+            "agent_brand_name": "Rivan Crest Partners",
+            "sub_agent_ids": [],
+            "approval_status": "approved",
+            "approved_by_manager": "Arjun Reddy",
+            "auth_methods": ["email"],
+            "address": "Gachibowli, Hyderabad",
+            "kyc_status": "verified",
+            "is_admin": False,
+            "email_verified": True,
+            "phone_verified": True,
+            "password_hash": hash_password("Agent@123"),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "last_login_at": timestamp,
+            "status": "active",
+        },
+        {
+            "id": "agent-pending-001",
+            "name": "Puneeth Agent Test",
+            "email": "pendingagent@rivaan.com",
+            "phone": "+916303210224",
+            "role": "agent",
+            "age": 31,
+            "aadhaar_number": "1111 2222 3333",
+            "bank_details": "SBI Bank · A/C XXXX7821 · IFSC SBIN0001234",
+            "manager_name": "Regional Sales Director",
+            "manager_id": None,
+            "agent_brand_name": "Rivan Crest Partners",
+            "sub_agent_ids": [],
+            "approval_status": "pending",
+            "approved_by_manager": None,
+            "auth_methods": ["agent_application"],
+            "address": "Kukatpally, Hyderabad",
+            "kyc_status": "pending",
+            "is_admin": False,
+            "email_verified": True,
+            "phone_verified": True,
+            "password_hash": hash_password("Agent@123"),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "last_login_at": timestamp,
+            "status": "pending",
+            "review_notes": "",
+            "reviewed_at": None,
+            "reviewed_by_manager": None,
+            "agent_application_submitted_at": timestamp,
+        },
+    ]
+
+    for demo_user in demo_users:
+        lookup = {
+            "$or": [
+                {"id": demo_user["id"]},
+                {"email": demo_user["email"]},
+                {"phone": {"$in": phone_identity_variants(demo_user["phone"])}},
+            ]
+        }
+        existing = await db.users.find_one(lookup, {"_id": 0})
+        if existing:
+            merged = {**existing, **demo_user, "created_at": existing.get("created_at") or demo_user["created_at"]}
+            await db.users.update_one({"id": existing.get("id", demo_user["id"])}, {"$set": merged}, upsert=True)
+        else:
+            await db.users.update_one({"id": demo_user["id"]}, {"$set": demo_user}, upsert=True)
 
     store = load_local_store()
     bookings = store.setdefault("bookings", [])
@@ -2201,11 +2327,13 @@ async def ensure_indexes() -> None:
         await db.users.update_many({"google_sub": ""}, {"$unset": {"google_sub": ""}})
         await db.users.update_many({"password_hash": ""}, {"$unset": {"password_hash": ""}})
         await db.users.update_many({"phone": "9999900001"}, {"$set": {"phone": "+919999900001"}})
-        await db.users.update_many({"phone": "9000000000"}, {"$set": {"phone": "+94991348973"}})
-        await db.users.update_many({"phone": "94991348973"}, {"$set": {"phone": "+94991348973"}})
-        await db.users.update_many({"phone": "9900001111"}, {"$set": {"phone": "+916303210224"}})
+        await db.users.update_many({"phone": "9000000000"}, {"$set": {"phone": "+919491348973"}})
+        await db.users.update_many({"phone": "94991348973"}, {"$set": {"phone": "+919491348973"}})
+        await db.users.update_many({"phone": "9491348973"}, {"$set": {"phone": "+919491348973"}})
+        await db.users.update_many({"phone": "9900001111"}, {"$set": {"phone": "+919900001111"}})
         await db.users.update_many({"phone": "6303210224"}, {"$set": {"phone": "+916303210224"}})
         await db.users.update_many({"phone": "9911112222"}, {"$set": {"phone": "+919911112222"}})
+        await sync_demo_auth_users_to_db()
 
         for index_name in ("email_1", "phone_1", "google_sub_1"):
             try:
@@ -2331,7 +2459,7 @@ async def admin_demo_access():
         user = await db.users.find_one({"is_admin": True}, {"_id": 0})
     elif ALLOW_LOCAL_AUTH_FALLBACK:
         ensure_local_demo_users()
-        user = local_find_user(email="admin@rivanreality.com") or local_find_user(phone="+94991348973")
+        user = local_find_user(email="admin@rivanreality.com") or local_find_user(phone="+919491348973")
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
@@ -3833,11 +3961,16 @@ async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
                 overdue.append(visit)
 
         if pending:
+            pending_phones = ", ".join(agent.get("phone", "") for agent in pending[:3] if agent.get("phone"))
             reminders.append({
                 "id": "pending-approvals",
                 "type": "info",
                 "title": f"{len(pending)} agent approval{'s' if len(pending) != 1 else ''} waiting",
-                "body": "Approve or reject pending agent applications so phone access unlocks immediately after review.",
+                "body": (
+                    f"Pending phone numbers: {pending_phones}."
+                    if pending_phones
+                    else "Approve or reject pending agent applications so phone access unlocks immediately after review."
+                ),
             })
         if upcoming:
             reminders.append({
@@ -4968,19 +5101,25 @@ async def seed_data():
     # ---- Admin user ----
     await db.users.insert_one({
         "id": "admin-user-001",
-        "phone": "+94991348973",
+        "phone": "+919491348973",
         "name": "Rivan Admin",
         "email": "admin@rivanreality.com",
         "address": "Rivan HQ, Hyderabad",
         "kyc_status": "verified",
         "is_admin": True,
         "role": "admin",
+        "password_hash": hash_password("Admin@123"),
+        "email_verified": True,
+        "phone_verified": True,
+        "auth_methods": ["email"],
+        "updated_at": now_utc().isoformat(),
+        "last_login_at": now_utc().isoformat(),
         "created_at": now_utc().isoformat(),
     })
 
     await db.users.insert_one({
         "id": "agent-main-001",
-        "phone": "+916303210224",
+        "phone": "+919900001111",
         "name": "Arjun Reddy",
         "email": "agent@rivaan.com",
         "address": "Banjara Hills, Hyderabad",
@@ -4993,6 +5132,9 @@ async def seed_data():
         "manager_name": "Regional Sales Director",
         "agent_brand_name": "Rivan Crest Partners",
         "sub_agent_ids": ["agent-sub-001"],
+        "approval_status": "approved",
+        "approved_by_manager": "Rivan Admin",
+        "status": "active",
         "auth_methods": ["email"],
         "email_verified": True,
         "phone_verified": True,
@@ -5018,10 +5160,44 @@ async def seed_data():
         "manager_id": "agent-main-001",
         "agent_brand_name": "Rivan Crest Partners",
         "sub_agent_ids": [],
+        "approval_status": "approved",
+        "approved_by_manager": "Arjun Reddy",
+        "status": "active",
         "auth_methods": ["email"],
         "email_verified": True,
         "phone_verified": True,
         "password_hash": hash_password("Agent@123"),
+        "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
+        "last_login_at": now_utc().isoformat(),
+    })
+
+    await db.users.insert_one({
+        "id": "agent-pending-001",
+        "phone": "+916303210224",
+        "name": "Puneeth Agent Test",
+        "email": "pendingagent@rivaan.com",
+        "address": "Kukatpally, Hyderabad",
+        "kyc_status": "pending",
+        "is_admin": False,
+        "role": "agent",
+        "age": 31,
+        "aadhaar_number": "1111 2222 3333",
+        "bank_details": "SBI Bank · A/C XXXX7821 · IFSC SBIN0001234",
+        "manager_name": "Regional Sales Director",
+        "agent_brand_name": "Rivan Crest Partners",
+        "sub_agent_ids": [],
+        "approval_status": "pending",
+        "approved_by_manager": None,
+        "status": "pending",
+        "auth_methods": ["agent_application"],
+        "email_verified": True,
+        "phone_verified": True,
+        "password_hash": hash_password("Agent@123"),
+        "review_notes": "",
+        "reviewed_at": None,
+        "reviewed_by_manager": None,
+        "agent_application_submitted_at": now_utc().isoformat(),
         "created_at": now_utc().isoformat(),
         "updated_at": now_utc().isoformat(),
         "last_login_at": now_utc().isoformat(),
