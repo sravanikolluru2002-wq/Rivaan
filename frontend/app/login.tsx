@@ -16,10 +16,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import * as AuthSession from "expo-auth-session";
-import * as Google from "expo-auth-session/providers/google";
-import Constants from "expo-constants";
 
 import { Button } from "@/src/components/Button";
 import { PropertyMedia } from "@/src/components/PropertyMedia";
@@ -29,19 +25,9 @@ import {
   getFirebaseAuth,
   getFirebasePhoneAuthHelpers,
   hasFirebaseConfig,
-  signInWithFirebaseGooglePopup,
 } from "@/src/firebase";
 import { api, warmBackendReady } from "@/src/api";
 import { colors, radii, spacing, typography } from "@/src/theme";
-
-WebBrowser.maybeCompleteAuthSession();
-
-type AuthTab = "phone" | "google";
-
-const AUTH_TABS: { key: AuthTab; label: string }[] = [
-  { key: "phone", label: "Phone OTP" },
-  { key: "google", label: "Google" },
-];
 
 const LOGIN_VIDEO_URL = "https://res.cloudinary.com/dzisksq78/video/upload/v1780939161/villa_1_ltxt2q.mp4";
 const LOGIN_VIDEO_POSTER = "https://images.unsplash.com/photo-1512917774080-9991f1c4c750";
@@ -57,9 +43,7 @@ export default function LoginScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
 
-  const [activeTab, setActiveTab] = useState<AuthTab>("phone");
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const [phone, setPhone] = useState("");
@@ -77,81 +61,10 @@ export default function LoginScreen() {
   const [recaptchaReady, setRecaptchaReady] = useState(false);
   const [recaptchaSolved, setRecaptchaSolved] = useState(false);
 
-  const googleWebClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
-  const googleAndroidClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID);
-  const googleIosClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
-  const isExpoGo = Constants.appOwnership === "expo";
   const isLocalhostWeb =
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
     ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const isHostedWeb =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    !["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const googlePlatformClientId = Platform.select({
-    android: googleAndroidClientId,
-    ios: googleIosClientId,
-    default: googleWebClientId,
-  });
-  const googleRedirectUri =
-    normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI) ||
-    (Platform.OS === "web"
-      ? isHostedWeb && typeof window !== "undefined"
-        ? `${window.location.origin}${window.location.pathname || "/login"}`
-        : ""
-      : AuthSession.makeRedirectUri({
-          native: "frontend://google-auth",
-          scheme: "frontend",
-          path: "google-auth",
-        }));
-
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
-    webClientId: googleWebClientId,
-    iosClientId: googleIosClientId || undefined,
-    androidClientId: googleAndroidClientId || undefined,
-    redirectUri: googleRedirectUri || undefined,
-    scopes: ["openid", "profile", "email"],
-    selectAccount: true,
-  });
-
-  const googleLoginDisabled =
-    Platform.OS === "web"
-      ? isLocalhostWeb || !googleWebClientId
-      : !googleRequest || isExpoGo;
-
-  useEffect(() => {
-    const runGoogleAuth = async () => {
-      if (!googleResponse) return;
-
-      if (googleResponse.type !== "success") {
-        if (googleResponse.type !== "dismiss") {
-          setErrorMessage(formatGoogleLoginError((googleResponse as any)?.error, googleRedirectUri, isLocalhostWeb));
-        }
-        setGoogleLoading(false);
-        return;
-      }
-
-      const result: any = googleResponse;
-      const idToken = result.params?.id_token || result.authentication?.idToken;
-      if (!idToken) {
-        setGoogleLoading(false);
-        setErrorMessage("Google did not return a valid identity token.");
-        return;
-      }
-
-      try {
-        const session = await api.googleAuth(idToken);
-        await signIn(session.access_token, session.user);
-      } catch (error: any) {
-        setErrorMessage(error?.message || "Google sign-in failed");
-      } finally {
-        setGoogleLoading(false);
-      }
-    };
-
-    void runGoogleAuth();
-  }, [googleResponse, googleRedirectUri, isLocalhostWeb, signIn]);
 
   useEffect(() => {
     if (otpCooldownSeconds <= 0) return;
@@ -171,11 +84,11 @@ export default function LoginScreen() {
   }, []);
 
   useEffect(() => {
-    if (!isLocalhostWeb || activeTab !== "phone" || !useFirebaseTestPhoneAuth) return;
+    if (!isLocalhostWeb || !useFirebaseTestPhoneAuth) return;
     if (recaptchaInitializedRef.current) return;
     recaptchaInitializedRef.current = true;
     void primeLocalhostRecaptcha();
-  }, [activeTab, isLocalhostWeb, useFirebaseTestPhoneAuth]);
+  }, [isLocalhostWeb, useFirebaseTestPhoneAuth]);
 
   useEffect(() => {
     return () => {
@@ -183,11 +96,9 @@ export default function LoginScreen() {
     };
   }, []);
 
-  function resetTransientState(nextTab: AuthTab) {
-    setActiveTab(nextTab);
+  function resetTransientState() {
     setErrorMessage("");
     setLoading(false);
-    setGoogleLoading(false);
     setOtpSent(false);
     setOtpSentToPhone("");
     setOtp(["", "", "", "", "", ""]);
@@ -374,65 +285,6 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleGoogleLogin() {
-    setErrorMessage("");
-    if (!hasFirebaseConfig) {
-      return showFormError(firebaseConfigError || "Firebase web configuration is missing.");
-    }
-    if (!googleWebClientId) {
-      return showFormError("Google client ID is missing from the app configuration.");
-    }
-    if (Platform.OS === "web" && isLocalhostWeb) {
-      return showFormError(
-        "Google sign-in should be tested on the hosted HTTPS site, not localhost. Google blocks this loopback redirect flow here."
-      );
-    }
-    if (isExpoGo) {
-      return showFormError(
-        "Google sign-in is not supported in Expo Go for this OAuth flow. Use the web app or a development build."
-      );
-    }
-    if (Platform.OS === "web" && !googleRedirectUri) {
-      return showFormError(
-        "Google sign-in is missing a valid hosted redirect URI. Open the deployed HTTPS site and add that exact URI in the Google OAuth web client."
-      );
-    }
-    if (
-      Platform.OS !== "web" &&
-      (!googlePlatformClientId || googlePlatformClientId === googleWebClientId)
-    ) {
-      return showFormError(
-        "Google sign-in for native builds needs a dedicated Android or iOS OAuth client ID. The current app configuration only has the web client ID."
-      );
-    }
-
-    if (__DEV__) {
-      console.info(`Google OAuth redirect URI: ${googleRedirectUri}`);
-    }
-
-    setGoogleLoading(true);
-    try {
-      if (Platform.OS === "web") {
-        const idToken = await signInWithFirebaseGooglePopup();
-        const session = await api.googleAuth(idToken);
-        await signIn(session.access_token, session.user);
-        setGoogleLoading(false);
-        return;
-      }
-
-      const result = await promptGoogleAsync();
-      if (result.type !== "success") {
-        setGoogleLoading(false);
-        if (result.type !== "dismiss") {
-          setErrorMessage("Google sign-in was cancelled or could not be completed.");
-        }
-      }
-    } catch (error: any) {
-      setGoogleLoading(false);
-      showFormError(formatGoogleLoginError(error?.message || error, googleRedirectUri, isLocalhostWeb));
-    }
-  }
-
   function handleOtpChange(index: number, value: string) {
     const clean = value.replace(/\D/g, "").slice(0, 1);
     const next = [...otp];
@@ -444,25 +296,29 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe} testID="login-screen">
-      <View style={styles.backgroundWrap}>
-        <PropertyMedia image={LOGIN_VIDEO_POSTER} videoUrl={LOGIN_VIDEO_URL} style={styles.backgroundMedia} />
-        <View style={styles.backgroundOverlay} />
-      </View>
-
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={[styles.shell, isWide && styles.shellWide]}>
             <View style={[styles.brandColumn, isWide && styles.brandColumnWide]}>
-              <View style={styles.logoWrap}>
+              <View style={[styles.logoWrap, isWide && styles.logoWrapWide]}>
                 <Image source={require("../assets/images/rivan-logo.png")} style={styles.logo} resizeMode="contain" />
-                <Text style={styles.tagline}>Legacy of trust, legacy of wealth</Text>
+                <Text style={styles.tagline}>Premium real estate access</Text>
               </View>
 
-              <View style={styles.brandCopy}>
-                <Text style={styles.title}>Sign in to Rivan</Text>
-                <Text style={styles.subtitle}>
-                  Quick access to your properties, visits, and saved actions.
+              <View style={styles.entryPanel}>
+                <Text style={styles.entryBrand}>Rivan</Text>
+                <View style={styles.entryMediaShell}>
+                  <PropertyMedia image={LOGIN_VIDEO_POSTER} videoUrl={LOGIN_VIDEO_URL} style={styles.entryMedia} />
+                </View>
+                <Text style={styles.entryHeadline}>Login to get started</Text>
+                <Text style={styles.entryText}>
+                  Browse properties, save favourites, and continue your enquiry journey with a simpler green-first experience.
                 </Text>
+                <View style={styles.entryDots}>
+                  <View style={[styles.entryDot, styles.entryDotActive]} />
+                  <View style={styles.entryDot} />
+                  <View style={styles.entryDot} />
+                </View>
               </View>
 
               <View style={styles.securityCard}>
@@ -470,9 +326,9 @@ export default function LoginScreen() {
                   <Feather name="shield" size={18} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.securityTitle}>Secure customer access</Text>
+                  <Text style={styles.securityTitle}>Fast and secure login</Text>
                   <Text style={styles.securityText}>
-                    Your account syncs across the mobile app and web dashboard with protected sessions.
+                    Phone OTP stays primary so customer access remains quick and simple.
                   </Text>
                 </View>
               </View>
@@ -481,8 +337,9 @@ export default function LoginScreen() {
             <View style={[styles.formCard, isWide && styles.formCardWide]}>
               <View style={styles.formTopRow}>
                 <View style={styles.formTopCopy}>
-                  <Text style={styles.formEyebrow}>Customer Access</Text>
-                  <Text style={styles.formTitle}>Welcome back</Text>
+                  <Text style={styles.formEyebrow}>Customer access</Text>
+                  <Text style={styles.formTitle}>Simple login</Text>
+                  <Text style={styles.formSubcopy}>Use your mobile number to continue in a few seconds.</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.backHomeButton}
@@ -493,42 +350,6 @@ export default function LoginScreen() {
                   <Text style={styles.backHomeButtonText}>Home</Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={styles.roleSwitchRow}>
-                <View style={[styles.roleChip, styles.roleChipActive]}>
-                  <Feather name="user" size={14} color={colors.white} />
-                  <Text style={[styles.roleChipText, styles.roleChipTextActive]}>Customer Login</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.roleChip}
-                  onPress={() => router.push("/agent-login")}
-                  testID="login-top-agent-link"
-                >
-                  <Feather name="briefcase" size={14} color={colors.primaryDeepest} />
-                  <Text style={styles.roleChipText}>Agent Login</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.roleChip}
-                  onPress={() => router.push("/admin-login")}
-                  testID="login-top-admin-link"
-                >
-                  <Feather name="shield" size={14} color={colors.primaryDeepest} />
-                  <Text style={styles.roleChipText}>Admin Login</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
-                {AUTH_TABS.map((tab) => (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[styles.tabPill, activeTab === tab.key && styles.tabPillActive]}
-                    onPress={() => resetTransientState(tab.key)}
-                    testID={`login-tab-${tab.key}`}
-                  >
-                    <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
 
               {errorMessage ? (
                 <View style={styles.errorBanner}>
@@ -546,8 +367,7 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
-              {activeTab === "phone" ? (
-                <View style={styles.formSection}>
+              <View style={styles.formSection}>
                   <InputField
                     label="Phone Number"
                     value={phone}
@@ -584,8 +404,8 @@ export default function LoginScreen() {
                       {useFirebaseTestPhoneAuth
                         ? recaptchaReady
                           ? recaptchaSolved
-                            ? "Firebase test mode is enabled for localhost. You can send OTP to configured test phone numbers now."
-                            : "Complete the reCAPTCHA box shown at the bottom-right, then tap Send OTP."
+                            ? "Firebase test mode is enabled for localhost. You can send OTP now."
+                            : "Complete the reCAPTCHA box at the bottom-right, then continue."
                           : "Loading Firebase test verification..."
                         : "Localhost is only safe for Firebase test phone numbers. Use the hosted site for real OTPs."}
                     </Text>
@@ -593,7 +413,7 @@ export default function LoginScreen() {
 
                   {otpSent ? (
                     <>
-                      <Text style={styles.otpLabel}>Enter OTP sent to {otpSentToPhone}</Text>
+                      <Text style={styles.otpLabel}>Enter the 6-digit OTP sent to {otpSentToPhone}</Text>
                       <View style={styles.otpRow}>
                         {otp.map((digit, index) => (
                           <TextInput
@@ -617,7 +437,7 @@ export default function LoginScreen() {
                       </View>
 
                       <Button
-                        title="Verify OTP"
+                        title="Continue"
                         onPress={handleVerifyOtp}
                         loading={loading}
                         testID="login-verify-button"
@@ -637,7 +457,7 @@ export default function LoginScreen() {
                     </>
                   ) : (
                     <Button
-                      title={otpCooldownSeconds > 0 ? `Send OTP in ${otpCooldownSeconds}s` : "Send OTP"}
+                      title={otpCooldownSeconds > 0 ? `Send OTP in ${otpCooldownSeconds}s` : "Continue"}
                       onPress={handleSendOtp}
                       loading={loading}
                       disabled={otpCooldownSeconds > 0 || (useFirebaseTestPhoneAuth && (!recaptchaReady || !recaptchaSolved))}
@@ -645,54 +465,6 @@ export default function LoginScreen() {
                       style={{ marginTop: spacing.sm }}
                     />
                   )}
-                </View>
-              ) : null}
-
-              {activeTab === "google" ? (
-                <View style={styles.formSection}>
-                  <View style={styles.googleInfoCard}>
-                    <Feather name="globe" size={18} color={colors.primary} />
-                    <Text style={styles.googleInfoText}>
-                      {isExpoGo
-                        ? "Use the hosted web app or a development build for Google sign-in. Expo Go cannot complete this redirect flow."
-                        : Platform.OS === "web"
-                          ? isLocalhostWeb
-                            ? "Google sign-in is blocked on localhost for this OAuth flow. Use the hosted HTTPS web app instead."
-                            : `Sign in with your Google account on this hosted site. Authorized redirect URI: ${googleRedirectUri}`
-                          : "Native Google sign-in requires platform-specific OAuth client IDs in Firebase or Google Cloud."}
-                    </Text>
-                  </View>
-
-                  <Button
-                    title="Continue With Google"
-                    onPress={handleGoogleLogin}
-                    loading={googleLoading}
-                    disabled={googleLoginDisabled}
-                    testID="login-google-button"
-                    style={{ marginTop: spacing.sm }}
-                    icon={<Feather name="chrome" size={16} color={colors.white} />}
-                  />
-                </View>
-              ) : null}
-
-              <View style={styles.agentPanel}>
-                <Text style={styles.agentPanelTitle}>Are you part of the sales network?</Text>
-                <Text style={styles.agentPanelText}>
-                  Use the separate agent workspace to manage assigned assets, sub-agents, and customer closures.
-                </Text>
-                <Button
-                  title="Open Agent Login"
-                  variant="secondary"
-                  onPress={() => router.push("/agent-login")}
-                  testID="login-agent-link"
-                />
-                <Button
-                  title="Open Admin Login"
-                  variant="ghost"
-                  onPress={() => router.push("/admin-login")}
-                  testID="login-admin-link"
-                  style={{ marginTop: spacing.xs }}
-                />
               </View>
 
               <Text style={styles.footer}>By continuing, you agree to Rivan&apos;s Terms and Privacy Policy.</Text>
@@ -726,24 +498,6 @@ function InputField({
       </View>
     </View>
   );
-}
-
-function formatGoogleLoginError(error: any, redirectUri: string, isLocalhostWeb: boolean) {
-  const message = String(error || "");
-  const lowerMessage = message.toLowerCase();
-
-  if (lowerMessage.includes("loopback flow has been blocked") || lowerMessage.includes("invalid_request")) {
-    return isLocalhostWeb
-      ? "Google blocked localhost sign-in for this OAuth flow. Use the hosted HTTPS web app for Google login."
-      : `Google rejected this OAuth request. Verify that this exact redirect URI is added in the Google OAuth web client: ${redirectUri}`;
-  }
-  if (lowerMessage.includes("redirect_uri_mismatch")) {
-    return `Google rejected the redirect URI. Add this exact URI to the Google OAuth web client: ${redirectUri}`;
-  }
-  if (lowerMessage.includes("access blocked")) {
-    return "Google blocked this request because the OAuth app configuration is incomplete. Verify the web redirect URI and platform client IDs.";
-  }
-  return message || "Google sign-in could not be completed.";
 }
 
 function formatPhoneOtpError(
@@ -819,10 +573,7 @@ async function verifyFirebasePhoneOtp(
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
-  backgroundWrap: { ...StyleSheet.absoluteFillObject, backgroundColor: "#000", pointerEvents: "none" },
-  backgroundMedia: { ...StyleSheet.absoluteFillObject },
-  backgroundOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(6, 17, 12, 0.58)" },
+  safe: { flex: 1, backgroundColor: "#F4F3EC" },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, padding: spacing.lg, justifyContent: "center" },
   shell: { width: "100%", maxWidth: 1120, alignSelf: "center", gap: spacing.xl },
@@ -830,42 +581,86 @@ const styles = StyleSheet.create({
   brandColumn: { gap: spacing.lg },
   brandColumnWide: { flex: 1, justifyContent: "center", paddingRight: spacing.lg },
   formCard: {
-    backgroundColor: "rgba(247, 248, 246, 0.96)",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
-    borderRadius: radii.lg,
+    borderColor: "#DFE7DD",
+    borderRadius: 28,
     padding: spacing.lg,
     gap: spacing.md,
+    shadowColor: "#0F4A22",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   formCardWide: { flex: 1, maxWidth: 460 },
-  logoWrap: { alignItems: "flex-start", gap: spacing.sm },
-  logo: { width: 220, height: 110 },
-  tagline: { ...typography.small, color: "#D7F6DE", fontStyle: "italic", fontWeight: "500" },
-  brandCopy: { gap: spacing.sm },
-  title: { ...typography.h1, color: colors.white, fontWeight: "700" },
-  subtitle: { ...typography.body, color: "rgba(255,255,255,0.84)", lineHeight: 22 },
-  formTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
-  formTopCopy: { gap: 2, flex: 1 },
-  formEyebrow: { ...typography.label, color: colors.accentDark },
-  formTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "800" },
-  roleSwitchRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  roleChip: {
+  logoWrap: { alignItems: "center", gap: spacing.sm },
+  logoWrapWide: { alignItems: "flex-start" },
+  logo: { width: 180, height: 88 },
+  tagline: { ...typography.small, color: colors.primary, fontWeight: "700", textTransform: "uppercase" },
+  entryPanel: {
+    backgroundColor: "#ECF6EE",
+    borderRadius: 32,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: "#D9E8D9",
+    alignItems: "center",
+  },
+  entryBrand: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: colors.primaryDeepest,
+    marginBottom: spacing.md,
+  },
+  entryMediaShell: {
+    width: 184,
+    height: 210,
+    borderTopLeftRadius: 92,
+    borderTopRightRadius: 92,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "#DCE8D9",
+  },
+  entryMedia: { width: "100%", height: "100%" },
+  entryHeadline: {
+    marginTop: spacing.lg,
+    fontSize: 30,
+    lineHeight: 38,
+    fontWeight: "800",
+    color: "#14361D",
+    textAlign: "center",
+  },
+  entryText: {
+    marginTop: spacing.sm,
+    fontSize: 15,
+    lineHeight: 24,
+    color: colors.stone600,
+    textAlign: "center",
+    maxWidth: 360,
+  },
+  entryDots: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.stone200,
+    gap: 8,
+    marginTop: spacing.md,
   },
-  roleChipActive: {
+  entryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#CAD6C8",
+  },
+  entryDotActive: {
+    width: 24,
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
-  roleChipText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  roleChipTextActive: { color: colors.white },
+  formTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
+  formTopCopy: { gap: 2, flex: 1 },
+  formEyebrow: { ...typography.label, color: colors.primary, letterSpacing: 1.1 },
+  formTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "800" },
+  formSubcopy: { ...typography.small, color: colors.stone600, lineHeight: 18, marginTop: 4 },
   backHomeButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -882,34 +677,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderRadius: radii.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "#DFE7DD",
   },
   securityIcon: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: "rgba(230,244,234,0.95)",
+    backgroundColor: "#E8F6EC",
     alignItems: "center",
     justifyContent: "center",
   },
-  securityTitle: { ...typography.body, color: colors.white, fontWeight: "700" },
-  securityText: { ...typography.small, color: "rgba(255,255,255,0.82)", marginTop: 2, lineHeight: 18 },
-  tabRow: { gap: spacing.sm, paddingBottom: spacing.xs },
-  tabPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.stone200,
-  },
-  tabPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  tabTextActive: { color: colors.white },
+  securityTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  securityText: { ...typography.small, color: colors.stone600, marginTop: 2, lineHeight: 18 },
   formSection: { gap: spacing.md },
   inputBlock: { gap: 6 },
   label: { ...typography.small, color: colors.stone600, fontWeight: "600" },
@@ -937,27 +720,6 @@ const styles = StyleSheet.create({
     borderColor: "#F6C7C7",
   },
   errorBannerText: { flex: 1, ...typography.small, color: colors.danger, fontWeight: "600", lineHeight: 18 },
-  googleInfoCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    backgroundColor: colors.white,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.stone100,
-  },
-  googleInfoText: { flex: 1, ...typography.small, color: colors.stone600, lineHeight: 18 },
-  agentPanel: {
-    gap: spacing.sm,
-    backgroundColor: colors.white,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.stone100,
-  },
-  agentPanelTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
-  agentPanelText: { ...typography.small, color: colors.stone600, lineHeight: 18 },
   otpLabel: { ...typography.small, color: colors.stone600, fontWeight: "600", marginTop: spacing.xs },
   otpRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   otpBox: {
@@ -972,7 +734,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.primary,
   },
-  otpBoxFilled: { borderColor: colors.primary, backgroundColor: "#F7FCF8" },
+  otpBoxFilled: { borderColor: colors.primary, backgroundColor: "#F2FBF4" },
   resend: { alignItems: "center", marginTop: spacing.xs, padding: spacing.sm },
   resendDisabled: { opacity: 0.55 },
   resendText: { ...typography.body, color: colors.primary, fontWeight: "600" },

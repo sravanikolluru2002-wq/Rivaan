@@ -432,6 +432,7 @@ export const api = {
   adminBookings: () => apiRequest("/admin/bookings"),
   adminConfirmBooking: (id: string) => apiRequest(`/admin/bookings/${id}/confirm`, { method: "POST" }),
   adminAgents: () => apiRequest("/admin/agents"),
+  adminOverview: () => apiRequest("/admin/overview"),
   adminApproveAgent: (id: string) => apiRequest(`/admin/agents/${id}/approve`, { method: "POST" }),
   adminUpdateAgentStatus: (id: string, approval_status: string, review_notes?: string) =>
     apiRequest(`/admin/agents/${id}/status`, { method: "POST", body: { approval_status, review_notes } }),

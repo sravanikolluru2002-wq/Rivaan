@@ -13,9 +13,6 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import * as AuthSession from "expo-auth-session";
-import * as Google from "expo-auth-session/providers/google";
-import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 
 import { Button } from "@/src/components/Button";
@@ -26,24 +23,15 @@ import {
   getFirebaseAuth,
   getFirebasePhoneAuthHelpers,
   hasFirebaseConfig,
-  signInWithFirebaseGooglePopup,
 } from "@/src/firebase";
 import { colors, radii, spacing, typography } from "@/src/theme";
 
-type AuthTab = "phone" | "google";
-
 type Props = {
   visible: boolean;
-  initialTab?: AuthTab;
   mode?: "login" | "signup";
   onClose: () => void;
   onSuccess?: () => void;
 };
-
-const AUTH_TABS: { key: AuthTab; label: string }[] = [
-  { key: "phone", label: "Phone OTP" },
-  { key: "google", label: "Google" },
-];
 
 const WEB_RECAPTCHA_CONTAINER_ID_PREFIX = "customer-auth-recaptcha";
 
@@ -53,7 +41,6 @@ function normalizePublicEnv(value?: string) {
 
 export default function CustomerAuthModal({
   visible,
-  initialTab = "phone",
   mode = "login",
   onClose,
   onSuccess,
@@ -62,9 +49,7 @@ export default function CustomerAuthModal({
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isWide = width >= 1080;
-  const [activeTab, setActiveTab] = useState<AuthTab>(initialTab);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneName, setPhoneName] = useState("");
@@ -81,91 +66,19 @@ export default function CustomerAuthModal({
   const recaptchaNodeIdRef = useRef<string | null>(null);
   const recaptchaNodeCounterRef = useRef(0);
 
-  const googleWebClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
-  const googleAndroidClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID);
-  const googleIosClientId = normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
-  const isExpoGo = Constants.appOwnership === "expo";
   const isLocalhostWeb =
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
     ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const isHostedWeb =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    !["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const googleRedirectUri =
-    normalizePublicEnv(process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI) ||
-    (Platform.OS === "web"
-      ? isHostedWeb && typeof window !== "undefined"
-        ? `${window.location.origin}/login`
-        : ""
-      : AuthSession.makeRedirectUri({
-          native: "frontend://google-auth",
-          scheme: "frontend",
-          path: "google-auth",
-        }));
   const phoneDigits = useMemo(() => phone.replace(/\D/g, "").slice(-10), [phone]);
   const validOtp = otp.every((digit) => digit.length === 1);
   const useFirebaseTestPhoneAuth =
     isLocalhostWeb && normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_USE_TEST_PHONE_AUTH) === "true";
 
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
-    webClientId: googleWebClientId,
-    iosClientId: googleIosClientId || undefined,
-    androidClientId: googleAndroidClientId || undefined,
-    redirectUri: googleRedirectUri || undefined,
-    scopes: ["openid", "profile", "email"],
-    selectAccount: true,
-  });
-
-  const googleLoginDisabled =
-    Platform.OS === "web"
-      ? isLocalhostWeb || !googleWebClientId
-      : !googleRequest || isExpoGo;
-
   useEffect(() => {
     if (!visible) return;
     warmBackendReady();
   }, [visible]);
-
-  useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab, visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const runGoogleAuth = async () => {
-      if (!googleResponse) return;
-
-      if (googleResponse.type !== "success") {
-        if (googleResponse.type !== "dismiss") {
-          setErrorMessage(formatGoogleLoginError((googleResponse as any)?.error, googleRedirectUri, isLocalhostWeb));
-        }
-        setGoogleLoading(false);
-        return;
-      }
-
-      const result: any = googleResponse;
-      const idToken = result.params?.id_token || result.authentication?.idToken;
-      if (!idToken) {
-        setGoogleLoading(false);
-        setErrorMessage("Google did not return a valid identity token.");
-        return;
-      }
-
-      try {
-        const session = await api.googleAuth(idToken);
-        await signIn(session.access_token, session.user);
-        handleSuccess();
-      } catch (error: any) {
-        setErrorMessage(error?.message || "Google sign-in failed");
-      } finally {
-        setGoogleLoading(false);
-      }
-    };
-
-    void runGoogleAuth();
-  }, [googleRedirectUri, googleResponse, isLocalhostWeb, signIn, visible]);
 
   useEffect(() => {
     if (otpCooldownSeconds <= 0) return;
@@ -183,16 +96,14 @@ export default function CustomerAuthModal({
   }, [visible]);
 
   function handleSuccess() {
-    resetTransientState(activeTab);
+    resetTransientState();
     onSuccess?.();
     onClose();
   }
 
-  function resetTransientState(nextTab: AuthTab) {
-    setActiveTab(nextTab);
+  function resetTransientState() {
     setErrorMessage("");
     setLoading(false);
-    setGoogleLoading(false);
     setOtpSent(false);
     setOtpSentToPhone("");
     setOtp(["", "", "", "", "", ""]);
@@ -323,45 +234,6 @@ export default function CustomerAuthModal({
     }
   }
 
-  async function handleGoogleLogin() {
-    setErrorMessage("");
-    if (!hasFirebaseConfig) {
-      return showFormError(firebaseConfigError || "Firebase web configuration is missing.");
-    }
-    if (!googleWebClientId) {
-      return showFormError("Google client ID is missing from the app configuration.");
-    }
-    if (Platform.OS === "web" && isLocalhostWeb) {
-      return showFormError("Google sign-in should be tested on the hosted HTTPS site, not localhost.");
-    }
-    if (isExpoGo) {
-      return showFormError("Google sign-in is not supported in Expo Go for this flow.");
-    }
-
-    setGoogleLoading(true);
-    try {
-      if (Platform.OS === "web") {
-        const idToken = await signInWithFirebaseGooglePopup();
-        const session = await api.googleAuth(idToken);
-        await signIn(session.access_token, session.user);
-        handleSuccess();
-        setGoogleLoading(false);
-        return;
-      }
-
-      const result = await promptGoogleAsync();
-      if (result.type !== "success" && result.type !== "dismiss") {
-        setErrorMessage("Google sign-in was cancelled or could not be completed.");
-      }
-      if (result.type !== "success") {
-        setGoogleLoading(false);
-      }
-    } catch (error: any) {
-      setGoogleLoading(false);
-      showFormError(formatGoogleLoginError(error?.message || error, googleRedirectUri, isLocalhostWeb));
-    }
-  }
-
   function handleOtpChange(index: number, value: string) {
     const clean = value.replace(/\D/g, "").slice(0, 1);
     const next = [...otp];
@@ -385,7 +257,7 @@ export default function CustomerAuthModal({
             <View style={[styles.brandPanel, isWide && styles.brandPanelWide]}>
               <Text style={styles.brandEyebrow}>Rivan Customer Access</Text>
               <Text style={styles.brandTitle}>
-                {mode === "signup" ? "Create your account in a quick step." : "Sign in and get back to browsing fast."}
+                {mode === "signup" ? "Create your account in one quick step." : "Sign in and get back to browsing fast."}
               </Text>
               <Text style={styles.brandText}>
                 Save properties, raise enquiries, and continue exactly where you left off.
@@ -397,7 +269,7 @@ export default function CustomerAuthModal({
                 </View>
                 <View style={styles.brandPoint}>
                   <Feather name="shield" size={16} color={colors.accentLight} />
-                  <Text style={styles.brandPointText}>Secure OTP and Google sign-in from the same screen</Text>
+                  <Text style={styles.brandPointText}>Secure OTP access from the same simple screen</Text>
                 </View>
                 <View style={styles.brandPoint}>
                   <Feather name="bookmark" size={16} color={colors.accentLight} />
@@ -415,9 +287,9 @@ export default function CustomerAuthModal({
               <View style={styles.cardTop}>
                 <View style={styles.headings}>
                   <Text style={styles.eyebrow}>{mode === "signup" ? "Create account" : "Customer login"}</Text>
-                  <Text style={styles.title}>{mode === "signup" ? "Create account" : "Welcome back"}</Text>
+                  <Text style={styles.title}>{mode === "signup" ? "Create account" : "Simple login"}</Text>
                   <Text style={styles.subtitle}>
-                    Quick sign-in with OTP or Google.
+                    Quick sign-in with phone OTP.
                   </Text>
                 </View>
                 <View style={styles.topActions}>
@@ -438,36 +310,6 @@ export default function CustomerAuthModal({
                 </View>
               </View>
 
-              <View style={styles.roleSwitchRow}>
-                <View style={[styles.roleChip, styles.roleChipActive]}>
-                  <Feather name="user" size={14} color={colors.white} />
-                  <Text style={[styles.roleChipText, styles.roleChipTextActive]}>Customer Login</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.roleChip}
-                  onPress={() => {
-                    onClose();
-                    router.push("/agent-login");
-                  }}
-                  testID="auth-modal-agent-link"
-                >
-                  <Feather name="briefcase" size={14} color={colors.primaryDeepest} />
-                  <Text style={styles.roleChipText}>Agent Login</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.tabRow}>
-                {AUTH_TABS.map((tab) => (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[styles.tabPill, activeTab === tab.key && styles.tabPillActive]}
-                    onPress={() => resetTransientState(tab.key)}
-                  >
-                    <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
               {errorMessage ? (
                 <View style={styles.errorBanner}>
                   <Feather name="alert-circle" size={14} color={colors.danger} />
@@ -475,8 +317,7 @@ export default function CustomerAuthModal({
                 </View>
               ) : null}
 
-              {activeTab === "phone" ? (
-                <View style={styles.section}>
+              <View style={styles.section}>
                   <InputField
                     label="Phone Number"
                     value={phone}
@@ -532,32 +373,13 @@ export default function CustomerAuthModal({
                     </>
                   ) : (
                     <Button
-                      title={mode === "signup" ? "Create with OTP" : "Send OTP"}
+                      title={mode === "signup" ? "Create with OTP" : "Continue"}
                       onPress={handleSendOtp}
                       loading={loading}
                       disabled={otpCooldownSeconds > 0 || (useFirebaseTestPhoneAuth && (!recaptchaReady || !recaptchaSolved))}
                     />
                   )}
-                </View>
-              ) : null}
-
-              {activeTab === "google" ? (
-                <View style={styles.section}>
-                  <View style={styles.infoCard}>
-                    <Feather name="globe" size={18} color={colors.primary} />
-                    <Text style={styles.infoText}>
-                      Use your Google account to continue with saved activity, property preferences, and customer actions.
-                    </Text>
-                  </View>
-                  <Button
-                    title={mode === "signup" ? "Sign up with Google" : "Continue with Google"}
-                    onPress={handleGoogleLogin}
-                    loading={googleLoading}
-                    disabled={googleLoginDisabled}
-                    icon={<Feather name="chrome" size={16} color={colors.white} />}
-                  />
-                </View>
-              ) : null}
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -585,20 +407,6 @@ function InputField({
       </View>
     </View>
   );
-}
-
-function formatGoogleLoginError(error: any, redirectUri: string, isLocalhostWeb: boolean) {
-  const message = String(error || "");
-  const lowerMessage = message.toLowerCase();
-  if (lowerMessage.includes("redirect_uri_mismatch")) {
-    return `Google rejected the redirect URI. Add this exact URI to the Google OAuth web client: ${redirectUri}`;
-  }
-  if (lowerMessage.includes("invalid_request") || lowerMessage.includes("loopback flow")) {
-    return isLocalhostWeb
-      ? "Google blocked localhost sign-in for this OAuth flow. Use the hosted HTTPS web app."
-      : "Google rejected this OAuth request. Verify the hosted redirect URI configuration.";
-  }
-  return message || "Google sign-in could not be completed.";
 }
 
 function formatPhoneOtpError(
@@ -689,24 +497,6 @@ const styles = StyleSheet.create({
   eyebrow: { ...typography.label, color: colors.accentDark },
   title: { ...typography.h2, color: colors.primaryDeepest, fontWeight: "800" },
   subtitle: { ...typography.body, color: colors.stone600, lineHeight: 21 },
-  roleSwitchRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-  roleChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.stone200,
-  },
-  roleChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  roleChipText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  roleChipTextActive: { color: colors.white },
   topActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   homeButton: {
     flexDirection: "row",
@@ -728,18 +518,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  tabRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", marginTop: spacing.xs },
-  tabPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.stone200,
-  },
-  tabPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  tabTextActive: { color: colors.white },
   section: { gap: spacing.sm },
   inputBlock: { gap: 6 },
   label: { ...typography.small, color: colors.stone600, fontWeight: "600" },

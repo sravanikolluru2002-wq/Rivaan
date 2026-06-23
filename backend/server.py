@@ -291,7 +291,7 @@ def ensure_local_demo_users() -> None:
             "id": "admin-user-001",
             "name": "Rivan Admin",
             "email": "admin@rivanreality.com",
-            "phone": "+919000000000",
+            "phone": "+94991348973",
             "role": "admin",
             "auth_methods": ["email"],
             "address": "Rivan HQ, Hyderabad",
@@ -308,7 +308,7 @@ def ensure_local_demo_users() -> None:
             "id": "agent-main-001",
             "name": "Arjun Reddy",
             "email": "agent@rivaan.com",
-            "phone": "+919900001111",
+            "phone": "+916303210224",
             "role": "agent",
             "age": 34,
             "aadhaar_number": "5555 6666 7777",
@@ -2201,8 +2201,10 @@ async def ensure_indexes() -> None:
         await db.users.update_many({"google_sub": ""}, {"$unset": {"google_sub": ""}})
         await db.users.update_many({"password_hash": ""}, {"$unset": {"password_hash": ""}})
         await db.users.update_many({"phone": "9999900001"}, {"$set": {"phone": "+919999900001"}})
-        await db.users.update_many({"phone": "9000000000"}, {"$set": {"phone": "+919000000000"}})
-        await db.users.update_many({"phone": "9900001111"}, {"$set": {"phone": "+919900001111"}})
+        await db.users.update_many({"phone": "9000000000"}, {"$set": {"phone": "+94991348973"}})
+        await db.users.update_many({"phone": "94991348973"}, {"$set": {"phone": "+94991348973"}})
+        await db.users.update_many({"phone": "9900001111"}, {"$set": {"phone": "+916303210224"}})
+        await db.users.update_many({"phone": "6303210224"}, {"$set": {"phone": "+916303210224"}})
         await db.users.update_many({"phone": "9911112222"}, {"$set": {"phone": "+919911112222"}})
 
         for index_name in ("email_1", "phone_1", "google_sub_1"):
@@ -2329,7 +2331,7 @@ async def admin_demo_access():
         user = await db.users.find_one({"is_admin": True}, {"_id": 0})
     elif ALLOW_LOCAL_AUTH_FALLBACK:
         ensure_local_demo_users()
-        user = local_find_user(email="admin@rivanreality.com") or local_find_user(phone="+919000000000")
+        user = local_find_user(email="admin@rivanreality.com") or local_find_user(phone="+94991348973")
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
@@ -3786,6 +3788,101 @@ async def admin_agents(user: Dict[str, Any] = Depends(get_admin_user)):
     return agents
 
 
+@api_router.get("/admin/overview")
+async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
+    def normalized_visit_status(value: Optional[str]) -> str:
+        return str(value or "scheduled").strip().lower()
+
+    def enrich_visits(
+        visit_rows: List[Dict[str, Any]],
+        property_rows: List[Dict[str, Any]],
+        agent_rows: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        property_map = {item.get("id"): item for item in property_rows}
+        agent_map = {item.get("id"): item for item in agent_rows}
+        enriched: List[Dict[str, Any]] = []
+        for visit in visit_rows:
+            property_doc = property_map.get(visit.get("property_id"), {})
+            agent_doc = agent_map.get(visit.get("assigned_agent_id"), {})
+            enriched.append({
+                **visit,
+                "property_name": visit.get("property_name") or property_doc.get("name"),
+                "assigned_agent_name": visit.get("assigned_agent_name") or agent_doc.get("name"),
+            })
+        enriched.sort(
+            key=lambda item: ((item.get("visit_date") or ""), (item.get("visit_time") or ""), item.get("created_at") or ""),
+            reverse=True,
+        )
+        return enriched
+
+    def build_reminders(agent_rows: List[Dict[str, Any]], visit_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        reminders: List[Dict[str, Any]] = []
+        pending = [agent for agent in agent_rows if str(agent.get("approval_status") or "pending").lower() == "pending"]
+        upcoming = [visit for visit in visit_rows if normalized_visit_status(visit.get("status")) in {"scheduled", "confirmed", "upcoming"}]
+        overdue = []
+        today = now_utc().date()
+        for visit in visit_rows:
+            raw_date = str(visit.get("visit_date") or "").strip()
+            if not raw_date:
+                continue
+            try:
+                visit_day = datetime.fromisoformat(raw_date).date()
+            except ValueError:
+                continue
+            if visit_day < today and normalized_visit_status(visit.get("status")) not in {"completed", "cancelled"}:
+                overdue.append(visit)
+
+        if pending:
+            reminders.append({
+                "id": "pending-approvals",
+                "type": "info",
+                "title": f"{len(pending)} agent approval{'s' if len(pending) != 1 else ''} waiting",
+                "body": "Approve or reject pending agent applications so phone access unlocks immediately after review.",
+            })
+        if upcoming:
+            reminders.append({
+                "id": "upcoming-visits",
+                "type": "success",
+                "title": f"{len(upcoming)} scheduled visit{'s' if len(upcoming) != 1 else ''} in queue",
+                "body": "Confirmed and scheduled visits are refreshed here for live admin follow-up.",
+            })
+        if overdue:
+            reminders.append({
+                "id": "overdue-visits",
+                "type": "warning",
+                "title": f"{len(overdue)} visit{'s' if len(overdue) != 1 else ''} need attention",
+                "body": "Some visit records are past their planned date and still need completion or rescheduling.",
+            })
+        return reminders
+
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Admin overview is unavailable")
+        users = load_local_store().get("users", [])
+        agents = [clean_user(agent) for agent in users if is_agent_role(agent.get("role"))]
+        agents.sort(key=lambda x: (x.get("approval_status") != "pending", x.get("name", "")))
+        visits = enrich_visits(local_list_visits(), local_get_properties(), agents)
+        return {
+            "generated_at": now_utc().isoformat(),
+            "agents": agents,
+            "visits": visits,
+            "reminders": build_reminders(agents, visits),
+        }
+
+    agents = await db.users.find({"role": {"$in": ["agent", "sub_agent"]}}, {"_id": 0}).to_list(500)
+    agents = [clean_user(agent) for agent in agents]
+    agents.sort(key=lambda x: (x.get("approval_status") != "pending", x.get("name", "")))
+    visits = await db.visits.find({}, {"_id": 0}).to_list(500)
+    properties = await db.properties.find({}, {"_id": 0}).to_list(500)
+    enriched_visits = enrich_visits(visits, properties, agents)
+    return {
+        "generated_at": now_utc().isoformat(),
+        "agents": agents,
+        "visits": enriched_visits,
+        "reminders": build_reminders(agents, enriched_visits),
+    }
+
+
 @api_router.post("/admin/agents/{agent_id}/status")
 async def admin_update_agent_status(
     agent_id: str,
@@ -4172,7 +4269,7 @@ async def agent_create_site_visit(req: AgentVisitReq, user: Dict[str, Any] = Dep
         "assigned_agent_id": assigned_agent_id,
         "created_by_agent_id": user["id"],
         "notes": req.notes,
-        "status": "upcoming",
+        "status": "scheduled",
         "created_at": now_utc().isoformat(),
         "updated_at": now_utc().isoformat(),
     }
@@ -4194,7 +4291,7 @@ async def agent_create_site_visit(req: AgentVisitReq, user: Dict[str, Any] = Dep
 
 @api_router.put("/agent/site-visits/{visit_id}")
 async def agent_update_site_visit(visit_id: str, req: AgentVisitUpdateReq, user: Dict[str, Any] = Depends(get_agent_user)):
-    allowed_statuses = {"upcoming", "completed", "cancelled", "rescheduled"}
+    allowed_statuses = {"upcoming", "scheduled", "confirmed", "completed", "cancelled", "rescheduled"}
     updates = req.model_dump(exclude_none=True)
     if "status" in updates:
         updates["status"] = updates["status"].strip().lower()
@@ -4871,7 +4968,7 @@ async def seed_data():
     # ---- Admin user ----
     await db.users.insert_one({
         "id": "admin-user-001",
-        "phone": "+919000000000",
+        "phone": "+94991348973",
         "name": "Rivan Admin",
         "email": "admin@rivanreality.com",
         "address": "Rivan HQ, Hyderabad",
@@ -4883,7 +4980,7 @@ async def seed_data():
 
     await db.users.insert_one({
         "id": "agent-main-001",
-        "phone": "+919900001111",
+        "phone": "+916303210224",
         "name": "Arjun Reddy",
         "email": "agent@rivaan.com",
         "address": "Banjara Hills, Hyderabad",

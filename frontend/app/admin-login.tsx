@@ -49,11 +49,11 @@ export default function AdminLoginScreen() {
             <View style={styles.hero}>
               <View style={styles.heroBadge}>
                 <Feather name="shield" size={14} color={colors.white} />
-                <Text style={styles.heroBadgeText}>MANAGEMENT ACCESS</Text>
+                <Text style={styles.heroBadgeText}>ADMIN LOGIN</Text>
               </View>
-              <Text style={styles.heroTitle}>Admin control for approvals, bookings, and live operations.</Text>
+              <Text style={styles.heroTitle}>Direct access for approvals and operations.</Text>
               <Text style={styles.heroBody}>
-                This screen now opens the seeded admin review console directly so you can test the full agent application and approval workflow without the broken phone-password step.
+                This page stays intentionally simple so admins can move straight into the review console without unnecessary friction.
               </Text>
 
               <View style={styles.heroStats}>
@@ -76,17 +76,11 @@ export default function AdminLoginScreen() {
               <View style={styles.cardTop}>
                 <View>
                   <Text style={styles.cardTitle}>Admin Review Access</Text>
-                  <Text style={styles.cardSubtitle}>Use seeded preview access to open the admin approval console directly.</Text>
+                  <Text style={styles.cardSubtitle}>Open the seeded admin approval console in one step.</Text>
                 </View>
                 <View style={styles.cardTopLinks}>
                   <TouchableOpacity onPress={() => router.replace("/")}>
                     <Text style={styles.backLink}>Home</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => router.push("/login")}>
-                    <Text style={styles.backLink}>Customer Login</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => router.push("/agent-login")}>
-                    <Text style={styles.backLink}>Agent Login</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -101,18 +95,19 @@ export default function AdminLoginScreen() {
               <View style={styles.previewBanner}>
                 <Feather name="shield" size={18} color={colors.primary} />
                 <Text style={styles.previewBannerText}>
-                  Phone and password inputs are removed for now. This page only exists to test the agent-apply to admin-approval workflow on the live app.
+                  Phone and password fields are removed here on purpose. This page is only for seeded admin preview access.
                 </Text>
               </View>
 
               <Button title="Open Admin Dashboard" onPress={handleAdminPreviewAccess} loading={loading} />
 
               <View style={styles.infoBox}>
-                <Text style={styles.infoTitle}>Current testing mode</Text>
-                <Text style={styles.infoText}>Step 1: Agent applies from the live app.</Text>
-                <Text style={styles.infoText}>Step 2: Open this seeded admin console.</Text>
-                <Text style={styles.infoText}>Step 3: Approve or reject the application.</Text>
-                <Text style={styles.infoText}>Step 4: Return to agent login and verify access.</Text>
+                <Text style={styles.infoTitle}>Current testing flow</Text>
+                <Text style={styles.infoText}>Seeded admin preview phone: +94 991348973</Text>
+                <Text style={styles.infoText}>1. Agent applies from the live app.</Text>
+                <Text style={styles.infoText}>2. Open this admin console.</Text>
+                <Text style={styles.infoText}>3. Approve or reject the request.</Text>
+                <Text style={styles.infoText}>4. Return to agent login and verify access.</Text>
               </View>
             </View>
           </View>

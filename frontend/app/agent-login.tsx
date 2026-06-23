@@ -290,27 +290,25 @@ export default function AgentLoginScreen() {
         <View style={[styles.shell, isWide && styles.shellWide]}>
           <View style={styles.hero}>
             <View style={styles.heroBadge}>
-              <Feather name="shield" size={14} color={colors.white} />
-              <Text style={styles.heroBadgeText}>AGENT WORKSPACE</Text>
+              <Feather name="briefcase" size={14} color={colors.white} />
+              <Text style={styles.heroBadgeText}>AGENT LOGIN</Text>
             </View>
-            <Text style={styles.eyebrow}>Phone verified access</Text>
-            <Text style={styles.title}>Rivan Crest Partners</Text>
+            <Text style={styles.title}>Simple access for approved agents.</Text>
             <Text style={styles.subtitle}>
-              Approved agents and sub-agents can enter the live dashboard using only their registered mobile number and OTP.
+              Use your registered mobile number, receive an OTP, and open the live dashboard without extra steps.
             </Text>
-
             <View style={styles.heroHighlights}>
               <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>OTP</Text>
-                <Text style={styles.heroStatLabel}>phone login</Text>
+                <Text style={styles.heroStatValue}>1</Text>
+                <Text style={styles.heroStatLabel}>phone number</Text>
+              </View>
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatValue}>1</Text>
+                <Text style={styles.heroStatLabel}>OTP verification</Text>
               </View>
               <View style={styles.heroStat}>
                 <Text style={styles.heroStatValue}>Live</Text>
-                <Text style={styles.heroStatLabel}>dashboard sync</Text>
-              </View>
-              <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>Approved</Text>
-                <Text style={styles.heroStatLabel}>agent access</Text>
+                <Text style={styles.heroStatLabel}>dashboard entry</Text>
               </View>
             </View>
           </View>
@@ -318,39 +316,22 @@ export default function AgentLoginScreen() {
           <View style={styles.card}>
             <View style={styles.badgeRow}>
               <View style={styles.badge}>
-                <Feather name="smartphone" size={14} color={colors.accentDark} />
-                <Text style={styles.badgeText}>PHONE ONLY LOGIN</Text>
+                <Feather name="smartphone" size={14} color={colors.primary} />
+                <Text style={styles.badgeText}>OTP LOGIN</Text>
               </View>
               <View style={styles.topLinks}>
                 <TouchableOpacity onPress={() => router.replace("/")} testID="agent-home-link">
                   <Text style={styles.backLink}>Home</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => router.push("/agent-apply")} testID="agent-apply-link">
-                  <Text style={styles.backLink}>Apply as Agent</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => router.replace("/login")} testID="agent-login-back">
-                  <Text style={styles.backLink}>Customer Login</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => router.push("/admin-login")} testID="agent-admin-link">
-                  <Text style={styles.backLink}>Admin Login</Text>
-                </TouchableOpacity>
               </View>
             </View>
 
-            <Text style={styles.cardTitle}>Enter Agent Dashboard</Text>
-            <Text style={styles.cardSubtitle}>Use the same phone number that your manager registered for your approved agent account.</Text>
-
-            <View style={styles.applyBanner}>
-              <Feather name="user-plus" size={16} color={colors.primary} />
-              <Text style={styles.applyBannerText}>New agent? Submit your details first and wait for manager approval before OTP login.</Text>
-              <TouchableOpacity onPress={() => router.push("/agent-apply")}>
-                <Text style={styles.applyBannerLink}>Open application</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.cardTitle}>Enter agent dashboard</Text>
+            <Text style={styles.cardSubtitle}>Use the same phone number that was approved for your agent account.</Text>
 
             {showLocalDemoHelp ? (
               <View style={styles.quickRow}>
-                <TouchableOpacity style={styles.quickButton} onPress={() => setPhone("9900001111")}>
+                <TouchableOpacity style={styles.quickButton} onPress={() => setPhone("6303210224")}>
                   <Text style={styles.quickButtonText}>Primary Agent</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickButton} onPress={() => setPhone("9911112222")}>
@@ -377,7 +358,7 @@ export default function AgentLoginScreen() {
             ) : null}
 
             <View style={styles.inputBlock}>
-              <Text style={styles.label}>Registered Agent Mobile Number</Text>
+              <Text style={styles.label}>Registered mobile number</Text>
               <View style={styles.inputShell}>
                 <Text style={styles.phonePrefix}>+91</Text>
                 <TextInput
@@ -403,8 +384,8 @@ export default function AgentLoginScreen() {
                 {useFirebaseTestPhoneAuth
                   ? recaptchaReady
                     ? recaptchaSolved
-                      ? "Firebase test mode is ready. You can send OTP to configured test phone numbers."
-                      : "Complete the reCAPTCHA box shown at the bottom-right, then tap Send OTP."
+                      ? "Firebase test mode is ready. You can send OTP now."
+                      : "Complete the reCAPTCHA box shown at the bottom-right, then continue."
                     : "Loading Firebase test verification..."
                   : "Use the hosted site for real OTP. On localhost, use Firebase test phone numbers only."}
               </Text>
@@ -412,7 +393,7 @@ export default function AgentLoginScreen() {
 
             {otpSent ? (
               <>
-                <Text style={styles.otpLabel}>Enter OTP sent to {otpSentToPhone}</Text>
+                <Text style={styles.otpLabel}>Enter the 6-digit OTP sent to {otpSentToPhone}</Text>
                 <View style={styles.otpRow}>
                   {otp.map((digit, index) => (
                     <TextInput
@@ -429,7 +410,7 @@ export default function AgentLoginScreen() {
                     />
                   ))}
                 </View>
-                <Button title="Verify OTP and Open Dashboard" onPress={handleVerifyOtp} loading={loading} testID="agent-login-verify" />
+                <Button title="Open Dashboard" onPress={handleVerifyOtp} loading={loading} testID="agent-login-verify" />
                 <TouchableOpacity onPress={handleSendOtp} disabled={otpCooldownSeconds > 0 || loading} style={styles.resend}>
                   <Text style={styles.resendText}>
                     {otpCooldownSeconds > 0 ? `Resend in ${otpCooldownSeconds}s` : "Resend OTP"}
@@ -438,7 +419,7 @@ export default function AgentLoginScreen() {
               </>
             ) : (
               <Button
-                title={otpCooldownSeconds > 0 ? `Send OTP in ${otpCooldownSeconds}s` : "Send OTP"}
+                title={otpCooldownSeconds > 0 ? `Send OTP in ${otpCooldownSeconds}s` : "Continue"}
                 onPress={handleSendOtp}
                 loading={loading}
                 disabled={otpCooldownSeconds > 0 || (useFirebaseTestPhoneAuth && (!recaptchaReady || !recaptchaSolved))}
@@ -452,7 +433,7 @@ export default function AgentLoginScreen() {
               </Text>
               {showLocalDemoHelp ? (
                 <>
-                  <Text style={styles.infoText}>Primary Agent: +91 99000 01111</Text>
+                  <Text style={styles.infoText}>Primary Agent: +91 63032 10224</Text>
                   <Text style={styles.infoText}>Sub-Agent: +91 99111 12222</Text>
                   <Text style={styles.infoText}>Pending Agent: +91 99222 23333</Text>
                   <Text style={styles.infoText}>Pending agents are blocked until manager approval is complete.</Text>
@@ -467,9 +448,9 @@ export default function AgentLoginScreen() {
             </View>
 
             <View style={styles.infoBox}>
-              <Text style={styles.infoTitle}>Emergency fallback access</Text>
+              <Text style={styles.infoTitle}>Fallback access</Text>
               <Text style={styles.infoText}>
-                If Firebase phone OTP is blocked or unstable, approved demo agents can still open the dashboard using the built-in email/password fallback.
+                If OTP is blocked during testing, approved demo agents can still use the built-in fallback buttons below.
               </Text>
               <View style={styles.quickRow}>
                 <TouchableOpacity
