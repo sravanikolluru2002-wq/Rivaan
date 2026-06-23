@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "@/src/components/Button";
 import { useAuth } from "@/src/auth-context";
@@ -33,6 +33,7 @@ function normalizePublicEnv(value?: string) {
 
 export default function AgentLoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ phone?: string }>();
   const { signIn } = useAuth();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
@@ -53,6 +54,11 @@ export default function AgentLoginScreen() {
   const [recaptchaReady, setRecaptchaReady] = useState(false);
   const [recaptchaSolved, setRecaptchaSolved] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [applicationPrompt, setApplicationPrompt] = useState<{
+    title: string;
+    body: string;
+    cta: string;
+  } | null>(null);
 
   const otpRefs = useRef<(TextInput | null)[]>([]);
   const confirmationResultRef = useRef<any>(null);
@@ -63,6 +69,12 @@ export default function AgentLoginScreen() {
 
   const phoneDigits = useMemo(() => phone.replace(/\D/g, "").slice(-10), [phone]);
   const validOtp = otp.every((digit) => digit.length === 1);
+
+  useEffect(() => {
+    if (typeof params.phone === "string" && params.phone) {
+      setPhone(params.phone.replace(/\D/g, "").slice(-10));
+    }
+  }, [params.phone]);
 
   useEffect(() => {
     warmBackendReady();
@@ -92,6 +104,14 @@ export default function AgentLoginScreen() {
   function showFormError(message: string) {
     setErrorMessage(message);
     Alert.alert("Agent login", message);
+  }
+
+  function openApplicationFlow() {
+    const normalizedPhone = phoneDigits ? `+91${phoneDigits}` : "";
+    router.push({
+      pathname: "/agent-apply",
+      params: normalizedPhone ? { phone: normalizedPhone } : {},
+    });
   }
 
   function resetOtpSession() {
@@ -204,6 +224,7 @@ export default function AgentLoginScreen() {
 
   async function handleSendOtp() {
     setErrorMessage("");
+    setApplicationPrompt(null);
     if (!hasFirebaseConfig) {
       return showFormError(firebaseConfigError || "Firebase web configuration is missing.");
     }
@@ -248,6 +269,7 @@ export default function AgentLoginScreen() {
 
   async function handleVerifyOtp() {
     setErrorMessage("");
+    setApplicationPrompt(null);
     if (!validOtp) return showFormError("Please enter the 6-digit OTP.");
 
     setLoading(true);
@@ -268,6 +290,23 @@ export default function AgentLoginScreen() {
           "The live backend has not been updated with agent phone login yet. Redeploy the Render backend service, then try again."
         );
         return;
+      }
+      const normalized = message.toLowerCase();
+      if (
+        normalized.includes("no approved agent account exists for this phone number") ||
+        normalized.includes("does not belong to an agent account")
+      ) {
+        setApplicationPrompt({
+          title: "Complete agent application",
+          body: "This phone number is not yet registered as an approved agent. Submit the full application and send it to admin approval.",
+          cta: "Open Agent Application",
+        });
+      } else if (normalized.includes("pending manager approval")) {
+        setApplicationPrompt({
+          title: "Approval pending",
+          body: "This phone number already has an agent application, but admin approval is still pending. Open admin and approve it, then retry login with the same number.",
+          cta: "Open Admin Panel",
+        });
       }
       showFormError(error?.message || formatPhoneOtpError(error, isLocalhostWeb, useFirebaseTestPhoneAuth, setOtpCooldownSeconds));
     } finally {
@@ -357,6 +396,25 @@ export default function AgentLoginScreen() {
               </View>
             ) : null}
 
+            {applicationPrompt ? (
+              <View style={styles.infoBox}>
+                <Text style={styles.infoTitle}>{applicationPrompt.title}</Text>
+                <Text style={styles.infoText}>{applicationPrompt.body}</Text>
+                <View style={styles.quickRow}>
+                  <TouchableOpacity
+                    style={styles.quickButton}
+                    onPress={() =>
+                      applicationPrompt.cta === "Open Admin Panel"
+                        ? router.push("/admin-login")
+                        : openApplicationFlow()
+                    }
+                  >
+                    <Text style={styles.quickButtonText}>{applicationPrompt.cta}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.inputBlock}>
               <Text style={styles.label}>Registered mobile number</Text>
               <View style={styles.inputShell}>
@@ -370,6 +428,7 @@ export default function AgentLoginScreen() {
                     const nextPhone = text.replace(/\D/g, "");
                     setPhone(nextPhone);
                     setErrorMessage("");
+                    setApplicationPrompt(null);
                     resetOtpSession();
                   }}
                   placeholder="Enter 10-digit mobile number"

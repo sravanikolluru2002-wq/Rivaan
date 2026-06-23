@@ -110,27 +110,51 @@ export default function AdminScreen() {
   useEffect(() => {
     const timer = setInterval(() => {
       load(true);
-    }, 15000);
+    }, 5000);
     return () => clearInterval(timer);
   }, [load]);
 
   async function handleApprove(agentId: string) {
     try {
+      setAgents((current) =>
+        current.map((agent) =>
+          agent.id === agentId
+            ? {
+                ...agent,
+                approval_status: "approved",
+                status: "active",
+              }
+            : agent
+        )
+      );
       await api.adminApproveAgent(agentId);
       Alert.alert("Approved", "Agent access is now active. This phone number can log in immediately.");
       await load();
     } catch (error: any) {
       Alert.alert("Approval failed", error?.message || "Unable to approve the agent right now.");
+      await load(true);
     }
   }
 
   async function handleReject(agentId: string) {
     try {
+      setAgents((current) =>
+        current.map((agent) =>
+          agent.id === agentId
+            ? {
+                ...agent,
+                approval_status: "rejected",
+                status: "pending",
+              }
+            : agent
+        )
+      );
       await api.adminUpdateAgentStatus(agentId, "rejected");
       Alert.alert("Rejected", "The application was rejected.");
       await load();
     } catch (error: any) {
       Alert.alert("Update failed", error?.message || "Unable to reject the application right now.");
+      await load(true);
     }
   }
 

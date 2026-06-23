@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "@/src/components/Button";
 import { api } from "@/src/api";
@@ -45,9 +45,11 @@ const EMPTY_FORM: FormState = {
 
 export default function AgentApplyScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ phone?: string }>();
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const initialPhone = typeof params.phone === "string" ? params.phone.replace(/\D/g, "").slice(-10) : "";
+  const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, phone: initialPhone });
   const [loading, setLoading] = useState(false);
   const [submittedAgent, setSubmittedAgent] = useState<any>(null);
 
@@ -86,12 +88,16 @@ export default function AgentApplyScreen() {
         Alert.alert("Already Approved", response.message, [
           {
             text: "Open Agent Login",
-            onPress: () => router.replace("/agent-login"),
+            onPress: () =>
+              router.replace({
+                pathname: "/agent-login",
+                params: { phone: `+91${phoneDigits}` },
+              }),
           },
         ]);
       }
       if (!response.already_approved) {
-        setForm(EMPTY_FORM);
+        setForm({ ...EMPTY_FORM, phone: `+91${phoneDigits}`.replace(/\D/g, "").slice(-10) });
       }
     } catch (error: any) {
       Alert.alert("Agent application", error?.message || "Unable to submit your application right now.");
@@ -121,7 +127,18 @@ export default function AgentApplyScreen() {
                 </View>
                 <View style={styles.successActions}>
                   <Button title="Open Admin Panel" onPress={() => router.replace("/admin-login")} fullWidth={false} style={{ flex: 1 }} />
-                  <Button title="Back to Agent Login" variant="secondary" onPress={() => router.replace("/agent-login")} fullWidth={false} style={{ flex: 1 }} />
+                  <Button
+                    title="Back to Agent Login"
+                    variant="secondary"
+                    onPress={() =>
+                      router.replace({
+                        pathname: "/agent-login",
+                        params: { phone: submittedAgent?.phone || `+91${phoneDigits}` },
+                      })
+                    }
+                    fullWidth={false}
+                    style={{ flex: 1 }}
+                  />
                 </View>
               </View>
             </View>
