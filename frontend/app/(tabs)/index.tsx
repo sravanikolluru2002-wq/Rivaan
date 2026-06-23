@@ -281,6 +281,16 @@ export function HomeScreen() {
               </View>
 
               <View style={styles.spotlightBody}>
+                <View style={styles.inlineHeroMediaCard}>
+                  <Image source={{ uri: sripuramProperty.images?.[0] || sripuramProperty.image }} style={styles.inlineHeroMediaImage} resizeMode="cover" />
+                  <View style={styles.inlineHeroMediaOverlay} />
+                  <View style={styles.inlineHeroMediaTextWrap}>
+                    <Text style={styles.inlineHeroMediaLabel}>Independent House</Text>
+                    <Text style={styles.inlineHeroMediaTitle}>Sripuram Home Experience</Text>
+                    <Text style={styles.inlineHeroMediaSub}>Visual-first layout, east/west plans, and instant enquiry flow</Text>
+                  </View>
+                </View>
+
                 <Text style={styles.spotlightSectionTitle}>Property overview</Text>
                 <Text style={styles.spotlightDescription}>{sripuramProperty.description}</Text>
 
@@ -909,6 +919,29 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg,
   },
+  inlineHeroMediaCard: {
+    width: "100%",
+    height: 220,
+    borderRadius: radii.lg,
+    overflow: "hidden",
+    backgroundColor: colors.stone100,
+    ...shadow.sm,
+  },
+  inlineHeroMediaImage: { width: "100%", height: "100%" },
+  inlineHeroMediaOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(9, 31, 21, 0.30)",
+  },
+  inlineHeroMediaTextWrap: {
+    position: "absolute",
+    left: spacing.md,
+    right: spacing.md,
+    bottom: spacing.md,
+    gap: 4,
+  },
+  inlineHeroMediaLabel: { ...typography.label, color: "#D7F6DE", fontSize: 10, letterSpacing: 1 },
+  inlineHeroMediaTitle: { ...typography.h3, color: colors.white, fontWeight: "800" },
+  inlineHeroMediaSub: { ...typography.small, color: "rgba(255,255,255,0.88)", lineHeight: 18 },
   spotlightSectionTitle: { ...typography.h4, color: colors.primaryDeepest, fontWeight: "800" },
   spotlightDescription: { ...typography.body, color: colors.stone600, lineHeight: 22 },
   spotlightStats: {

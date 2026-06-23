@@ -49,6 +49,7 @@ export default function AgentApplyScreen() {
   const isWide = width >= 980;
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
+  const [submittedAgent, setSubmittedAgent] = useState<any>(null);
 
   const phoneDigits = useMemo(() => form.phone.replace(/\D/g, "").slice(-10), [form.phone]);
 
@@ -80,17 +81,15 @@ export default function AgentApplyScreen() {
         notes: form.notes.trim() || undefined,
       });
 
-      Alert.alert(
-        response.already_approved ? "Already Approved" : "Application Sent",
-        response.message,
-        [
+      setSubmittedAgent(response.agent || null);
+      if (response.already_approved) {
+        Alert.alert("Already Approved", response.message, [
           {
             text: "Open Agent Login",
             onPress: () => router.replace("/agent-login"),
           },
-        ]
-      );
-
+        ]);
+      }
       if (!response.already_approved) {
         setForm(EMPTY_FORM);
       }
@@ -105,8 +104,30 @@ export default function AgentApplyScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={[styles.scroll, isWide && styles.scrollWide]}>
-          <View style={[styles.shell, isWide && styles.shellWide]}>
-            <View style={styles.hero}>
+          {submittedAgent ? (
+            <View style={styles.successShell}>
+              <View style={styles.successCard}>
+                <View style={styles.successIcon}>
+                  <Feather name="check-circle" size={26} color={colors.white} />
+                </View>
+                <Text style={styles.successTitle}>Thank you for submitting the application</Text>
+                <Text style={styles.successBody}>
+                  The agent request for {submittedAgent.name || "this account"} is now in the admin approval queue. Open the admin panel, approve the request, and then this phone number will get agent login access.
+                </Text>
+                <View style={styles.successMetaBox}>
+                  <Text style={styles.successMeta}>Name: {submittedAgent.name || "-"}</Text>
+                  <Text style={styles.successMeta}>Phone: {submittedAgent.phone || "-"}</Text>
+                  <Text style={styles.successMeta}>Status: {String(submittedAgent.approval_status || "pending").toUpperCase()}</Text>
+                </View>
+                <View style={styles.successActions}>
+                  <Button title="Open Admin Panel" onPress={() => router.replace("/admin-login")} fullWidth={false} style={{ flex: 1 }} />
+                  <Button title="Back to Agent Login" variant="secondary" onPress={() => router.replace("/agent-login")} fullWidth={false} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.shell, isWide && styles.shellWide]}>
+              <View style={styles.hero}>
               <View style={styles.heroBadge}>
                 <Feather name="briefcase" size={14} color={colors.white} />
                 <Text style={styles.heroBadgeText}>AGENT APPROVAL FLOW</Text>
@@ -264,8 +285,9 @@ export default function AgentApplyScreen() {
                 <Text style={styles.infoText}>After approval, the same phone number can be used on the live agent OTP login screen.</Text>
                 <Text style={styles.infoText}>Rejected or suspended accounts are blocked automatically until the manager updates the status.</Text>
               </View>
+              </View>
             </View>
-          </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -278,6 +300,40 @@ const styles = StyleSheet.create({
   scrollWide: { justifyContent: "center", paddingVertical: spacing.xl },
   shell: { gap: spacing.lg },
   shellWide: { flexDirection: "row", alignItems: "stretch" },
+  successShell: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: spacing.xl },
+  successCard: {
+    width: "100%",
+    maxWidth: 760,
+    backgroundColor: colors.white,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
+    gap: spacing.md,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#EADFCC",
+    ...shadow.md,
+  },
+  successIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successTitle: { ...typography.h2, color: colors.primaryDeepest, fontWeight: "800", textAlign: "center" },
+  successBody: { ...typography.body, color: colors.stone600, lineHeight: 22, textAlign: "center" },
+  successMetaBox: {
+    width: "100%",
+    backgroundColor: "#F7F5EF",
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#E7DECF",
+  },
+  successMeta: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
+  successActions: { width: "100%", flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   hero: {
     flex: 1,
     minHeight: 320,
