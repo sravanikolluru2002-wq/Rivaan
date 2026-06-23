@@ -40,7 +40,7 @@ export default function ProfileScreen() {
   async function handleLogout() {
     const performSignOut = async () => {
       await signOut();
-      router.replace("/login");
+      router.replace("/");
     };
 
     if (Platform.OS === "web" && typeof window !== "undefined") {

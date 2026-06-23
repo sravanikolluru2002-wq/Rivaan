@@ -12,7 +12,7 @@ type Tab = "stats" | "bookings" | "services" | "users" | "agents" | "leads" | "p
 
 export default function AdminScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>("agents");
   const [stats, setStats] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
@@ -106,6 +106,11 @@ export default function AdminScreen() {
     }
   }
 
+  async function leaveAdminWorkspace() {
+    await signOut();
+    router.replace("/");
+  }
+
   if (!user?.is_admin) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -113,7 +118,15 @@ export default function AdminScreen() {
           <Feather name="lock" size={48} color={colors.stone400} />
           <Text style={styles.emptyTitle}>Admin Access Required</Text>
           <Text style={styles.emptyText}>This dashboard is for Rivan Reality staff only.</Text>
-          <Text style={styles.emptyText}>Open /admin-login and sign in with the registered admin mobile number and password.</Text>
+          <Text style={styles.emptyText}>Open /admin-login and use preview admin access to continue the approval workflow test.</Text>
+          <View style={styles.emptyActions}>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => router.replace("/")}>
+              <Text style={styles.emptyActionText}>Go Home</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.emptyActionBtn, styles.emptyActionBtnPrimary]} onPress={() => router.replace("/admin-login")}>
+              <Text style={[styles.emptyActionText, styles.emptyActionTextPrimary]}>Open Admin Login</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -130,13 +143,21 @@ export default function AdminScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="admin-screen">
       <View style={styles.header}>
-        <TouchableOpacity testID="admin-back" style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity testID="admin-back" style={styles.headerBtn} onPress={() => router.replace("/")}>
           <Feather name="arrow-left" size={20} color={colors.primaryDeepest} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Admin Dashboard</Text>
           <Text style={styles.headerSub}>Rivan Reality Operations</Text>
         </View>
+        <TouchableOpacity style={styles.headerGhostBtn} onPress={() => router.replace("/")}>
+          <Feather name="home" size={16} color={colors.primary} />
+          <Text style={styles.headerGhostText}>Home</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.headerGhostBtn} onPress={leaveAdminWorkspace}>
+          <Feather name="log-out" size={16} color={colors.danger} />
+          <Text style={[styles.headerGhostText, { color: colors.danger }]}>Sign Out</Text>
+        </TouchableOpacity>
         <View style={styles.adminBadge}>
           <Feather name="shield" size={12} color={colors.accent} />
           <Text style={styles.adminBadgeText}>ADMIN</Text>
@@ -548,6 +569,16 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.stone100,
   },
   headerBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.offWhite, alignItems: "center", justifyContent: "center" },
+  headerGhostBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    backgroundColor: colors.offWhite,
+  },
+  headerGhostText: { ...typography.small, color: colors.primary, fontWeight: "700" },
   headerTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
   headerSub: { ...typography.small, color: colors.stone500 },
   adminBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.accentSoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.sm },
@@ -635,6 +666,21 @@ const styles = StyleSheet.create({
   agentQueueLabel: { ...typography.small, color: colors.stone500, fontWeight: "700" },
   sectionTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700", marginTop: spacing.xs },
   empty: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xl, gap: spacing.sm },
+  emptyActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md, justifyContent: "center" },
+  emptyActionBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.offWhite,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+  },
+  emptyActionBtnPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  emptyActionText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
+  emptyActionTextPrimary: { color: colors.white },
   emptyTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700", marginTop: spacing.md },
   emptyText: { ...typography.body, color: colors.stone500, textAlign: "center" },
 });

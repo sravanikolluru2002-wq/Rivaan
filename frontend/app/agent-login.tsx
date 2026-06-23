@@ -322,11 +322,17 @@ export default function AgentLoginScreen() {
                 <Text style={styles.badgeText}>PHONE ONLY LOGIN</Text>
               </View>
               <View style={styles.topLinks}>
+                <TouchableOpacity onPress={() => router.replace("/")} testID="agent-home-link">
+                  <Text style={styles.backLink}>Home</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => router.push("/agent-apply")} testID="agent-apply-link">
                   <Text style={styles.backLink}>Apply as Agent</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => router.replace("/login")} testID="agent-login-back">
                   <Text style={styles.backLink}>Customer Login</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => router.push("/admin-login")} testID="agent-admin-link">
+                  <Text style={styles.backLink}>Admin Login</Text>
                 </TouchableOpacity>
               </View>
             </View>

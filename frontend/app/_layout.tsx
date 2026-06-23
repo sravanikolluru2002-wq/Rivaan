@@ -30,6 +30,11 @@ function RootLayoutInner() {
       return;
     }
 
+    if (isAuthed && rootSegment === "admin" && !user?.is_admin) {
+      router.replace("/admin-login");
+      return;
+    }
+
     if (!isAuthed && rootSegment === "agent" && Platform.OS !== "web") {
       router.replace("/agent-login");
     }

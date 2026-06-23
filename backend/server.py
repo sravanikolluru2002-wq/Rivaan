@@ -2323,6 +2323,35 @@ async def admin_login(req: AdminLoginReq):
     return await issue_token_response(user)
 
 
+@api_router.post("/auth/admin/demo-access", response_model=TokenResp)
+async def admin_demo_access():
+    if await is_database_available():
+        user = await db.users.find_one({"is_admin": True}, {"_id": 0})
+    elif ALLOW_LOCAL_AUTH_FALLBACK:
+        ensure_local_demo_users()
+        user = local_find_user(email="admin@rivanreality.com") or local_find_user(phone="+919000000000")
+    else:
+        raise HTTPException(status_code=503, detail="Authentication database is unavailable")
+
+    if not user or not user.get("is_admin"):
+        raise HTTPException(status_code=404, detail="No seeded admin access is available for preview mode")
+
+    timestamp = now_utc().isoformat()
+    if await is_database_available():
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"updated_at": timestamp, "last_login_at": timestamp, "phone_verified": True}},
+        )
+        refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+        return await issue_token_response(refreshed or user)
+
+    user["updated_at"] = timestamp
+    user["last_login_at"] = timestamp
+    user["phone_verified"] = True
+    local_save_user(user)
+    return await issue_token_response(user)
+
+
 @api_router.post("/auth/send-otp")
 async def send_otp(req: SendOtpReq):
     phone = normalize_phone(req.phone)

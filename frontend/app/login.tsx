@@ -507,6 +507,14 @@ export default function LoginScreen() {
                   <Feather name="briefcase" size={14} color={colors.primaryDeepest} />
                   <Text style={styles.roleChipText}>Agent Login</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.roleChip}
+                  onPress={() => router.push("/admin-login")}
+                  testID="login-top-admin-link"
+                >
+                  <Feather name="shield" size={14} color={colors.primaryDeepest} />
+                  <Text style={styles.roleChipText}>Admin Login</Text>
+                </TouchableOpacity>
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>

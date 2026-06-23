@@ -31,6 +31,7 @@ const CATEGORIES = [
   { key: "Apartments", label: "Apartments", icon: "home" as const },
   { key: "Flats", label: "Flats", icon: "layers" as const },
   { key: "Villas", label: "Villas", icon: "home" as const },
+  { key: "Independent House", label: "Independent", icon: "home" as const },
   { key: "Open Plots", label: "Open Plots", icon: "square" as const },
   { key: "Layouts", label: "Layouts", icon: "map" as const },
   { key: "Commercial Properties", label: "Commercial", icon: "briefcase" as const },
@@ -39,7 +40,7 @@ const CATEGORIES = [
 
 export function HomeScreen() {
   const router = useRouter();
-  const { user, isAuthed, isSessionRefreshing } = useAuth();
+  const { user, isAuthed, isSessionRefreshing, signOut } = useAuth();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const isTablet = width >= 680;
@@ -58,6 +59,7 @@ export function HomeScreen() {
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  const sripuramProperty = mockProperties[0] || null;
 
   const openAuthModal = useCallback((mode: "login" | "signup" = "login", nextRoute?: string) => {
     setAuthModalMode(mode);
@@ -151,6 +153,11 @@ export function HomeScreen() {
     fetchData();
   }
 
+  async function handleHeaderSignOut() {
+    await signOut();
+    router.replace("/");
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="home-screen">
       <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
@@ -171,6 +178,45 @@ export function HomeScreen() {
           <View style={styles.headerRight}>
             {isAuthed ? (
               <>
+                <View style={styles.accountPanel}>
+                  <TouchableOpacity
+                    testID="home-profile-button"
+                    style={styles.accountIdentity}
+                    onPress={() => openProtectedRoute("/profile")}
+                  >
+                    <Text style={styles.accountName}>{user?.name || "Customer"}</Text>
+                    <Text style={styles.accountMeta}>
+                      {user?.is_admin ? "Admin access" : user?.role === "agent" || user?.role === "sub_agent" ? "Agent access" : "Customer access"}
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={styles.accountActionRow}>
+                    {(user?.role === "agent" || user?.role === "sub_agent") ? (
+                      <TouchableOpacity
+                        testID="home-agent-dashboard-button"
+                        style={styles.headerMiniLink}
+                        onPress={() => router.push("/agent")}
+                      >
+                        <Text style={styles.headerMiniLinkText}>Agent</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {user?.is_admin ? (
+                      <TouchableOpacity
+                        testID="home-admin-dashboard-button"
+                        style={styles.headerMiniLink}
+                        onPress={() => router.push("/admin")}
+                      >
+                        <Text style={styles.headerMiniLinkText}>Admin</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      testID="home-signout-button"
+                      style={styles.headerSignoutLink}
+                      onPress={handleHeaderSignOut}
+                    >
+                      <Text style={styles.headerSignoutLinkText}>Sign Out</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <TouchableOpacity
                   testID="home-wishlist-button"
                   style={styles.iconBtn}
@@ -218,6 +264,108 @@ export function HomeScreen() {
             )}
           </View>
         </View>
+
+        {sripuramProperty ? (
+          <View style={styles.section}>
+            <View style={[styles.spotlightCard, isDesktop && styles.spotlightCardDesktop]}>
+              <View style={styles.spotlightMediaWrap}>
+                <PropertyMedia image={sripuramProperty.image} style={styles.spotlightMedia} />
+                <View style={styles.spotlightOverlay} />
+                <View style={styles.spotlightMediaContent}>
+                  <Text style={styles.spotlightEyebrow}>SRIPURAM GARDENS</Text>
+                  <Text style={styles.spotlightTitle}>{sripuramProperty.name}</Text>
+                  <Text style={styles.spotlightMeta}>
+                    {sripuramProperty.location} - {sripuramProperty.survey_number}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.spotlightBody}>
+                <Text style={styles.spotlightSectionTitle}>Property overview</Text>
+                <Text style={styles.spotlightDescription}>{sripuramProperty.description}</Text>
+
+                <View style={styles.spotlightStats}>
+                  <View style={styles.spotlightStatCard}>
+                    <Text style={styles.spotlightStatValue}>454</Text>
+                    <Text style={styles.spotlightStatLabel}>Plots ready for enquiry</Text>
+                  </View>
+                  <View style={styles.spotlightStatCard}>
+                    <Text style={styles.spotlightStatValue}>E / W</Text>
+                    <Text style={styles.spotlightStatLabel}>Facing directions</Text>
+                  </View>
+                  <View style={styles.spotlightStatCard}>
+                    <Text style={styles.spotlightStatValue}>40-60 ft</Text>
+                    <Text style={styles.spotlightStatLabel}>Road network</Text>
+                  </View>
+                </View>
+
+                <View style={styles.spotlightPills}>
+                  <View style={styles.spotlightPill}>
+                    <Feather name="maximize-2" size={14} color={colors.primary} />
+                    <Text style={styles.spotlightPillText}>{sripuramProperty.size}</Text>
+                  </View>
+                  <View style={styles.spotlightPill}>
+                    <Feather name="compass" size={14} color={colors.primary} />
+                    <Text style={styles.spotlightPillText}>{sripuramProperty.facing}</Text>
+                  </View>
+                  <View style={styles.spotlightPill}>
+                    <Feather name="check-circle" size={14} color={colors.primary} />
+                    <Text style={styles.spotlightPillText}>
+                      {sripuramProperty.approvals?.[0] || "Approved layout"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.spotlightActions}>
+                  <TouchableOpacity
+                    testID="home-spotlight-view-property"
+                    style={styles.spotlightPrimaryAction}
+                    onPress={() => openPropertyDetails(sripuramProperty.id)}
+                  >
+                    <Text style={styles.spotlightPrimaryActionText}>Explore Sripuram</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="home-spotlight-enquire"
+                    style={styles.spotlightSecondaryAction}
+                    onPress={() => openPropertyDetails(sripuramProperty.id)}
+                  >
+                    <Text style={styles.spotlightSecondaryActionText}>Open layout and enquire</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.storyboardGrid}>
+              <View style={styles.storyboardCard}>
+                <View style={styles.storyboardIcon}>
+                  <Feather name="map" size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.storyboardTitle}>Interactive plotted layout</Text>
+                <Text style={styles.storyboardText}>
+                  The plotted box experience is back at the center of the journey with clickable east and west facing options.
+                </Text>
+              </View>
+              <View style={styles.storyboardCard}>
+                <View style={styles.storyboardIcon}>
+                  <Feather name="home" size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.storyboardTitle}>Independent house story</Text>
+                <Text style={styles.storyboardText}>
+                  Sripuram house-plan context, plot details, and enquiry-first browsing stay visible from the Home page again.
+                </Text>
+              </View>
+              <View style={styles.storyboardCard}>
+                <View style={styles.storyboardIcon}>
+                  <Feather name="navigation" size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.storyboardTitle}>Quick buyer journey</Text>
+                <Text style={styles.storyboardText}>
+                  Customers can browse first, then log in only when they need wishlist, visits, or follow-up actions.
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         {!isAuthed ? (
           <View style={styles.portalSection}>
@@ -444,6 +592,33 @@ export function HomeScreen() {
               </View>
             ) : null}
 
+            {sripuramProperty?.images?.length ? (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Sripuram Visual Preview</Text>
+                  <TouchableOpacity onPress={() => openPropertyDetails(sripuramProperty.id)}>
+                    <Text style={styles.inlineSectionLink}>Open full property</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.galleryScroll}
+                >
+                  {sripuramProperty.images.map((image: string, index: number) => (
+                    <TouchableOpacity
+                      key={`${sripuramProperty.id}-gallery-${index}`}
+                      style={styles.galleryCard}
+                      onPress={() => openPropertyDetails(sripuramProperty.id)}
+                      activeOpacity={0.92}
+                    >
+                      <Image source={{ uri: image }} style={styles.galleryImage} resizeMode="cover" />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Browse Categories</Text>
               <ScrollView
@@ -662,6 +837,158 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   authPrimaryText: { ...typography.body, color: colors.white, fontWeight: "700" },
+  accountPanel: {
+    alignItems: "flex-end",
+    gap: 4,
+    marginRight: spacing.xs,
+  },
+  accountIdentity: {
+    alignItems: "flex-end",
+  },
+  accountName: { ...typography.body, color: colors.primaryDeepest, fontWeight: "800" },
+  accountMeta: { ...typography.small, color: colors.stone500 },
+  accountActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  headerMiniLink: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+  },
+  headerMiniLinkText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
+  headerSignoutLink: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: "#FEECEC",
+    borderWidth: 1,
+    borderColor: "#F6C7C7",
+  },
+  headerSignoutLinkText: { ...typography.small, color: colors.danger, fontWeight: "800" },
+  spotlightCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.xl,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.stone100,
+    ...shadow.md,
+  },
+  spotlightCardDesktop: { flexDirection: "row" },
+  spotlightMediaWrap: {
+    minHeight: 260,
+    backgroundColor: colors.stone100,
+  },
+  spotlightMedia: {
+    width: "100%",
+    height: "100%",
+    minHeight: 260,
+  },
+  spotlightOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11, 40, 26, 0.42)",
+  },
+  spotlightMediaContent: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    gap: 6,
+  },
+  spotlightEyebrow: { ...typography.label, color: "#F7D39A", fontSize: 10, letterSpacing: 1.1 },
+  spotlightTitle: { ...typography.h2, color: colors.white, fontWeight: "800" },
+  spotlightMeta: { ...typography.body, color: "rgba(255,255,255,0.88)" },
+  spotlightBody: {
+    flex: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  spotlightSectionTitle: { ...typography.h4, color: colors.primaryDeepest, fontWeight: "800" },
+  spotlightDescription: { ...typography.body, color: colors.stone600, lineHeight: 22 },
+  spotlightStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  spotlightStatCard: {
+    flexGrow: 1,
+    minWidth: 110,
+    backgroundColor: "#F7FBF8",
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: "#DCEADF",
+    gap: 2,
+  },
+  spotlightStatValue: { ...typography.h4, color: colors.primary, fontWeight: "800" },
+  spotlightStatLabel: { ...typography.small, color: colors.stone600, fontWeight: "600" },
+  spotlightPills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  spotlightPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.offWhite,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  spotlightPillText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
+  spotlightActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  spotlightPrimaryAction: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+  },
+  spotlightPrimaryActionText: { ...typography.body, color: colors.white, fontWeight: "800" },
+  spotlightSecondaryAction: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.stone200,
+  },
+  spotlightSecondaryActionText: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  storyboardGrid: { marginTop: spacing.md, gap: spacing.sm },
+  storyboardCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.stone100,
+    ...shadow.sm,
+    gap: spacing.xs,
+  },
+  storyboardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E6F4EA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  storyboardTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "800" },
+  storyboardText: { ...typography.small, color: colors.stone600, lineHeight: 19 },
   locationBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", backgroundColor: colors.offWhite, paddingHorizontal: 10, paddingVertical: 7, borderRadius: radii.full },
   locationText: { ...typography.small, color: colors.stone900, fontWeight: "600" },
   greeting: { ...typography.h2, color: colors.primaryDeepest, fontWeight: "800" },
@@ -725,6 +1052,7 @@ const styles = StyleSheet.create({
   section: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
   sectionTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
+  inlineSectionLink: { ...typography.small, color: colors.primary, fontWeight: "800" },
   featuredTag: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.accentSoft, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.full },
   featuredTagText: { ...typography.label, color: colors.accentDark, fontSize: 10 },
   featuredScroll: { gap: spacing.md, paddingRight: spacing.lg },
@@ -737,6 +1065,16 @@ const styles = StyleSheet.create({
   featuredMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
   featuredMetaText: { ...typography.small, color: colors.white },
   featuredPrice: { ...typography.bodyLarge, color: colors.accentLight, fontWeight: "700", marginTop: 2 },
+  galleryScroll: { gap: spacing.md, paddingRight: spacing.lg },
+  galleryCard: {
+    width: 220,
+    height: 150,
+    borderRadius: radii.lg,
+    overflow: "hidden",
+    backgroundColor: colors.stone100,
+    ...shadow.sm,
+  },
+  galleryImage: { width: "100%", height: "100%" },
   categoryScroll: { gap: spacing.sm, paddingRight: spacing.lg },
   categoryPill: {
     flexDirection: "row",

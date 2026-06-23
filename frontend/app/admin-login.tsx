@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import React, { useState } from "react";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -15,47 +15,14 @@ export default function AdminLoginScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
 
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const phoneDigits = useMemo(() => phone.replace(/\D/g, "").slice(-10), [phone]);
-
-  async function handleAdminLogin() {
-    if (phoneDigits.length !== 10) {
-      setErrorMessage("Enter the 10-digit admin mobile number.");
-      return;
-    }
-    if (!password.trim()) {
-      setErrorMessage("Enter the admin password.");
-      return;
-    }
-
+  async function handleAdminPreviewAccess() {
     setLoading(true);
     setErrorMessage("");
     try {
-      let session;
-      try {
-        session = await api.adminLogin(`+91${phoneDigits}`, password);
-      } catch (error: any) {
-        const rawMessage = String(error?.message || "");
-        const normalizedMessage = rawMessage.toLowerCase();
-        const shouldUseLegacyFallback =
-          rawMessage === "Not Found" ||
-          rawMessage.includes("HTTP 404") ||
-          rawMessage.includes("HTTP 401") ||
-          normalizedMessage.includes("invalid admin phone or password");
-        if (!shouldUseLegacyFallback) {
-          throw error;
-        }
-
-        // Older live backends may not expose /auth/admin/login yet, and some
-        // live databases only have the legacy email-based admin seeded.
-        // Fall back so the admin page remains usable in both cases.
-        session = await api.login("admin@rivanreality.com", password);
-      }
-
+      const session = await api.adminDemoAccess();
       if (!session.user?.is_admin) {
         throw new Error("This account does not have admin access.");
       }
@@ -63,7 +30,11 @@ export default function AdminLoginScreen() {
       router.replace("/admin");
     } catch (error: any) {
       const rawMessage = String(error?.message || "");
-      const message = rawMessage || "Admin login failed.";
+      const normalized = rawMessage.toLowerCase();
+      const message =
+        normalized.includes("not found") || normalized.includes("404")
+          ? "The live backend has not been updated with admin preview access yet. Redeploy the Render backend, then try again."
+          : rawMessage || "Admin preview access failed.";
       setErrorMessage(message);
     } finally {
       setLoading(false);
@@ -82,7 +53,7 @@ export default function AdminLoginScreen() {
               </View>
               <Text style={styles.heroTitle}>Admin control for approvals, bookings, and live operations.</Text>
               <Text style={styles.heroBody}>
-                Use the registered admin mobile number and password to open the management dashboard. From there you can review agent applications, approve access, and monitor live activity.
+                This screen now opens the seeded admin review console directly so you can test the full agent application and approval workflow without the broken phone-password step.
               </Text>
 
               <View style={styles.heroStats}>
@@ -104,12 +75,20 @@ export default function AdminLoginScreen() {
             <View style={styles.card}>
               <View style={styles.cardTop}>
                 <View>
-                  <Text style={styles.cardTitle}>Admin Sign In</Text>
-                  <Text style={styles.cardSubtitle}>Phone number plus password access for Rivan management.</Text>
+                  <Text style={styles.cardTitle}>Admin Review Access</Text>
+                  <Text style={styles.cardSubtitle}>Use seeded preview access to open the admin approval console directly.</Text>
                 </View>
-                <TouchableOpacity onPress={() => router.replace("/")}>
-                  <Text style={styles.backLink}>Back to Home</Text>
-                </TouchableOpacity>
+                <View style={styles.cardTopLinks}>
+                  <TouchableOpacity onPress={() => router.replace("/")}>
+                    <Text style={styles.backLink}>Home</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => router.push("/login")}>
+                    <Text style={styles.backLink}>Customer Login</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => router.push("/agent-login")}>
+                    <Text style={styles.backLink}>Agent Login</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {errorMessage ? (
@@ -119,42 +98,21 @@ export default function AdminLoginScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.inputBlock}>
-                <Text style={styles.label}>Admin Mobile Number</Text>
-                <View style={styles.inputShell}>
-                  <Text style={styles.phonePrefix}>+91</Text>
-                  <TextInput
-                    value={phone}
-                    onChangeText={(value) => setPhone(value.replace(/\D/g, ""))}
-                    placeholder="9000000000"
-                    placeholderTextColor={colors.stone400}
-                    keyboardType="phone-pad"
-                    maxLength={10}
-                    style={styles.input}
-                  />
-                </View>
+              <View style={styles.previewBanner}>
+                <Feather name="shield" size={18} color={colors.primary} />
+                <Text style={styles.previewBannerText}>
+                  Phone and password inputs are removed for now. This page only exists to test the agent-apply to admin-approval workflow on the live app.
+                </Text>
               </View>
 
-              <View style={styles.inputBlock}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Enter admin password"
-                  placeholderTextColor={colors.stone400}
-                  secureTextEntry
-                  style={styles.passwordInput}
-                />
-              </View>
-
-              <Button title="Open Admin Dashboard" onPress={handleAdminLogin} loading={loading} />
+              <Button title="Open Admin Dashboard" onPress={handleAdminPreviewAccess} loading={loading} />
 
               <View style={styles.infoBox}>
-                <Text style={styles.infoTitle}>Demo credentials for admin access</Text>
-                <Text style={styles.infoText}>Mobile: `9000000000`</Text>
-                <Text style={styles.infoText}>Password: `Admin@123`</Text>
-                <Text style={styles.infoText}>Legacy email fallback: `admin@rivanreality.com`</Text>
-                <Text style={styles.infoText}>If your live database has a different admin user, use that real phone number and password instead.</Text>
+                <Text style={styles.infoTitle}>Current testing mode</Text>
+                <Text style={styles.infoText}>Step 1: Agent applies from the live app.</Text>
+                <Text style={styles.infoText}>Step 2: Open this seeded admin console.</Text>
+                <Text style={styles.infoText}>Step 3: Approve or reject the application.</Text>
+                <Text style={styles.infoText}>Step 4: Return to agent login and verify access.</Text>
               </View>
             </View>
           </View>
@@ -214,33 +172,21 @@ const styles = StyleSheet.create({
     ...shadow.md,
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md },
+  cardTopLinks: { flexDirection: "row", alignItems: "center", gap: spacing.md, flexWrap: "wrap", justifyContent: "flex-end" },
   cardTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "800" },
   cardSubtitle: { ...typography.body, color: colors.stone600, lineHeight: 21, maxWidth: 520 },
   backLink: { color: colors.primary, fontWeight: "700" },
-  inputBlock: { gap: 6 },
-  label: { ...typography.small, color: colors.stone600, fontWeight: "700" },
-  inputShell: {
-    minHeight: 54,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: "#E6DED1",
-    backgroundColor: "#FCFBF8",
+  previewBanner: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: spacing.md,
-  },
-  phonePrefix: { ...typography.body, color: colors.primaryDeepest, fontWeight: "800" },
-  input: { flex: 1, paddingHorizontal: spacing.md, color: colors.primaryDeepest, fontSize: 15 },
-  passwordInput: {
-    minHeight: 54,
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: "#F5FAF6",
     borderRadius: radii.md,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: "#E6DED1",
-    backgroundColor: "#FCFBF8",
-    paddingHorizontal: spacing.md,
-    color: colors.primaryDeepest,
-    fontSize: 15,
+    borderColor: "#D8E8DB",
   },
+  previewBannerText: { flex: 1, ...typography.small, color: colors.stone600, lineHeight: 18 },
   infoBox: {
     gap: 5,
     backgroundColor: "#FBF6EE",

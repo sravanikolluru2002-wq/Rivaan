@@ -371,6 +371,8 @@ export const api = {
     apiRequest<{ access_token: string; user: any }>("/auth/login", { method: "POST", body: { email, password }, auth: false }),
   adminLogin: (phone: string, password: string) =>
     apiRequest<{ access_token: string; user: any }>("/auth/admin/login", { method: "POST", body: { phone, password }, auth: false }),
+  adminDemoAccess: () =>
+    apiRequest<{ access_token: string; user: any }>("/auth/admin/demo-access", { method: "POST", auth: false }),
   googleAuth: (id_token: string) =>
     apiRequest<{ access_token: string; user: any }>("/auth/google", { method: "POST", body: { id_token }, auth: false }),
   firebaseAuth: (id_token: string, phone: string, name?: string) =>
