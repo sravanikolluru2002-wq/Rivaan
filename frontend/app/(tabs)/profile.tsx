@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -44,6 +45,8 @@ function ActionRow({
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, signOut, refresh } = useAuth();
+  const { width } = useWindowDimensions();
+  const isPhone = width < 640;
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [relationship, setRelationship] = useState<any>(null);
@@ -69,6 +72,10 @@ export default function ProfileScreen() {
       .join("")
       .toUpperCase();
   }, [user?.name]);
+
+  const normalizedRole = String(user?.role || "").toLowerCase();
+  const isApprovedAgent = (normalizedRole === "agent" || normalizedRole === "sub_agent") && user?.approval_status === "approved";
+  const isApprovedAdmin = Boolean(user?.is_admin) || ["admin", "manager", "super_admin"].includes(normalizedRole);
 
   async function handleSave() {
     setSaving(true);
@@ -105,14 +112,14 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, isPhone && styles.contentPhone]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.headerEyebrow}>Account</Text>
           <Text style={styles.headerTitle}>Profile</Text>
-          <Text style={styles.headerBody}>A cleaner hub for account details, ownership relationships, and role-based shortcuts.</Text>
+          <Text style={styles.headerBody}>A cleaner hub for account details, saved actions, and customer support.</Text>
         </View>
 
-        <View style={styles.heroCard}>
+        <View style={[styles.heroCard, isPhone && styles.heroCardPhone]}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
@@ -126,14 +133,14 @@ export default function ProfileScreen() {
                   KYC {user?.kyc_status === "verified" ? "Verified" : "Pending"}
                 </Text>
               </View>
-              {user?.role ? (
+              {isApprovedAgent || isApprovedAdmin ? (
                 <View style={styles.roleBadge}>
-                  <Text style={styles.roleBadgeText}>{String(user.role).replace(/_/g, " ")}</Text>
+                  <Text style={styles.roleBadgeText}>{String(user?.role || "").replace(/_/g, " ")}</Text>
                 </View>
               ) : null}
             </View>
           </View>
-          <TouchableOpacity style={styles.editButton} onPress={() => setEditing(true)} testID="profile-edit-button">
+          <TouchableOpacity style={[styles.editButton, isPhone && styles.editButtonPhone]} onPress={() => setEditing(true)} testID="profile-edit-button">
             <Feather name="edit-2" size={16} color={colors.primaryDeepest} />
           </TouchableOpacity>
         </View>
@@ -169,15 +176,15 @@ export default function ProfileScreen() {
 
         <View style={styles.surfaceCard}>
           <Text style={styles.sectionEyebrow}>Account actions</Text>
-          <Text style={styles.sectionTitle}>Manage your identity and role access</Text>
+          <Text style={styles.sectionTitle}>Manage your account</Text>
           <View style={styles.menuGroup}>
             <ActionRow icon="user" label="Personal Information" onPress={() => setEditing(true)} />
             <ActionRow icon="shield" label="KYC Verification" onPress={() => Alert.alert("KYC", "KYC documents can be managed from the Document Locker.")} />
             <ActionRow icon="settings" label="Notification Settings" onPress={() => Alert.alert("Settings", "Notification preferences are currently enabled by default.")} />
-            {(user?.role === "agent" || user?.role === "sub_agent") && (
+            {isApprovedAgent && (
               <ActionRow icon="briefcase" label="Agent Dashboard" onPress={() => router.push("/agent" as never)} accent />
             )}
-            {user?.is_admin && <ActionRow icon="grid" label="Admin Dashboard" onPress={() => router.push("/admin")} accent />}
+            {isApprovedAdmin && <ActionRow icon="grid" label="Admin Dashboard" onPress={() => router.push("/admin")} accent />}
           </View>
         </View>
 
@@ -199,7 +206,7 @@ export default function ProfileScreen() {
 
       <Modal visible={editing} animationType="slide" transparent onRequestClose={() => setEditing(false)}>
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, isPhone && styles.modalCardPhone]}>
             <Text style={styles.modalTitle}>Edit profile</Text>
 
             <Field label="Full name">
@@ -232,7 +239,7 @@ export default function ProfileScreen() {
               />
             </Field>
 
-            <View style={styles.modalActions}>
+            <View style={[styles.modalActions, isPhone && styles.modalActionsPhone]}>
               <Button title="Cancel" variant="ghost" onPress={() => setEditing(false)} fullWidth={false} style={{ flex: 1 }} testID="profile-edit-cancel" />
               <Button title="Save" onPress={handleSave} loading={saving} fullWidth={false} style={{ flex: 1 }} testID="profile-edit-save" />
             </View>
@@ -255,6 +262,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.offWhite },
   content: { padding: spacing.xl, paddingBottom: spacing.xxxl, gap: spacing.lg },
+  contentPhone: { padding: spacing.md, paddingBottom: spacing.xxl },
   header: { gap: spacing.sm },
   headerEyebrow: { ...typography.label, color: colors.primary },
   headerTitle: { ...typography.h1, color: colors.primaryDeepest },
@@ -269,6 +277,12 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     padding: spacing.xxl,
     ...shadow.sm,
+  },
+  heroCardPhone: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    padding: spacing.lg,
+    borderRadius: 22,
   },
   avatar: {
     width: 76,
@@ -298,6 +312,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
+  },
+  editButtonPhone: {
+    alignSelf: "flex-end",
   },
   surfaceCard: {
     borderRadius: 28,
@@ -360,6 +377,9 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.lg,
   },
+  modalCardPhone: {
+    padding: spacing.lg,
+  },
   modalTitle: { ...typography.h3, color: colors.primaryDeepest },
   field: { gap: spacing.sm },
   fieldLabel: { ...typography.small, color: colors.stone500, fontWeight: "700" },
@@ -376,4 +396,5 @@ const styles = StyleSheet.create({
   },
   textarea: { minHeight: 96, paddingTop: spacing.lg },
   modalActions: { flexDirection: "row", gap: spacing.sm },
+  modalActionsPhone: { flexDirection: "column" },
 });

@@ -61,7 +61,7 @@ export function HomeScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState("All locations");
-  const [selectedPropertyType, setSelectedPropertyType] = useState("Layouts");
+  const [selectedPropertyType, setSelectedPropertyType] = useState("All types");
   const [openDropdown, setOpenDropdown] = useState<null | "location" | "type">(null);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<NormalizedProperty[]>([]);
@@ -96,7 +96,7 @@ export function HomeScreen() {
   );
 
   const propertyTypeOptions = useMemo(
-    () => ["Layouts", "Plots", "Villas", "Farm Lands", "Apartments", "Commercial"],
+    () => ["All types", "Layouts", "Plots", "Villas", "Farm Lands", "Apartments", "Commercial"],
     []
   );
 
@@ -117,6 +117,7 @@ export function HomeScreen() {
           selectedLocation === "All locations" || String(property.location || "").toLowerCase().includes(normalizedLocation);
         const matchesType =
           !selectedPropertyType ||
+          selectedPropertyType === "All types" ||
           String(property.category || "").toLowerCase().includes(normalizedType) ||
           (selectedPropertyType === "Layouts" && /plot|layout/i.test(`${property.category || ""} ${property.name || ""}`));
         return matchesLocation && matchesType;
@@ -527,17 +528,6 @@ export function HomeScreen() {
               <Image source={LOGO} style={styles.footerLogoImage} resizeMode="contain" />
               <Text style={styles.footerLogo}>Rivan Realty</Text>
             </TouchableOpacity>
-            <View style={styles.footerLinks}>
-              <TouchableOpacity onPress={() => scrollToSection("top")}>
-                <Text style={styles.footerLink}>Home</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => scrollToSection("featured")}>
-                <Text style={styles.footerLink}>Properties</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push("/profile")}>
-                <Text style={styles.footerLink}>Profile</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </ScrollView>
