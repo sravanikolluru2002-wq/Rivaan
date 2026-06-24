@@ -27,10 +27,6 @@ type Props = {
 };
 
 export function AuthSplitShell({
-  eyebrow,
-  title,
-  body,
-  points,
   formEyebrow,
   formTitle,
   formSubtitle,
@@ -41,38 +37,22 @@ export function AuthSplitShell({
   scrollable = true,
 }: Props) {
   const { width } = useWindowDimensions();
-  const isWide = width >= 1080;
+  const isWide = width >= 980;
 
   const content = (
     <View style={[styles.card, isWide && styles.cardWide]}>
-      <View style={[styles.brandPanel, isWide ? styles.brandPanelWide : styles.brandPanelNarrow]}>
-        <View style={styles.brandTop}>
-          <View style={styles.logoFrame}>
-            <Image source={LOGO} style={styles.logoImage} resizeMode="contain" />
-          </View>
-          <View>
-            <Text style={styles.logoWord}>RIVAN</Text>
-            <Text style={styles.logoSub}>Realty platform</Text>
-          </View>
-        </View>
-
-        <Text style={styles.brandEyebrow}>{eyebrow}</Text>
-        <Text style={styles.brandTitle}>{title}</Text>
-        <Text style={styles.brandBody}>{body}</Text>
-
-        <View style={styles.points}>
-          {points.map((point) => (
-            <View key={point.text} style={styles.point}>
-              <Feather name={point.icon} size={17} color={colors.accentLight} />
-              <Text style={styles.pointText}>{point.text}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
       <View style={styles.formPanel}>
         <View style={styles.formTop}>
           <View style={styles.formHeadings}>
+            <View style={styles.brandTop}>
+              <View style={styles.logoFrame}>
+                <Image source={LOGO} style={styles.logoImage} resizeMode="contain" />
+              </View>
+              <View>
+                <Text style={styles.logoWordDark}>RIVAN</Text>
+                <Text style={styles.logoSubDark}>Realty platform</Text>
+              </View>
+            </View>
             <Text style={styles.formEyebrow}>{formEyebrow}</Text>
             <Text style={styles.formTitle}>{formTitle}</Text>
             <Text style={styles.formSubtitle}>{formSubtitle}</Text>
@@ -122,129 +102,88 @@ const styles = StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 980,
+    maxWidth: 760,
     backgroundColor: "#FBF8F1",
-    borderRadius: 28,
+    borderRadius: 24,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(220,211,197,0.9)",
     ...shadow.lg,
   },
   cardWide: {
-    minHeight: 520,
-    flexDirection: "row",
-  },
-  brandPanel: {
-    backgroundColor: colors.primaryDeepest,
-    paddingHorizontal: 28,
-    paddingVertical: 28,
-  },
-  brandPanelWide: {
-    width: 320,
-    justifyContent: "center",
-  },
-  brandPanelNarrow: {
-    justifyContent: "center",
-    gap: 14,
+    minHeight: 0,
   },
   brandTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 18,
-  },
-  logoFrame: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  logoImage: { width: 28, height: 28 },
-  logoWord: { color: colors.white, fontSize: 18, fontWeight: "800", letterSpacing: 4, fontFamily: fonts.heading },
-  logoSub: { color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: 2 },
-  brandEyebrow: {
-    color: colors.accentLight,
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 2.6,
-    textTransform: "uppercase",
+    gap: 10,
     marginBottom: 14,
   },
-  brandTitle: {
-    color: colors.white,
-    fontSize: Platform.OS === "web" ? 32 : 27,
-    lineHeight: Platform.OS === "web" ? 40 : 34,
-    fontWeight: "800",
-    fontFamily: fonts.heading,
-    marginBottom: 12,
-    maxWidth: 260,
+  logoFrame: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
   },
-  brandBody: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 14,
-    lineHeight: 24,
-    maxWidth: 260,
-    marginBottom: 16,
-  },
-  points: { gap: 12 },
-  point: { flexDirection: "row", alignItems: "flex-start", gap: 10, maxWidth: 260 },
-  pointText: { flex: 1, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 20, fontWeight: "600" },
+  logoImage: { width: 22, height: 22 },
+  logoWordDark: { color: colors.primaryDeepest, fontSize: 15, fontWeight: "800", letterSpacing: 3, fontFamily: fonts.heading },
+  logoSubDark: { color: colors.stone500, fontSize: 10, marginTop: 1 },
   formPanel: {
     flex: 1,
     backgroundColor: "#FBF8F1",
-    paddingHorizontal: 28,
-    paddingVertical: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 20,
   },
   formTop: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 16,
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 14,
   },
   formHeadings: { flex: 1 },
   formEyebrow: {
     color: colors.accentDark,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 2.6,
+    letterSpacing: 2.2,
     textTransform: "uppercase",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   formTitle: {
     color: colors.primaryDeepest,
-    fontSize: Platform.OS === "web" ? 25 : 22,
-    lineHeight: Platform.OS === "web" ? 31 : 28,
+    fontSize: Platform.OS === "web" ? 20 : 18,
+    lineHeight: Platform.OS === "web" ? 26 : 24,
     fontWeight: "800",
     fontFamily: fonts.heading,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   formSubtitle: {
     color: colors.stone500,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 12,
+    lineHeight: 18,
   },
   topActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   homeButton: {
-    minHeight: 44,
-    paddingHorizontal: 18,
-    borderRadius: 22,
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 19,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: "#F3EEDF",
     borderWidth: 1,
     borderColor: "rgba(200,169,110,0.25)",
   },
-  homeButtonText: { color: colors.primaryDeepest, fontSize: 13, fontWeight: "800" },
+  homeButtonText: { color: colors.primaryDeepest, fontSize: 12, fontWeight: "800" },
   closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: "#F3EEDF",
     alignItems: "center",
     justifyContent: "center",

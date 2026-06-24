@@ -10,7 +10,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -60,7 +59,9 @@ export function HomeScreen() {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState("All locations");
+  const [selectedPropertyType, setSelectedPropertyType] = useState("Layouts");
+  const [openDropdown, setOpenDropdown] = useState<null | "location" | "type">(null);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<NormalizedProperty[]>([]);
 
@@ -88,24 +89,35 @@ export function HomeScreen() {
     };
   }, []);
 
+  const locationOptions = useMemo(
+    () => ["All locations", "Siripuram", "Tukkuguda", "Shadnagar", "Adibatla", "Maheshwaram", "Srisailam Highway"],
+    []
+  );
+
+  const propertyTypeOptions = useMemo(
+    () => ["Layouts", "Plots", "Villas", "Farm Lands", "Apartments", "Commercial"],
+    []
+  );
+
   const heroProperty = properties[0] || null;
   const mosaicProperties = properties.slice(0, 3);
-  const previewProperties = properties.slice(0, 3);
 
   const filteredProperties = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return previewProperties;
+    const normalizedLocation = selectedLocation.toLowerCase();
+    const normalizedType = selectedPropertyType.toLowerCase();
 
     return properties
-      .filter((property) =>
-        [property.name, property.location, property.category, property.description, property.highlights]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(query)
-      )
+      .filter((property) => {
+        const matchesLocation =
+          selectedLocation === "All locations" || String(property.location || "").toLowerCase().includes(normalizedLocation);
+        const matchesType =
+          !selectedPropertyType ||
+          String(property.category || "").toLowerCase().includes(normalizedType) ||
+          (selectedPropertyType === "Layouts" && /plot|layout/i.test(`${property.category || ""} ${property.name || ""}`));
+        return matchesLocation && matchesType;
+      })
       .slice(0, 3);
-  }, [previewProperties, properties, searchQuery]);
+  }, [properties, selectedLocation, selectedPropertyType]);
 
   const openAuth = useCallback((mode: "login" | "signup") => {
     blurActiveWebElement();
@@ -212,6 +224,31 @@ export function HomeScreen() {
         </Pressable>
       </Modal>
 
+      <Modal visible={openDropdown !== null} transparent animationType="fade" onRequestClose={() => setOpenDropdown(null)}>
+        <Pressable style={styles.dropdownBackdrop} onPress={() => setOpenDropdown(null)}>
+          <Pressable style={styles.dropdownModal}>
+            <Text style={styles.dropdownTitle}>{openDropdown === "location" ? "Choose location" : "Choose property type"}</Text>
+            {(openDropdown === "location" ? locationOptions : propertyTypeOptions).map((option) => {
+              const selected = openDropdown === "location" ? selectedLocation === option : selectedPropertyType === option;
+              return (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.dropdownOption, selected && styles.dropdownOptionActive]}
+                  onPress={() => {
+                    if (openDropdown === "location") setSelectedLocation(option);
+                    else setSelectedPropertyType(option);
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <Text style={[styles.dropdownOptionText, selected && styles.dropdownOptionTextActive]}>{option}</Text>
+                  {selected ? <Feather name="check" size={16} color={colors.primary} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View style={[styles.navbar, scrolled && styles.navbarScrolled]}>
         {isDesktop ? (
           <View style={styles.navDesktop}>{navContent}</View>
@@ -302,17 +339,17 @@ export function HomeScreen() {
               <View style={[styles.searchBar, !isDesktop && styles.searchBarMobile]}>
                 <View style={styles.searchField}>
                   <Text style={styles.searchLabel}>Location</Text>
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Siripuram, Tukkuguda, Shadnagar"
-                    placeholderTextColor="#6B7A6E"
-                    style={styles.searchInput}
-                  />
+                  <TouchableOpacity style={styles.searchSelect} onPress={() => setOpenDropdown("location")}>
+                    <Text style={styles.searchSelectText}>{selectedLocation}</Text>
+                    <Feather name="chevron-down" size={16} color={colors.primaryDeepest} />
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.searchField}>
                   <Text style={styles.searchLabel}>Property type</Text>
-                  <TextInput value={heroProperty?.category || "Independent House"} editable={false} style={styles.searchInput} />
+                  <TouchableOpacity style={styles.searchSelect} onPress={() => setOpenDropdown("type")}>
+                    <Text style={styles.searchSelectText}>{selectedPropertyType}</Text>
+                    <Feather name="chevron-down" size={16} color={colors.primaryDeepest} />
+                  </TouchableOpacity>
                 </View>
                 <TouchableOpacity style={styles.btnSearch} onPress={() => scrollToSection("featured")}>
                   <Feather name="search" size={18} color={colors.white} />
@@ -578,6 +615,54 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(10,46,31,0.28)",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  dropdownModal: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    padding: 18,
+    gap: 10,
+    ...shadow.lg,
+  },
+  dropdownTitle: {
+    color: colors.primaryDeepest,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  dropdownOption: {
+    minHeight: 44,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dropdownOptionActive: {
+    borderColor: "rgba(26,122,74,0.35)",
+    backgroundColor: colors.surfaceMuted,
+  },
+  dropdownOptionText: {
+    color: colors.primaryDeepest,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  dropdownOptionTextActive: {
+    color: colors.primary,
+  },
   hero: {
     minHeight: Platform.OS === "web" ? 760 : 620,
     flexDirection: "row",
@@ -713,19 +798,27 @@ const styles = StyleSheet.create({
   searchField: { flex: 1 },
   searchLabel: {
     color: "#6B7A6E",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     letterSpacing: 2,
     textTransform: "uppercase",
     marginBottom: 6,
   },
-  searchInput: {
+  searchSelect: {
     width: "100%",
-    borderBottomWidth: 1.5,
-    borderBottomColor: "#D4DDD6",
-    paddingBottom: 6,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D4DDD6",
+    paddingHorizontal: 12,
+    backgroundColor: "#F8FAF7",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  searchSelectText: {
     color: colors.primaryDeepest,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
   },
   btnSearch: {

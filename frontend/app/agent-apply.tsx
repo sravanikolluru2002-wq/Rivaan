@@ -71,24 +71,8 @@ export default function AgentApplyScreen() {
       Alert.alert("Agent application", "Please enter your email address.");
       return;
     }
-    if (!form.occupation.trim()) {
-      Alert.alert("Agent application", "Please enter your occupation.");
-      return;
-    }
     if (!form.address.trim()) {
       Alert.alert("Agent application", "Please enter your address.");
-      return;
-    }
-    if (!form.aadhaar_number.trim()) {
-      Alert.alert("Agent application", "Please enter your Aadhaar number.");
-      return;
-    }
-    if (!form.bank_details.trim()) {
-      Alert.alert("Agent application", "Please enter your bank details.");
-      return;
-    }
-    if (!form.agent_brand_name.trim()) {
-      Alert.alert("Agent application", "Please enter your brand or team name.");
       return;
     }
 
@@ -110,7 +94,13 @@ export default function AgentApplyScreen() {
         router.replace({ pathname: "/agent-login", params: { phone: `+91${phoneDigits}`, application: "approved" } });
         return;
       }
-      router.replace({ pathname: "/agent-login", params: { phone: `+91${phoneDigits}`, application: "submitted" } });
+      Alert.alert("Application submitted", response.message || "Your agent application has been sent for manager approval.", [
+        {
+          text: "Continue",
+          onPress: () =>
+            router.replace({ pathname: "/agent-login", params: { phone: `+91${phoneDigits}`, application: "submitted" } }),
+        },
+      ]);
     } catch (error: any) {
       Alert.alert("Agent application", error?.message || "Unable to submit your application right now.");
     } finally {
