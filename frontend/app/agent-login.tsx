@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Platform,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,7 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView as SafeAreaProviderView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -36,14 +37,14 @@ export default function AgentLoginScreen() {
   const params = useLocalSearchParams<{ phone?: string }>();
   const { signIn } = useAuth();
   const { width } = useWindowDimensions();
-  const isWide = width >= 900;
+  const isWide = width >= 940;
+
   const isLocalhostWeb =
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
     ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const useFirebaseTestPhoneAuth =
     isLocalhostWeb && normalizePublicEnv(process.env.EXPO_PUBLIC_FIREBASE_USE_TEST_PHONE_AUTH) === "true";
-  const showLocalDemoHelp = isLocalhostWeb;
 
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,11 +55,7 @@ export default function AgentLoginScreen() {
   const [recaptchaReady, setRecaptchaReady] = useState(false);
   const [recaptchaSolved, setRecaptchaSolved] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [applicationPrompt, setApplicationPrompt] = useState<{
-    title: string;
-    body: string;
-    cta: string;
-  } | null>(null);
+  const [helperMessage, setHelperMessage] = useState("");
 
   const otpRefs = useRef<(TextInput | null)[]>([]);
   const confirmationResultRef = useRef<any>(null);
@@ -101,19 +98,6 @@ export default function AgentLoginScreen() {
     };
   }, []);
 
-  function showFormError(message: string) {
-    setErrorMessage(message);
-    Alert.alert("Agent login", message);
-  }
-
-  function openApplicationFlow() {
-    const normalizedPhone = phoneDigits ? `+91${phoneDigits}` : "";
-    router.push({
-      pathname: "/agent-apply",
-      params: normalizedPhone ? { phone: normalizedPhone } : {},
-    });
-  }
-
   function resetOtpSession() {
     confirmationResultRef.current = null;
     setOtpSent(false);
@@ -121,21 +105,9 @@ export default function AgentLoginScreen() {
     setOtp(["", "", "", "", "", ""]);
   }
 
-  async function handleDemoAgentLogin(email: string) {
-    setErrorMessage("");
-    setLoading(true);
-    try {
-      const session = await api.login(email, "Agent@123");
-      if (session.user?.role !== "agent" && session.user?.role !== "sub_agent") {
-        throw new Error("This account does not have agent access.");
-      }
-      await signIn(session.access_token, session.user);
-      router.replace("/agent");
-    } catch (error: any) {
-      showFormError(String(error?.message || "Demo agent login failed."));
-    } finally {
-      setLoading(false);
-    }
+  function showFormError(message: string) {
+    setErrorMessage(message);
+    Alert.alert("Agent login", message);
   }
 
   function cleanupWebRecaptchaArtifacts() {
@@ -224,7 +196,7 @@ export default function AgentLoginScreen() {
 
   async function handleSendOtp() {
     setErrorMessage("");
-    setApplicationPrompt(null);
+    setHelperMessage("");
     if (!hasFirebaseConfig) {
       return showFormError(firebaseConfigError || "Firebase web configuration is missing.");
     }
@@ -269,7 +241,7 @@ export default function AgentLoginScreen() {
 
   async function handleVerifyOtp() {
     setErrorMessage("");
-    setApplicationPrompt(null);
+    setHelperMessage("");
     if (!validOtp) return showFormError("Please enter the 6-digit OTP.");
 
     setLoading(true);
@@ -285,30 +257,18 @@ export default function AgentLoginScreen() {
       router.replace("/agent");
     } catch (error: any) {
       const message = String(error?.message || "");
-      if (message === "Not Found" || message.includes("HTTP 404")) {
-        showFormError(
-          "The live backend has not been updated with agent phone login yet. Redeploy the Render backend service, then try again."
-        );
-        return;
-      }
       const normalized = message.toLowerCase();
+
       if (
         normalized.includes("no approved agent account exists for this phone number") ||
         normalized.includes("does not belong to an agent account")
       ) {
-        setApplicationPrompt({
-          title: "Complete agent application",
-          body: "This phone number is not yet registered as an approved agent. Submit the full application and send it to admin approval.",
-          cta: "Open Agent Application",
-        });
+        setHelperMessage("This number is not yet registered as an approved agent account. Complete the application to send it for admin approval.");
       } else if (normalized.includes("pending manager approval")) {
-        setApplicationPrompt({
-          title: "Approval pending",
-          body: "This phone number already has an agent application, but admin approval is still pending. Open admin and approve it, then retry login with the same number.",
-          cta: "Open Admin Panel",
-        });
+        setHelperMessage("This phone number already has an agent application, but approval is still pending.");
       }
-      showFormError(error?.message || formatPhoneOtpError(error, isLocalhostWeb, useFirebaseTestPhoneAuth, setOtpCooldownSeconds));
+
+      showFormError(message || formatPhoneOtpError(error, isLocalhostWeb, useFirebaseTestPhoneAuth, setOtpCooldownSeconds));
     } finally {
       setLoading(false);
     }
@@ -324,63 +284,27 @@ export default function AgentLoginScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={[styles.scroll, isWide && styles.scrollWide]}>
+    <SafeAreaProviderView style={styles.safe}>
+      <ScrollView contentContainerStyle={[styles.scroll, isWide && styles.scrollWide]} showsVerticalScrollIndicator={false}>
         <View style={[styles.shell, isWide && styles.shellWide]}>
           <View style={styles.hero}>
-            <View style={styles.heroBadge}>
-              <Feather name="briefcase" size={14} color={colors.white} />
-              <Text style={styles.heroBadgeText}>AGENT LOGIN</Text>
-            </View>
-            <Text style={styles.title}>Simple access for approved agents.</Text>
-            <Text style={styles.subtitle}>
-              Use your registered mobile number, receive an OTP, and open the live dashboard without extra steps.
+            <Text style={styles.heroEyebrow}>Agent access</Text>
+            <Text style={styles.heroTitle}>Approved agents can enter directly through secure OTP.</Text>
+            <Text style={styles.heroBody}>
+              Use the same phone number that was approved for your agent account. If the number is not registered yet, complete the application flow first.
             </Text>
-            <View style={styles.heroHighlights}>
-              <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>1</Text>
-                <Text style={styles.heroStatLabel}>phone number</Text>
-              </View>
-              <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>1</Text>
-                <Text style={styles.heroStatLabel}>OTP verification</Text>
-              </View>
-              <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>Live</Text>
-                <Text style={styles.heroStatLabel}>dashboard entry</Text>
-              </View>
-            </View>
           </View>
 
           <View style={styles.card}>
-            <View style={styles.badgeRow}>
-              <View style={styles.badge}>
-                <Feather name="smartphone" size={14} color={colors.primary} />
-                <Text style={styles.badgeText}>OTP LOGIN</Text>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardTitle}>Agent login</Text>
+                <Text style={styles.cardSubtitle}>OTP-based access linked to approved agent records.</Text>
               </View>
-              <View style={styles.topLinks}>
-                <TouchableOpacity onPress={() => router.replace("/")} testID="agent-home-link">
-                  <Text style={styles.backLink}>Home</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity onPress={() => router.replace("/")}>
+                <Text style={styles.backLink}>Home</Text>
+              </TouchableOpacity>
             </View>
-
-            <Text style={styles.cardTitle}>Enter agent dashboard</Text>
-            <Text style={styles.cardSubtitle}>Use the same phone number that was approved for your agent account.</Text>
-
-            {showLocalDemoHelp ? (
-              <View style={styles.quickRow}>
-                <TouchableOpacity style={styles.quickButton} onPress={() => setPhone("6303210224")}>
-                  <Text style={styles.quickButtonText}>Primary Agent</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickButton} onPress={() => setPhone("9911112222")}>
-                  <Text style={styles.quickButtonText}>Sub-Agent</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickButton} onPress={() => setPhone("9922223333")}>
-                  <Text style={styles.quickButtonText}>Pending Agent</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
 
             {!hasFirebaseConfig ? (
               <View style={styles.errorBanner}>
@@ -396,26 +320,13 @@ export default function AgentLoginScreen() {
               </View>
             ) : null}
 
-            {applicationPrompt ? (
-              <View style={styles.infoBox}>
-                <Text style={styles.infoTitle}>{applicationPrompt.title}</Text>
-                <Text style={styles.infoText}>{applicationPrompt.body}</Text>
-                <View style={styles.quickRow}>
-                  <TouchableOpacity
-                    style={styles.quickButton}
-                    onPress={() =>
-                      applicationPrompt.cta === "Open Admin Panel"
-                        ? router.push("/admin-login")
-                        : openApplicationFlow()
-                    }
-                  >
-                    <Text style={styles.quickButtonText}>{applicationPrompt.cta}</Text>
-                  </TouchableOpacity>
-                </View>
+            {helperMessage ? (
+              <View style={styles.infoBanner}>
+                <Text style={styles.infoBannerText}>{helperMessage}</Text>
               </View>
             ) : null}
 
-            <View style={styles.inputBlock}>
+            <View style={styles.field}>
               <Text style={styles.label}>Registered mobile number</Text>
               <View style={styles.inputShell}>
                 <Text style={styles.phonePrefix}>+91</Text>
@@ -425,10 +336,9 @@ export default function AgentLoginScreen() {
                   keyboardType="phone-pad"
                   value={phone}
                   onChangeText={(text) => {
-                    const nextPhone = text.replace(/\D/g, "");
-                    setPhone(nextPhone);
+                    setPhone(text.replace(/\D/g, ""));
                     setErrorMessage("");
-                    setApplicationPrompt(null);
+                    setHelperMessage("");
                     resetOtpSession();
                   }}
                   placeholder="Enter 10-digit mobile number"
@@ -438,13 +348,19 @@ export default function AgentLoginScreen() {
               </View>
             </View>
 
+            {!otpSent && helperMessage ? (
+              <TouchableOpacity style={styles.secondaryCta} onPress={() => router.push({ pathname: "/agent-apply", params: { phone: `+91${phoneDigits}` } })}>
+                <Text style={styles.secondaryCtaText}>Complete agent application</Text>
+              </TouchableOpacity>
+            ) : null}
+
             {isLocalhostWeb && !otpSent ? (
-              <Text style={styles.infoText}>
+              <Text style={styles.localHint}>
                 {useFirebaseTestPhoneAuth
                   ? recaptchaReady
                     ? recaptchaSolved
-                      ? "Firebase test mode is ready. You can send OTP now."
-                      : "Complete the reCAPTCHA box shown at the bottom-right, then continue."
+                      ? "Firebase test verification is ready."
+                      : "Complete the reCAPTCHA box at the bottom-right to continue."
                     : "Loading Firebase test verification..."
                   : "Use the hosted site for real OTP. On localhost, use Firebase test phone numbers only."}
               </Text>
@@ -471,9 +387,7 @@ export default function AgentLoginScreen() {
                 </View>
                 <Button title="Open Dashboard" onPress={handleVerifyOtp} loading={loading} testID="agent-login-verify" />
                 <TouchableOpacity onPress={handleSendOtp} disabled={otpCooldownSeconds > 0 || loading} style={styles.resend}>
-                  <Text style={styles.resendText}>
-                    {otpCooldownSeconds > 0 ? `Resend in ${otpCooldownSeconds}s` : "Resend OTP"}
-                  </Text>
+                  <Text style={styles.resendText}>{otpCooldownSeconds > 0 ? `Resend in ${otpCooldownSeconds}s` : "Resend OTP"}</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -485,54 +399,10 @@ export default function AgentLoginScreen() {
                 testID="agent-login-submit"
               />
             )}
-
-            <View style={styles.infoBox}>
-              <Text style={styles.infoTitle}>
-                {showLocalDemoHelp ? "Local testing notes" : "Live phone access"}
-              </Text>
-              {showLocalDemoHelp ? (
-                <>
-                  <Text style={styles.infoText}>Primary Agent: +91 63032 10224</Text>
-                  <Text style={styles.infoText}>Sub-Agent: +91 99111 12222</Text>
-                  <Text style={styles.infoText}>Pending Agent: +91 99222 23333</Text>
-                  <Text style={styles.infoText}>Pending agents are blocked until manager approval is complete.</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.infoText}>Only manager-approved agent and sub-agent phone numbers can enter the live dashboard.</Text>
-                  <Text style={styles.infoText}>Customer login and agent login both work on the hosted URL with Firebase phone OTP.</Text>
-                  <Text style={styles.infoText}>If a valid OTP succeeds but access is denied, the phone number is not yet approved inside the agent account records.</Text>
-                </>
-              )}
-            </View>
-
-            <View style={styles.infoBox}>
-              <Text style={styles.infoTitle}>Fallback access</Text>
-              <Text style={styles.infoText}>
-                If OTP is blocked during testing, approved demo agents can still use the built-in fallback buttons below.
-              </Text>
-              <View style={styles.quickRow}>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => handleDemoAgentLogin("agent@rivaan.com")}
-                  disabled={loading}
-                >
-                  <Text style={styles.quickButtonText}>Open Primary Agent</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => handleDemoAgentLogin("subagent@rivaan.com")}
-                  disabled={loading}
-                >
-                  <Text style={styles.quickButtonText}>Open Sub-Agent</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.infoText}>Password used by this emergency fallback: Agent@123</Text>
-            </View>
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaProviderView>
   );
 }
 
@@ -562,149 +432,94 @@ function formatPhoneOtpError(
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F1E8" },
-  scroll: { flexGrow: 1, padding: spacing.lg, justifyContent: "center" },
-  scrollWide: { paddingVertical: spacing.xl },
-  shell: { gap: spacing.lg },
+  safe: { flex: 1, backgroundColor: colors.offWhite },
+  scroll: { flexGrow: 1, padding: spacing.xl, justifyContent: "center" },
+  scrollWide: { paddingVertical: spacing.xxxl },
+  shell: { gap: spacing.xl },
   shellWide: { flexDirection: "row", alignItems: "stretch" },
   hero: {
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-    backgroundColor: "#123A29",
-    borderRadius: radii.xl,
-    padding: spacing.xl,
-    minHeight: 260,
-    justifyContent: "space-between",
-  },
-  heroBadge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderRadius: radii.full,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  heroBadgeText: { ...typography.label, color: colors.white, fontSize: 10 },
-  eyebrow: { ...typography.label, color: colors.accentDark },
-  title: { ...typography.h1, color: colors.white, fontWeight: "800" },
-  subtitle: { ...typography.body, color: "#D8E7DE", lineHeight: 22, maxWidth: 560 },
-  heroHighlights: { flexDirection: "row", gap: spacing.md, flexWrap: "wrap" },
-  heroStat: {
-    minWidth: 110,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: 2,
-  },
-  heroStatValue: { color: colors.white, fontSize: 18, lineHeight: 22, fontWeight: "800" },
-  heroStatLabel: { color: "#D8E7DE", fontSize: 11, lineHeight: 14, fontWeight: "600" },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: "#EADFCC",
-    ...shadow.md,
     flex: 1,
+    borderRadius: 28,
+    backgroundColor: colors.primaryDeepest,
+    padding: spacing.xxl,
+    gap: spacing.md,
+    justifyContent: "center",
+    ...shadow.md,
   },
-  cardTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "800" },
-  cardSubtitle: { ...typography.body, color: colors.stone600, lineHeight: 21 },
-  badgeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  topLinks: { flexDirection: "row", alignItems: "center", gap: spacing.md, flexWrap: "wrap", justifyContent: "flex-end" },
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
+  heroEyebrow: { ...typography.label, color: colors.accentLight },
+  heroTitle: { ...typography.h2, color: colors.white },
+  heroBody: { ...typography.body, color: "#D7E7DD" },
+  card: {
+    flex: 1,
+    borderRadius: 28,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.xxl,
+    gap: spacing.lg,
+    ...shadow.md,
   },
-  badgeText: { ...typography.label, color: colors.accentDark, fontSize: 9 },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md },
+  cardTitle: { ...typography.h3, color: colors.primaryDeepest },
+  cardSubtitle: { ...typography.body, color: colors.stone500, marginTop: 4 },
   backLink: { ...typography.small, color: colors.primary, fontWeight: "700" },
-  applyBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    flexWrap: "wrap",
-    borderWidth: 1,
-    borderColor: "#D8E8DB",
-    backgroundColor: "#F5FAF6",
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  applyBannerText: { ...typography.small, color: colors.stone600, flex: 1, minWidth: 220, lineHeight: 18 },
-  applyBannerLink: { ...typography.small, color: colors.primary, fontWeight: "800" },
-  quickRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-  quickButton: {
-    borderWidth: 1,
-    borderColor: "#D8E8DB",
-    backgroundColor: "#F5FAF6",
-    borderRadius: radii.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  quickButtonText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  inputBlock: { gap: 6 },
-  label: { ...typography.small, color: colors.stone600, fontWeight: "600" },
+  field: { gap: spacing.sm },
+  label: { ...typography.small, color: colors.stone500, fontWeight: "700" },
   inputShell: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FCFBF8",
-    borderWidth: 1,
-    borderColor: "#E6DED1",
+    minHeight: 56,
     borderRadius: radii.md,
-    paddingLeft: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingLeft: spacing.lg,
   },
-  phonePrefix: { ...typography.body, color: colors.stone900, fontWeight: "700" },
-  input: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    color: colors.stone900,
-    fontSize: 15,
-  },
-  otpLabel: { ...typography.small, color: colors.stone600, fontWeight: "600" },
+  phonePrefix: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  input: { flex: 1, paddingHorizontal: spacing.lg, paddingVertical: 12, color: colors.primaryDeepest, fontSize: 15 },
+  otpLabel: { ...typography.small, color: colors.stone600, fontWeight: "700" },
   otpRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   otpBox: {
-    width: 48,
+    width: 50,
     height: 56,
     borderRadius: radii.md,
     borderWidth: 1.5,
-    borderColor: colors.stone200,
-    backgroundColor: colors.white,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     textAlign: "center",
     fontSize: 22,
     fontWeight: "700",
     color: colors.primary,
   },
-  otpBoxFilled: { borderColor: colors.primary, backgroundColor: "#F7FCF8" },
+  otpBoxFilled: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   resend: { alignItems: "center", paddingVertical: spacing.xs },
   resendText: { ...typography.body, color: colors.primary, fontWeight: "600" },
-  infoBox: {
-    gap: 4,
-    backgroundColor: "#FBF6EE",
-    borderRadius: radii.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: "#EEDFC6",
-  },
-  infoTitle: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  infoText: { ...typography.small, color: colors.stone600, lineHeight: 18 },
   errorBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
-    backgroundColor: "#FEECEC",
+    gap: spacing.sm,
+    backgroundColor: colors.rejectedBg,
     borderRadius: radii.md,
-    padding: spacing.md,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: "#F6C7C7",
+    borderColor: "#EDC1B8",
   },
-  errorBannerText: { flex: 1, ...typography.small, color: colors.danger, fontWeight: "600", lineHeight: 18 },
+  errorBannerText: { flex: 1, ...typography.small, color: colors.rejectedText, fontWeight: "600", lineHeight: 20 },
+  infoBanner: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    padding: spacing.lg,
+  },
+  infoBannerText: { ...typography.small, color: colors.primaryDeepest, lineHeight: 20 },
+  secondaryCta: {
+    minHeight: 50,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryCtaText: { ...typography.body, color: colors.primaryDeepest, fontWeight: "700" },
+  localHint: { ...typography.small, color: colors.stone600, lineHeight: 20 },
 });
