@@ -6,6 +6,7 @@ import asyncio
 import base64
 from collections import defaultdict, deque
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -22,7 +23,7 @@ import json
 import hashlib
 import re
 import requests
-from pymongo.errors import OperationFailure
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from auth_service import (
     JWT_ALGORITHM,
@@ -1088,7 +1089,7 @@ class RefreshTokenReq(BaseModel):
 
 class UpdateProfileReq(BaseModel):
     name: Optional[str] = None
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     address: Optional[str] = None
     age: Optional[int] = None
     aadhaar_number: Optional[str] = None
@@ -3180,7 +3181,26 @@ async def update_profile(req: UpdateProfileReq, user: Dict[str, Any] = Depends(g
         update["email"] = normalize_email(update["email"])
     update["updated_at"] = now_utc().isoformat()
     if update and await is_database_available():
-        await db.users.update_one({"id": user["id"]}, {"$set": update})
+        if update.get("email"):
+            existing_user = await db.users.find_one(
+                {"email": update["email"], "id": {"$ne": user["id"]}},
+                {"id": 1},
+            )
+            if existing_user:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This email address is already in use by another account.",
+                )
+
+        try:
+            await db.users.update_one({"id": user["id"]}, {"$set": update})
+        except DuplicateKeyError:
+            logger.exception("Duplicate email conflict while updating profile for user %s", user["id"])
+            raise HTTPException(
+                status_code=409,
+                detail="This email address is already in use by another account.",
+            )
+
         updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
         return apply_session_role(updated, {"session_role": user.get("portal_role")})
     if not ALLOW_LOCAL_AUTH_FALLBACK:
@@ -5656,7 +5676,16 @@ async def ensure_cors_headers(request: Request, call_next):
     if request.method == "OPTIONS" and allowed_origin:
         response = Response(status_code=204)
     else:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except HTTPException as exc:
+            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        except Exception:
+            logger.exception("Unhandled backend error while serving %s %s", request.method, request.url.path)
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"},
+            )
 
     if allowed_origin:
         response.headers["Access-Control-Allow-Origin"] = allowed_origin
