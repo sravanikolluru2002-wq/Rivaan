@@ -121,9 +121,9 @@ export default function ProfileSidebar({
   const displayEmail = isPlaceholderEmail(user?.email) ? "Enter your email" : String(user?.email || "");
 
   const sidebarBody = (
-    <View style={styles.overlay}>
+    <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.drawer, isPhone ? styles.drawerPhone : styles.drawerDesktop]}>
+      <View style={[styles.drawer, isWeb && styles.drawerWeb, isPhone ? styles.drawerPhone : styles.drawerDesktop]}>
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>Account</Text>
@@ -230,10 +230,22 @@ function SidebarRow({ icon, label, onPress }: { icon: any; label: string; onPres
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(6,15,11,0.24)", flexDirection: "row", justifyContent: "flex-end" },
+  overlayWeb: {
+    position: "fixed" as any,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 9999,
+  },
   backdrop: { flex: 1 },
   drawer: { backgroundColor: colors.offWhite, borderLeftWidth: 1, borderLeftColor: colors.borderSoft, ...shadow.lg },
-  drawerDesktop: { width: "100%", maxWidth: 420 },
-  drawerPhone: { width: "100%" },
+  drawerWeb: {
+    height: "100%" as any,
+    maxHeight: "100%" as any,
+  },
+  drawerDesktop: { width: "100%", maxWidth: 420, minWidth: 360 },
+  drawerPhone: { width: "100%", maxWidth: "100%" as any },
   header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", padding: spacing.lg, gap: spacing.md },
   eyebrow: { ...typography.label, color: colors.primary },
   title: { ...typography.h3, color: colors.primaryDeepest, marginTop: 4 },
