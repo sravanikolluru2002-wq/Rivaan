@@ -439,7 +439,7 @@ export function HomeScreen() {
               Live where you{"\n"}truly <Text style={styles.heroItalic}>belong.</Text>
             </Text>
             <Text style={[styles.heroSub, isPhone && styles.heroSubPhone]}>
-              Rivan Realty pairs discerning buyers with real property inventory, layout clarity, and a cleaner journey
+              Rivan Reality pairs discerning buyers with real property inventory, layout clarity, and a cleaner journey
               from discovery to visit scheduling.
             </Text>
 
@@ -588,7 +588,7 @@ export function HomeScreen() {
           </View>
 
           <View style={[styles.loginFormWrap, isPhone && styles.loginFormWrapPhone]}>
-            <Text style={styles.formLogo}>Rivan Realty</Text>
+            <Text style={styles.formLogo}>Rivan Reality</Text>
             <Text style={styles.formSub}>Sign in when you want to continue.</Text>
 
             <View style={styles.roleSwitch}>
@@ -615,7 +615,7 @@ export function HomeScreen() {
           <View style={[styles.footerInner, !isDesktop && styles.footerInnerMobile]}>
             <TouchableOpacity style={styles.footerBrand} onPress={() => scrollToSection("top")}>
               <Image source={LOGO} style={styles.footerLogoImage} resizeMode="contain" />
-              <Text style={styles.footerLogo}>Rivan Realty</Text>
+              <Text style={styles.footerLogo}>Rivan Reality</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -51,7 +51,7 @@ export function AuthSplitShell({
               </View>
               <View>
                 <Text style={styles.logoWordDark}>RIVAN</Text>
-                <Text style={styles.logoSubDark}>Realty platform</Text>
+                <Text style={styles.logoSubDark}>Reality platform</Text>
               </View>
             </View>
             <Text style={styles.formEyebrow}>{formEyebrow}</Text>

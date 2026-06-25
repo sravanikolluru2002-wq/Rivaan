@@ -17,6 +17,8 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { api } from "@/src/api";
+import { normalizePropertyCollection } from "@/src/property-presenter";
+import { enrichPropertyCollection } from "@/src/real-property-overrides";
 import { colors, radii, spacing, typography, shadow } from "@/src/theme";
 
 type Tab = "centres" | "history";
@@ -58,9 +60,21 @@ export default function VisitsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [c, v] = await Promise.all([api.centres(), api.myVisits()]);
+      const [c, v, properties] = await Promise.all([api.centres(), api.myVisits(), api.listProperties().catch(() => [])]);
+      const propertyMap = new Map(
+        enrichPropertyCollection(normalizePropertyCollection(properties as any[])).map((property) => [property.id, property])
+      );
+      const normalizedVisits = (v as any[]).map((visit) => {
+        const property = propertyMap.get(String(visit.property_id || ""));
+        return property
+          ? {
+              ...visit,
+              property_name: property.name,
+            }
+          : visit;
+      });
       setCentres(c as any[]);
-      setVisits(v as any[]);
+      setVisits(normalizedVisits);
     } catch (e: any) {
       console.warn("visits", e?.message);
     } finally {
@@ -188,7 +202,7 @@ export default function VisitsScreen() {
                     </View>
                     <View style={styles.visitBody}>
                       <View style={styles.visitTop}>
-                        <Text style={styles.visitTitle}>{v.centre_name || v.property_name}</Text>
+                      <Text style={styles.visitTitle}>{v.centre_name || v.property_name || "Scheduled visit"}</Text>
                         <View style={[styles.visitStatus, { backgroundColor: tone.bg }]}>
                           <Feather name={tone.icon} size={12} color={tone.text} />
                           <Text style={[styles.visitStatusText, { color: tone.text }]}>{tone.label}</Text>

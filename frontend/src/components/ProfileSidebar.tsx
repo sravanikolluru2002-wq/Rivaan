@@ -82,7 +82,9 @@ export default function ProfileSidebar({
   async function handleSave() {
     setSaving(true);
     try {
-      await api.updateProfile({ name: name.trim(), email: email.trim() || null });
+      const payload: Record<string, any> = { name: name.trim() };
+      if (email.trim()) payload.email = email.trim();
+      await api.updateProfile(payload);
       await onRefresh();
       setEditing(false);
     } catch (error: any) {

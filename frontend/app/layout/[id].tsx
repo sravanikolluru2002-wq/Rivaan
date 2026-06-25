@@ -261,30 +261,32 @@ export default function LayoutScreen() {
           <View style={[styles.mapShell, isPhone && styles.mapShellPhone]}>
             <Text style={styles.mapTitle}>Siripuram Gardens Plot Layout</Text>
             <Text style={styles.mapBody}>Select a plot block to view its facing, size, and next available customer or agent action.</Text>
-            <View style={[styles.mapCanvas, isPhone && styles.mapCanvasPhone]}>
-              {filteredUnits.map((unit) => (
-                <TouchableOpacity
-                  key={unit.id}
-                  style={[
-                    styles.mapPlot,
-                    {
-                      left: `${unit.x}%`,
-                      top: `${unit.y}%`,
-                      width: `${unit.w}%`,
-                      height: `${unit.h}%`,
-                      backgroundColor: `${plotStatusColor(unit.status)}18`,
-                      borderColor: plotStatusColor(unit.status),
-                    },
-                  ]}
-                  activeOpacity={0.9}
-                  onPress={() => setSelectedUnit(unit)}
-                >
-                  <Text style={[styles.mapPlotNumber, { color: plotStatusColor(unit.status) }]}>
-                    {String(unit.number || "").replace("P-", "")}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapScrollRail}>
+              <View style={[styles.mapCanvas, isPhone && styles.mapCanvasPhone]}>
+                {filteredUnits.map((unit) => (
+                  <TouchableOpacity
+                    key={unit.id}
+                    style={[
+                      styles.mapPlot,
+                      {
+                        left: `${unit.x}%`,
+                        top: `${unit.y}%`,
+                        width: `${unit.w}%`,
+                        height: `${unit.h}%`,
+                        backgroundColor: `${plotStatusColor(unit.status)}18`,
+                        borderColor: plotStatusColor(unit.status),
+                      },
+                    ]}
+                    activeOpacity={0.9}
+                    onPress={() => setSelectedUnit(unit)}
+                  >
+                    <Text style={[styles.mapPlotNumber, { color: plotStatusColor(unit.status) }]}>
+                      {String(unit.number || "").replace("P-", "")}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
           </View>
         ) : (
           <View style={[styles.unitGrid, isDesktop && styles.unitGridDesktop]}>
@@ -458,9 +460,11 @@ const styles = StyleSheet.create({
   },
   mapTitle: { ...typography.h4, color: colors.primaryDeepest },
   mapBody: { ...typography.body, color: colors.stone500, maxWidth: 760 },
+  mapScrollRail: { paddingBottom: spacing.xs },
   mapCanvas: {
     position: "relative",
     width: "100%",
+    minWidth: 900,
     minHeight: 700,
     borderRadius: 20,
     backgroundColor: "#FBF8F2",
@@ -469,6 +473,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   mapCanvasPhone: {
+    width: 900,
     minHeight: 460,
   },
   mapPlot: {
@@ -478,7 +483,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  mapPlotNumber: { fontSize: 9, lineHeight: 11, fontWeight: "800" },
+  mapPlotNumber: { fontSize: 8, lineHeight: 10, fontWeight: "800" },
   unitGrid: { gap: spacing.md },
   unitGridDesktop: { flexDirection: "row", flexWrap: "wrap" },
   unitCard: {

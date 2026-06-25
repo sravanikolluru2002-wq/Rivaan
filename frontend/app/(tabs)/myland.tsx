@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useCallback } from "react";
+Ôªøimport React, { useEffect, useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, RefreshControl, ActivityIndicator, Alert, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { api } from "@/src/api";
+import { normalizePropertyRecord } from "@/src/property-presenter";
+import { enrichProperty } from "@/src/real-property-overrides";
 import { colors, radii, spacing, typography, shadow, formatINR } from "@/src/theme";
 
 const SERVICE_ICONS: Record<string, any> = {
@@ -36,7 +38,12 @@ export default function MyLandScreen() {
         api.servicesCatalog().catch(() => []),
         api.notifications().catch(() => []),
       ]);
-      setLands(landRes as any[]);
+      setLands(
+        (landRes as any[]).map((land) => ({
+          ...land,
+          property: land.property ? enrichProperty(normalizePropertyRecord(land.property)) : land.property,
+        }))
+      );
       setServices(svcRes as any[]);
       setNotifications(notifRes as any[]);
     } catch (e: any) {
@@ -76,7 +83,7 @@ export default function MyLandScreen() {
         {loading ? (
           <View style={styles.inlineLoader} testID="myland-loader">
             <ActivityIndicator color={colors.primary} size="small" />
-            <Text style={styles.inlineLoaderText}>Loading your propertiesÖ</Text>
+            <Text style={styles.inlineLoaderText}>Loading your properties...</Text>
           </View>
         ) : null}
 
@@ -122,11 +129,10 @@ export default function MyLandScreen() {
 // ====================================================
 // PURCHASED PROPERTY CARD (premium, full-featured)
 // ====================================================
-function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
-  const recentNotifs = isDemo ? [
-    { id: "dn1", title: "Welcome to your owned property", body: "Possession handed over ∑ Sale deed registered" },
-    { id: "dn2", title: "Site visit on April 5", body: "Inspection scheduled by Rivan team" },
-  ] : notifications.slice(0, 3);
+function PurchasedCard({ land, services, notifications, router }: any) {
+  const recentNotifs = notifications
+    .filter((item: any) => !String(item?.title || "").toLowerCase().includes("welcome"))
+    .slice(0, 3);
 
   function openMaps() {
     Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(land.property?.location || "")}`).catch(() => Alert.alert("Cannot open maps"));
@@ -170,7 +176,7 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.ownershipTitle}>Registration Complete</Text>
-            <Text style={styles.ownershipSub}>Sale deed registered ∑ Possession handed over</Text>
+            <Text style={styles.ownershipSub}>Sale deed registered. Possession handed over.</Text>
           </View>
           <View style={styles.priceBadge}>
             <Text style={styles.priceBadgeLabel}>Property Value</Text>
@@ -196,7 +202,7 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
           <View style={styles.paySummaryDivider} />
           <View style={styles.paySummaryItem}>
             <Text style={styles.paySummaryLabel}>Balance</Text>
-            <Text style={[styles.paySummaryValue, { color: colors.success }]}>?0</Text>
+            <Text style={[styles.paySummaryValue, { color: colors.success }]}>{formatINR(0)}</Text>
           </View>
           <View style={styles.paySummaryDivider} />
           <View style={styles.paySummaryItem}>
@@ -210,7 +216,7 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
           <View style={styles.serviceUnlockIcon}>
             <Feather name="unlock" size={14} color={colors.white} />
           </View>
-          <Text style={styles.serviceUnlockText}>Premium Property Services ó Unlocked</Text>
+          <Text style={styles.serviceUnlockText}>Premium Property Services - Unlocked</Text>
         </View>
         <SectionHeader title="Property Services" actionLabel="My Requests" onAction={() => router.push("/services")} testID={`myland-services-${land.id}`} />
         <View style={styles.serviceGrid}>
@@ -259,12 +265,9 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
 // ====================================================
 // ONGOING PROPERTY CARD (payment-focused)
 // ====================================================
-function OngoingCard({ land, router, onPay, paying, notifications, isDemo }: any) {
+function OngoingCard({ land, router, onPay, paying, notifications }: any) {
   const progress = (land.payment_progress || 0) * 100;
-  const recentPays = isDemo ? [
-    { id: "dp1", title: "Installment #3 paid", body: "?2,31,250 paid via UPI ∑ Receipt generated" },
-    { id: "dp2", title: "Reminder: Next due Apr 15", body: "Installment #4 of ?2,31,250 upcoming" },
-  ] : notifications.filter((n: any) => n.type === "payment").slice(0, 2);
+  const recentPays = notifications.filter((n: any) => n.type === "payment").slice(0, 2);
 
   return (
     <View style={styles.ongoingCard} testID={`myland-ongoing-${land.id}`}>
@@ -318,7 +321,7 @@ function OngoingCard({ land, router, onPay, paying, notifications, isDemo }: any
           </View>
         </View>
 
-        {/* Next Due ó prominent */}
+        {/* Next Due √¢‚Ç¨‚Äù prominent */}
         {land.next_due ? (
           <View style={styles.nextDueCard}>
             <View style={styles.nextDueHeader}>
