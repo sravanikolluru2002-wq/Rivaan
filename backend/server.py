@@ -1230,6 +1230,10 @@ class AgentVisitUpdateReq(BaseModel):
     notes: Optional[str] = None
     feedback: Optional[str] = None
 
+class AdminVisitStatusReq(BaseModel):
+    status: str
+    review_notes: Optional[str] = None
+
 class WishlistReq(BaseModel):
     property_id: str
 
@@ -4099,16 +4103,23 @@ async def book_centre_visit(req: VisitBookingReq, user: Dict[str, Any] = Depends
         "visit_time": req.visit_time,
         "name": req.name,
         "mobile": req.mobile,
-        "status": "confirmed",
+        "customer_name": req.name,
+        "customer_phone": normalize_phone(req.mobile),
+        "status": "pending",
+        "approval_status": "pending",
+        "review_notes": "",
+        "reviewed_at": None,
+        "reviewed_by_admin": None,
         "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
     }
     await db.visits.insert_one(visit.copy())
     visit.pop("_id", None)
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
-        "title": "Centre Visit Confirmed",
-        "body": f"Your visit to {centre.get('name')} on {req.visit_date} at {req.visit_time} is confirmed.",
+        "title": "Centre Visit Submitted",
+        "body": f"Your visit request to {centre.get('name')} on {req.visit_date} at {req.visit_time} is awaiting admin confirmation.",
         "type": "visit",
         "read": False,
         "created_at": now_utc().isoformat(),
@@ -4138,8 +4149,15 @@ async def book_site_visit(req: SiteVisitReq, user: Dict[str, Any] = Depends(get_
             "visit_date": req.visit_date,
             "name": req.name,
             "mobile": req.mobile,
-            "status": "confirmed",
+            "customer_name": req.name,
+            "customer_phone": normalize_phone(req.mobile),
+            "status": "pending",
+            "approval_status": "pending",
+            "review_notes": "",
+            "reviewed_at": None,
+            "reviewed_by_admin": None,
             "created_at": now_utc().isoformat(),
+            "updated_at": now_utc().isoformat(),
         }
         local_save_visit(visit)
         await crm_sync_site_visit(
@@ -4161,16 +4179,23 @@ async def book_site_visit(req: SiteVisitReq, user: Dict[str, Any] = Depends(get_
         "visit_date": req.visit_date,
         "name": req.name,
         "mobile": req.mobile,
-        "status": "confirmed",
+        "customer_name": req.name,
+        "customer_phone": normalize_phone(req.mobile),
+        "status": "pending",
+        "approval_status": "pending",
+        "review_notes": "",
+        "reviewed_at": None,
+        "reviewed_by_admin": None,
         "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
     }
     await db.visits.insert_one(visit.copy())
     visit.pop("_id", None)
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
-        "title": "Site Visit Scheduled",
-        "body": f"Your visit to {prop.get('name')} on {req.visit_date} is scheduled.",
+        "title": "Site Visit Submitted",
+        "body": f"Your visit request to {prop.get('name')} on {req.visit_date} is awaiting admin confirmation.",
         "type": "visit",
         "read": False,
         "created_at": now_utc().isoformat(),
@@ -4394,6 +4419,7 @@ async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
     def build_reminders(agent_rows: List[Dict[str, Any]], visit_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         reminders: List[Dict[str, Any]] = []
         pending = [agent for agent in agent_rows if str(agent.get("approval_status") or "pending").lower() == "pending"]
+        pending_visit_requests = [visit for visit in visit_rows if normalized_visit_status(visit.get("status")) in {"pending", "approval requested"}]
         upcoming = [visit for visit in visit_rows if normalized_visit_status(visit.get("status")) in {"scheduled", "confirmed", "upcoming"}]
         overdue = []
         today = now_utc().date()
@@ -4419,6 +4445,13 @@ async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
                     if pending_phones
                     else "Approve or reject pending agent applications so phone access unlocks immediately after review."
                 ),
+            })
+        if pending_visit_requests:
+            reminders.append({
+                "id": "pending-visit-requests",
+                "type": "warning",
+                "title": f"{len(pending_visit_requests)} visit request{'s' if len(pending_visit_requests) != 1 else ''} waiting for approval",
+                "body": "Review pending customer visit requests so the customer flow can move from requested to confirmed in real time.",
             })
         if upcoming:
             reminders.append({
@@ -4447,6 +4480,7 @@ async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
             "generated_at": now_utc().isoformat(),
             "agents": agents,
             "visits": visits,
+            "pending_visit_requests": [visit for visit in visits if normalized_visit_status(visit.get("status")) in {"pending", "approval requested"}],
             "reminders": build_reminders(agents, visits),
         }
 
@@ -4460,6 +4494,7 @@ async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
         "generated_at": now_utc().isoformat(),
         "agents": agents,
         "visits": enriched_visits,
+        "pending_visit_requests": [visit for visit in enriched_visits if normalized_visit_status(visit.get("status")) in {"pending", "approval requested"}],
         "reminders": build_reminders(agents, enriched_visits),
     }
 
@@ -4526,6 +4561,71 @@ async def admin_approve_agent(agent_id: str, user: Dict[str, Any] = Depends(get_
         AdminAgentApprovalReq(approval_status="approved"),
         user,
     )
+
+
+@api_router.post("/admin/visits/{visit_id}/status")
+async def admin_update_visit_status(
+    visit_id: str,
+    req: AdminVisitStatusReq,
+    user: Dict[str, Any] = Depends(get_admin_user),
+):
+    allowed_statuses = {"pending", "confirmed", "completed", "cancelled", "rejected"}
+    next_status = str(req.status or "").strip().lower()
+    if next_status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="Invalid visit status")
+
+    now_iso = now_utc().isoformat()
+    updates = {
+        "status": next_status,
+        "approval_status": "approved" if next_status in {"confirmed", "completed"} else "rejected" if next_status in {"cancelled", "rejected"} else "pending",
+        "review_notes": (req.review_notes or "").strip(),
+        "reviewed_at": now_iso,
+        "reviewed_by_admin": user.get("name") or user.get("phone") or "Admin",
+        "updated_at": now_iso,
+    }
+
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Visit database is unavailable")
+        visit = next((item for item in local_list_visits() if item.get("id") == visit_id), None)
+        if not visit:
+            raise HTTPException(status_code=404, detail="Visit not found")
+        updated = local_update_visit(visit_id, updates)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Visit not found")
+        if updated.get("user_id"):
+            local_upsert_collection_item("notifications", {
+                "id": str(uuid.uuid4()),
+                "user_id": updated["user_id"],
+                "title": "Visit status updated",
+                "body": (
+                    f"Your visit request for {updated.get('property_name') or updated.get('centre_name') or 'the selected location'} is now {next_status}."
+                ),
+                "type": "visit",
+                "read": False,
+                "created_at": now_iso,
+            })
+        return {"success": True, "visit": updated}
+
+    existing = await db.visits.find_one({"id": visit_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Visit not found")
+
+    await db.visits.update_one({"id": visit_id}, {"$set": updates})
+    updated = await db.visits.find_one({"id": visit_id}, {"_id": 0})
+    if updated and updated.get("user_id"):
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": updated["user_id"],
+            "title": "Visit status updated",
+            "body": (
+                f"Your visit request for {updated.get('property_name') or updated.get('centre_name') or 'the selected location'} is now {next_status}."
+            ),
+            "type": "visit",
+            "read": False,
+            "created_at": now_iso,
+        })
+    return {"success": True, "visit": updated}
 
 
 @api_router.get("/admin/service-requests")

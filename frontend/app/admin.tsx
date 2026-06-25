@@ -9,8 +9,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView as SafeAreaProviderView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
@@ -18,37 +18,56 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { colors, radii, shadow, spacing, typography } from "@/src/theme";
 
-type PanelKey = "approvals" | "visits" | "bookings" | "analytics";
+type AdminPanel = "visit_queue" | "agent_queue" | "bookings" | "analytics";
 
-function statusLabel(value?: string) {
-  const raw = String(value || "pending").replace(/_/g, " ");
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
+function readableStatus(value?: string) {
+  const normalized = String(value || "pending").replace(/_/g, " ").trim();
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function badgeTone(status?: string) {
+  const normalized = String(status || "").toLowerCase();
+  if (["confirmed", "approved", "completed"].includes(normalized)) {
+    return { bg: colors.approvedBg, text: colors.approvedText };
+  }
+  if (["cancelled", "rejected"].includes(normalized)) {
+    return { bg: colors.rejectedBg, text: colors.rejectedText };
+  }
+  return { bg: colors.pendingBg, text: colors.pendingText };
 }
 
 export default function AdminScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { width } = useWindowDimensions();
+  const isPhone = width < 720;
+  const isTablet = width >= 720 && width < 1180;
   const normalizedRole = String(user?.role || "").toLowerCase();
   const hasAdminAccess = Boolean(user?.is_admin) || ["admin", "manager", "super_admin"].includes(normalizedRole);
 
-  const [agents, setAgents] = useState<any[]>([]);
-  const [visits, setVisits] = useState<any[]>([]);
+  const [overview, setOverview] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activePanel, setActivePanel] = useState<PanelKey>("approvals");
+  const [activePanel, setActivePanel] = useState<AdminPanel>("visit_queue");
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  const pendingAgents = useMemo(
-    () => agents.filter((agent) => String(agent.approval_status || "pending").toLowerCase() === "pending"),
-    [agents]
-  );
-
-  const confirmedVisits = useMemo(
-    () => visits.filter((visit) => ["scheduled", "confirmed"].includes(String(visit.status || "").toLowerCase())),
+  const agents = useMemo(() => (Array.isArray(overview?.agents) ? overview.agents : []), [overview]);
+  const visits = useMemo(() => (Array.isArray(overview?.visits) ? overview.visits : []), [overview]);
+  const reminders = useMemo(() => (Array.isArray(overview?.reminders) ? overview.reminders : []), [overview]);
+  const pendingVisits = useMemo(
+    () => visits.filter((visit: any) => ["pending", "approval requested"].includes(String(visit.status || "").toLowerCase())),
     [visits]
   );
-
+  const liveVisits = useMemo(
+    () => visits.filter((visit: any) => ["confirmed", "scheduled", "completed", "cancelled", "rejected"].includes(String(visit.status || "").toLowerCase())),
+    [visits]
+  );
+  const pendingAgents = useMemo(
+    () => agents.filter((agent: any) => String(agent.approval_status || "pending").toLowerCase() === "pending"),
+    [agents]
+  );
   const openBookings = useMemo(
     () => bookings.filter((booking) => !["closed", "completed", "cancelled"].includes(String(booking.status || "").toLowerCase())),
     [bookings]
@@ -56,21 +75,20 @@ export default function AdminScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [overview, bookingPayload, statsPayload] = await Promise.all([
+      const [overviewPayload, bookingPayload, statsPayload] = await Promise.all([
         api.adminOverview(),
         api.adminBookings().catch(() => []),
         api.adminStats().catch(() => null),
       ]);
-
-      setAgents(Array.isArray(overview?.agents) ? overview.agents : []);
-      setVisits(Array.isArray(overview?.visits) ? overview.visits : []);
+      setOverview(overviewPayload);
       setBookings(Array.isArray(bookingPayload) ? bookingPayload : []);
       setStats(statsPayload);
     } catch (error: any) {
-      Alert.alert("Admin dashboard", error?.message || "Unable to load the admin dashboard.");
+      Alert.alert("Admin console", error?.message || "Unable to load the admin console right now.");
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setBusyKey(null);
     }
   }, []);
 
@@ -78,39 +96,47 @@ export default function AdminScreen() {
     void load();
   }, [load]);
 
-  async function handleApprove(agentId: string) {
+  async function handleVisitStatus(visitId: string, status: "confirmed" | "completed" | "cancelled") {
     try {
+      setBusyKey(`visit:${visitId}:${status}`);
+      await api.adminUpdateVisitStatus(visitId, status);
+      await load();
+    } catch (error: any) {
+      Alert.alert("Visit update failed", error?.message || "Unable to update visit status.");
+      setBusyKey(null);
+    }
+  }
+
+  async function handleApproveAgent(agentId: string) {
+    try {
+      setBusyKey(`agent:${agentId}:approve`);
       await api.adminApproveAgent(agentId);
       await load();
     } catch (error: any) {
       Alert.alert("Approval failed", error?.message || "Unable to approve this agent.");
+      setBusyKey(null);
     }
   }
 
-  async function handleReject(agentId: string) {
+  async function handleRejectAgent(agentId: string) {
     try {
+      setBusyKey(`agent:${agentId}:reject`);
       await api.adminUpdateAgentStatus(agentId, "rejected");
       await load();
     } catch (error: any) {
       Alert.alert("Update failed", error?.message || "Unable to reject this application.");
-    }
-  }
-
-  async function handleVisitStatusChange(visitId: string, nextStatus: "confirmed" | "completed") {
-    try {
-      await api.agentUpdateSiteVisit(visitId, { status: nextStatus });
-      await load();
-    } catch (error: any) {
-      Alert.alert("Visit update failed", error?.message || "Unable to update visit status.");
+      setBusyKey(null);
     }
   }
 
   async function handleConfirmBooking(bookingId: string) {
     try {
+      setBusyKey(`booking:${bookingId}:confirm`);
       await api.adminConfirmBooking(bookingId);
       await load();
     } catch (error: any) {
       Alert.alert("Booking update failed", error?.message || "Unable to confirm the booking.");
+      setBusyKey(null);
     }
   }
 
@@ -121,198 +147,299 @@ export default function AdminScreen() {
 
   if (!hasAdminAccess) {
     return (
-      <SafeAreaProviderView style={styles.safe}>
-        <View style={styles.emptyState}>
-          <Feather name="lock" size={44} color={colors.stone400} />
-          <Text style={styles.emptyTitle}>Admin access required</Text>
-          <Text style={styles.emptyBody}>Sign in with the approved admin account to access this dashboard.</Text>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.guardState}>
+          <Feather name="shield-off" size={44} color={colors.stone400} />
+          <Text style={styles.guardTitle}>Admin access required</Text>
+          <Text style={styles.guardBody}>Use the approved admin account to review live visit requests and approvals.</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => router.replace("/admin-login")}>
             <Text style={styles.primaryButtonText}>Open admin login</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaProviderView>
+      </SafeAreaView>
     );
   }
 
   if (loading) {
     return (
-      <SafeAreaProviderView style={styles.safe}>
+      <SafeAreaView style={styles.safe}>
         <View style={styles.loader}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
-      </SafeAreaProviderView>
+      </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaProviderView style={styles.safe}>
+    <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.primary} />}
+        contentContainerStyle={[styles.content, isPhone && styles.contentPhone]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load();
+            }}
+            tintColor={colors.primary}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.headerEyebrow}>Admin console</Text>
-            <Text style={styles.headerTitle}>Approvals, visits, bookings, and oversight.</Text>
-            <Text style={styles.headerBody}>A production-facing review surface built around live records and current approval queues.</Text>
+        <View style={[styles.hero, isPhone && styles.heroPhone]}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>Operations dashboard</Text>
+            <Text style={styles.heroTitle}>Review every live visit request before the customer moves to a confirmed journey.</Text>
+            <Text style={styles.heroBody}>
+              Visit approvals, agent onboarding, and booking oversight are grouped into one real-time control surface built on live backend records.
+            </Text>
           </View>
-          <TouchableOpacity style={styles.ghostButton} onPress={handleSignOut}>
-            <Text style={styles.ghostButtonText}>Sign Out</Text>
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Feather name="log-out" size={16} color={colors.primaryDeepest} />
+            <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.metricsRow}>
-          <MetricCard label="Pending approvals" value={String(pendingAgents.length)} />
-          <MetricCard label="Active visit queue" value={String(confirmedVisits.length)} />
-          <MetricCard label="Open bookings" value={String(openBookings.length)} />
-          <MetricCard label="Users" value={String(stats?.total_users || stats?.users || 0)} />
+        <View style={[styles.metricGrid, isPhone && styles.metricGridPhone]}>
+          <MetricCard label="Visit approvals" value={String(pendingVisits.length)} note="Requests awaiting admin action" />
+          <MetricCard label="Live visits" value={String(liveVisits.length)} note="Confirmed or active visit records" />
+          <MetricCard label="Agent approvals" value={String(pendingAgents.length)} note="Pending onboarding queue" />
+          <MetricCard label="Open bookings" value={String(openBookings.length)} note="Bookings still in progress" />
         </View>
 
-        <View style={styles.panelTabs}>
+        {reminders.length ? (
+          <View style={[styles.remindersGrid, isPhone && styles.remindersGridPhone]}>
+            {reminders.map((reminder: any) => (
+              <View key={reminder.id} style={styles.reminderCard}>
+                <Text style={styles.reminderTitle}>{reminder.title}</Text>
+                <Text style={styles.reminderBody}>{reminder.body}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={[styles.panelTabs, isPhone && styles.panelTabsPhone]}>
           {([
-            { key: "approvals", label: "Approvals" },
-            { key: "visits", label: "Visits" },
+            { key: "visit_queue", label: "Visit Queue" },
+            { key: "agent_queue", label: "Agent Queue" },
             { key: "bookings", label: "Bookings" },
             { key: "analytics", label: "Analytics" },
           ] as const).map((panel) => (
             <TouchableOpacity
               key={panel.key}
-              style={[styles.tabButton, activePanel === panel.key && styles.tabButtonActive]}
+              style={[styles.panelTab, activePanel === panel.key && styles.panelTabActive]}
               onPress={() => setActivePanel(panel.key)}
             >
-              <Text style={[styles.tabButtonText, activePanel === panel.key && styles.tabButtonTextActive]}>{panel.label}</Text>
+              <Text style={[styles.panelTabText, activePanel === panel.key && styles.panelTabTextActive]}>{panel.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {activePanel === "approvals" ? (
-          <View style={styles.surfaceCard}>
-            <Text style={styles.sectionTitle}>Agent approvals</Text>
-            <Text style={styles.sectionBody}>Approve access and the same phone number can enter the agent dashboard immediately.</Text>
-            {pendingAgents.length ? (
-              pendingAgents.map((agent) => (
-                <View key={agent.id} style={styles.recordCard}>
-                  <View style={styles.recordBody}>
-                    <Text style={styles.recordTitle}>{agent.name || "Agent application"}</Text>
-                    <Text style={styles.recordMeta}>{agent.phone || "-"}</Text>
-                    {agent.email ? <Text style={styles.recordMeta}>{agent.email}</Text> : null}
-                    {agent.agent_brand_name ? <Text style={styles.recordMeta}>{agent.agent_brand_name}</Text> : null}
-                    {agent.occupation ? <Text style={styles.recordMeta}>{agent.occupation}</Text> : null}
-                    {agent.address ? <Text style={styles.recordMeta}>{agent.address}</Text> : null}
-                    {agent.application_notes ? <Text style={styles.recordMeta}>{agent.application_notes}</Text> : null}
-                    {agent.agent_application_submitted_at ? (
-                      <Text style={styles.recordMeta}>Submitted {new Date(agent.agent_application_submitted_at).toLocaleString()}</Text>
+        {activePanel === "visit_queue" ? (
+          <View style={styles.surface}>
+            <View style={styles.surfaceHeader}>
+              <View style={styles.surfaceHeaderCopy}>
+                <Text style={styles.surfaceTitle}>Visit approval queue</Text>
+                <Text style={styles.surfaceBody}>Every customer visit request lands here first. Confirm to unlock the confirmed state in the customer Visits tab.</Text>
+              </View>
+            </View>
+
+            {pendingVisits.length ? (
+              <View style={[styles.recordGrid, isTablet && styles.recordGridTablet]}>
+                {pendingVisits.map((visit: any) => (
+                  <View key={visit.id} style={[styles.recordCard, isTablet && styles.recordCardTablet]}>
+                    <View style={styles.recordTop}>
+                      <Text style={styles.recordTitle}>{visit.customer_name || visit.name || "Visit request"}</Text>
+                      <StatusBadge status={visit.status} />
+                    </View>
+                    <Text style={styles.recordMeta}>{visit.property_name || visit.centre_name || "Selected location"}</Text>
+                    <Text style={styles.recordMeta}>{visit.visit_date || "-"}{visit.visit_time ? ` at ${visit.visit_time}` : ""}</Text>
+                    <Text style={styles.recordMeta}>{visit.customer_phone || visit.mobile || "-"}</Text>
+                    {visit.review_notes ? <Text style={styles.recordMeta}>{visit.review_notes}</Text> : null}
+                    <View style={styles.actionRow}>
+                      <ActionButton
+                        label="Reject"
+                        variant="secondary"
+                        loading={busyKey === `visit:${visit.id}:cancelled`}
+                        onPress={() => handleVisitStatus(visit.id, "cancelled")}
+                      />
+                      <ActionButton
+                        label="Confirm"
+                        loading={busyKey === `visit:${visit.id}:confirmed`}
+                        onPress={() => handleVisitStatus(visit.id, "confirmed")}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <EmptyPanel title="No visit approvals waiting" text="New customer visit requests will appear here automatically." />
+            )}
+
+            <Text style={styles.subSectionTitle}>Confirmed and completed visits</Text>
+            {liveVisits.length ? (
+              <View style={[styles.recordGrid, isTablet && styles.recordGridTablet]}>
+                {liveVisits.map((visit: any) => (
+                  <View key={visit.id} style={[styles.recordCard, isTablet && styles.recordCardTablet]}>
+                    <View style={styles.recordTop}>
+                      <Text style={styles.recordTitle}>{visit.customer_name || visit.name || "Visit record"}</Text>
+                      <StatusBadge status={visit.status} />
+                    </View>
+                    <Text style={styles.recordMeta}>{visit.property_name || visit.centre_name || "Selected location"}</Text>
+                    <Text style={styles.recordMeta}>{visit.visit_date || "-"}{visit.visit_time ? ` at ${visit.visit_time}` : ""}</Text>
+                    <Text style={styles.recordMeta}>{visit.customer_phone || visit.mobile || "-"}</Text>
+                    {String(visit.status || "").toLowerCase() === "confirmed" ? (
+                      <View style={styles.actionRow}>
+                        <ActionButton
+                          label="Mark Completed"
+                          loading={busyKey === `visit:${visit.id}:completed`}
+                          onPress={() => handleVisitStatus(visit.id, "completed")}
+                        />
+                      </View>
                     ) : null}
                   </View>
-                  <View style={styles.recordActions}>
-                    <TouchableOpacity style={styles.secondaryMiniButton} onPress={() => handleReject(agent.id)}>
-                      <Text style={styles.secondaryMiniText}>Reject</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.primaryMiniButton} onPress={() => handleApprove(agent.id)}>
-                      <Text style={styles.primaryMiniText}>Approve</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
+                ))}
+              </View>
             ) : (
-              <EmptyCard text="No pending approvals right now." />
+              <EmptyPanel title="No confirmed visits yet" text="Confirmed visits will move here after approval." />
             )}
           </View>
         ) : null}
 
-        {activePanel === "visits" ? (
-          <View style={styles.surfaceCard}>
-            <Text style={styles.sectionTitle}>Visit management</Text>
-            <Text style={styles.sectionBody}>Monitor scheduled and confirmed visits, then update progress in real time.</Text>
-            {visits.length ? (
-              visits.map((visit) => (
-                <View key={visit.id} style={styles.recordCard}>
-                  <View style={styles.recordBody}>
-                    <Text style={styles.recordTitle}>{visit.customer_name || "Customer visit"}</Text>
-                    <Text style={styles.recordMeta}>{visit.property_name || "-"}</Text>
-                    <Text style={styles.recordMeta}>
-                      {visit.visit_date || "-"}{visit.visit_time ? ` • ${visit.visit_time}` : ""}
-                    </Text>
-                    <Text style={styles.recordMeta}>{statusLabel(visit.status)}</Text>
+        {activePanel === "agent_queue" ? (
+          <View style={styles.surface}>
+            <Text style={styles.surfaceTitle}>Agent approval queue</Text>
+            <Text style={styles.surfaceBody}>Approve the phone number here and agent login unlocks immediately for that same user.</Text>
+            {pendingAgents.length ? (
+              <View style={[styles.recordGrid, isTablet && styles.recordGridTablet]}>
+                {pendingAgents.map((agent: any) => (
+                  <View key={agent.id} style={[styles.recordCard, isTablet && styles.recordCardTablet]}>
+                    <View style={styles.recordTop}>
+                      <Text style={styles.recordTitle}>{agent.name || "Agent application"}</Text>
+                      <StatusBadge status={agent.approval_status || "pending"} />
+                    </View>
+                    <Text style={styles.recordMeta}>{agent.phone || "-"}</Text>
+                    {agent.email ? <Text style={styles.recordMeta}>{agent.email}</Text> : null}
+                    {agent.agent_brand_name ? <Text style={styles.recordMeta}>{agent.agent_brand_name}</Text> : null}
+                    {agent.address ? <Text style={styles.recordMeta}>{agent.address}</Text> : null}
+                    <View style={styles.actionRow}>
+                      <ActionButton
+                        label="Reject"
+                        variant="secondary"
+                        loading={busyKey === `agent:${agent.id}:reject`}
+                        onPress={() => handleRejectAgent(agent.id)}
+                      />
+                      <ActionButton
+                        label="Approve"
+                        loading={busyKey === `agent:${agent.id}:approve`}
+                        onPress={() => handleApproveAgent(agent.id)}
+                      />
+                    </View>
                   </View>
-                  <View style={styles.recordActions}>
-                    {String(visit.status || "").toLowerCase() !== "confirmed" ? (
-                      <TouchableOpacity style={styles.secondaryMiniButton} onPress={() => handleVisitStatusChange(visit.id, "confirmed")}>
-                        <Text style={styles.secondaryMiniText}>Confirm</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {String(visit.status || "").toLowerCase() !== "completed" ? (
-                      <TouchableOpacity style={styles.primaryMiniButton} onPress={() => handleVisitStatusChange(visit.id, "completed")}>
-                        <Text style={styles.primaryMiniText}>Complete</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                </View>
-              ))
+                ))}
+              </View>
             ) : (
-              <EmptyCard text="No visits available right now." />
+              <EmptyPanel title="No agent approvals waiting" text="The queue is clear right now." />
             )}
           </View>
         ) : null}
 
         {activePanel === "bookings" ? (
-          <View style={styles.surfaceCard}>
-            <Text style={styles.sectionTitle}>Booking management</Text>
-            <Text style={styles.sectionBody}>Review live customer booking requests and confirm when appropriate.</Text>
+          <View style={styles.surface}>
+            <Text style={styles.surfaceTitle}>Booking review</Text>
+            <Text style={styles.surfaceBody}>Customer bookings stay here until your operations team confirms them.</Text>
             {bookings.length ? (
-              bookings.map((booking) => (
-                <View key={booking.id} style={styles.recordCard}>
-                  <View style={styles.recordBody}>
-                    <Text style={styles.recordTitle}>{booking.name || "Customer booking"}</Text>
+              <View style={[styles.recordGrid, isTablet && styles.recordGridTablet]}>
+                {bookings.map((booking: any) => (
+                  <View key={booking.id} style={[styles.recordCard, isTablet && styles.recordCardTablet]}>
+                    <View style={styles.recordTop}>
+                      <Text style={styles.recordTitle}>{booking.name || "Booking request"}</Text>
+                      <StatusBadge status={booking.status || "pending"} />
+                    </View>
                     <Text style={styles.recordMeta}>{booking.property_name || "-"}</Text>
-                    <Text style={styles.recordMeta}>{booking.plot_number || "-"}</Text>
-                    <Text style={styles.recordMeta}>{statusLabel(booking.status)}</Text>
+                    <Text style={styles.recordMeta}>{booking.plot_number || booking.plot_id || "-"}</Text>
+                    <Text style={styles.recordMeta}>{booking.mobile || "-"}</Text>
+                    {!["closed", "completed", "cancelled", "confirmed"].includes(String(booking.status || "").toLowerCase()) ? (
+                      <View style={styles.actionRow}>
+                        <ActionButton
+                          label="Confirm Booking"
+                          loading={busyKey === `booking:${booking.id}:confirm`}
+                          onPress={() => handleConfirmBooking(booking.id)}
+                        />
+                      </View>
+                    ) : null}
                   </View>
-                  <View style={styles.recordActions}>
-                    <TouchableOpacity style={styles.primaryMiniButton} onPress={() => handleConfirmBooking(booking.id)}>
-                      <Text style={styles.primaryMiniText}>Confirm</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
+                ))}
+              </View>
             ) : (
-              <EmptyCard text="No bookings available right now." />
+              <EmptyPanel title="No booking requests" text="Bookings will appear here once the customer flow reaches reservation stage." />
             )}
           </View>
         ) : null}
 
         {activePanel === "analytics" ? (
-          <View style={styles.surfaceCard}>
-            <Text style={styles.sectionTitle}>Analytics panels</Text>
-            <Text style={styles.sectionBody}>High-level platform metrics from live admin endpoints.</Text>
-            <View style={styles.analyticsGrid}>
-              <MetricCard label="Total bookings" value={String(stats?.total_bookings || 0)} compact />
-              <MetricCard label="Total agents" value={String(stats?.total_agents || agents.length)} compact />
-              <MetricCard label="Total visits" value={String(stats?.total_visits || visits.length)} compact />
-              <MetricCard label="Pending services" value={String(stats?.pending_services || 0)} compact />
+          <View style={styles.surface}>
+            <Text style={styles.surfaceTitle}>Live analytics</Text>
+            <Text style={styles.surfaceBody}>A compact high-level pulse of the production platform.</Text>
+            <View style={[styles.metricGrid, isPhone && styles.metricGridPhone]}>
+              <MetricCard label="Users" value={String(stats?.total_users || stats?.users || 0)} note="Registered accounts" compact />
+              <MetricCard label="Agents" value={String(stats?.total_agents || agents.length)} note="Agent records" compact />
+              <MetricCard label="Visits" value={String(stats?.total_visits || visits.length)} note="All visit records" compact />
+              <MetricCard label="Bookings" value={String(stats?.total_bookings || bookings.length)} note="Booking records" compact />
             </View>
           </View>
         ) : null}
       </ScrollView>
-    </SafeAreaProviderView>
+    </SafeAreaView>
   );
 }
 
-function MetricCard({ label, value, compact }: { label: string; value: string; compact?: boolean }) {
+function MetricCard({ label, value, note, compact }: { label: string; value: string; note: string; compact?: boolean }) {
   return (
     <View style={[styles.metricCard, compact && styles.metricCardCompact]}>
       <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricNote}>{note}</Text>
     </View>
   );
 }
 
-function EmptyCard({ text }: { text: string }) {
+function StatusBadge({ status }: { status?: string }) {
+  const tone = badgeTone(status);
   return (
-    <View style={styles.emptyCard}>
-      <Feather name="inbox" size={36} color={colors.stone300} />
-      <Text style={styles.emptyCardText}>{text}</Text>
+    <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
+      <Text style={[styles.statusBadgeText, { color: tone.text }]}>{readableStatus(status)}</Text>
+    </View>
+  );
+}
+
+function ActionButton({
+  label,
+  onPress,
+  loading,
+  variant,
+}: {
+  label: string;
+  onPress: () => void;
+  loading?: boolean;
+  variant?: "primary" | "secondary";
+}) {
+  const secondary = variant === "secondary";
+  return (
+    <TouchableOpacity style={[styles.actionButton, secondary ? styles.actionButtonSecondary : styles.actionButtonPrimary, loading && styles.actionButtonDisabled]} onPress={onPress} disabled={loading}>
+      <Text style={[styles.actionButtonText, secondary ? styles.actionButtonTextSecondary : styles.actionButtonTextPrimary]}>
+        {loading ? "Working..." : label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function EmptyPanel({ title, text }: { title: string; text: string }) {
+  return (
+    <View style={styles.emptyPanel}>
+      <Feather name="inbox" size={34} color={colors.stone300} />
+      <Text style={styles.emptyPanelTitle}>{title}</Text>
+      <Text style={styles.emptyPanelBody}>{text}</Text>
     </View>
   );
 }
@@ -320,51 +447,73 @@ function EmptyCard({ text }: { text: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.offWhite },
   loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyState: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.sm },
-  emptyTitle: { ...typography.h3, color: colors.primaryDeepest },
-  emptyBody: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 320 },
-  primaryButton: {
-    minHeight: 52,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.md,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButtonText: { ...typography.body, color: colors.white, fontWeight: "800" },
+  guardState: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.sm },
+  guardTitle: { ...typography.h3, color: colors.primaryDeepest },
+  guardBody: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 340 },
   content: { padding: spacing.xl, paddingBottom: spacing.xxxl, gap: spacing.lg },
-  header: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
-  headerCopy: { flex: 1, gap: spacing.sm },
-  headerEyebrow: { ...typography.label, color: colors.primary },
-  headerTitle: { ...typography.h2, color: colors.primaryDeepest },
-  headerBody: { ...typography.body, color: colors.stone500 },
-  ghostButton: {
-    minHeight: 44,
+  contentPhone: { padding: spacing.md, paddingBottom: spacing.xxl },
+  hero: {
+    borderRadius: 32,
+    padding: spacing.xxl,
+    backgroundColor: colors.primaryDeepest,
+    gap: spacing.lg,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    ...shadow.lg,
+  },
+  heroPhone: { padding: spacing.lg, flexDirection: "column" },
+  heroCopy: { flex: 1, gap: spacing.sm },
+  heroEyebrow: { ...typography.label, color: colors.accent },
+  heroTitle: { ...typography.h2, color: colors.white, maxWidth: 820 },
+  heroBody: { ...typography.body, color: "rgba(255,255,255,0.76)", maxWidth: 720 },
+  signOutButton: {
+    minHeight: 46,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.pill,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderSoft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.surface,
+    flexDirection: "row",
+    gap: spacing.xs,
   },
-  ghostButtonText: { ...typography.small, fontWeight: "700", color: colors.primaryDeepest },
-  metricsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  signOutText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "800" },
+  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  metricGridPhone: { flexDirection: "column" },
   metricCard: {
     flex: 1,
-    minWidth: 150,
-    borderRadius: radii.xl,
+    minWidth: 180,
+    borderRadius: 24,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     padding: spacing.xl,
+    gap: spacing.xs,
     ...shadow.sm,
   },
-  metricCardCompact: { minWidth: 130 },
+  metricCardCompact: { minWidth: 150 },
   metricValue: { ...typography.h3, color: colors.primaryDeepest },
-  metricLabel: { marginTop: spacing.xs, ...typography.small, color: colors.stone500 },
+  metricLabel: { ...typography.small, color: colors.primaryDeepest, fontWeight: "800" },
+  metricNote: { ...typography.small, color: colors.stone500 },
+  remindersGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  remindersGridPhone: { flexDirection: "column" },
+  reminderCard: {
+    flex: 1,
+    minWidth: 240,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  reminderTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "800" },
+  reminderBody: { ...typography.small, color: colors.stone500 },
   panelTabs: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  tabButton: {
+  panelTabsPhone: { flexDirection: "column" },
+  panelTab: {
     minHeight: 42,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.pill,
@@ -374,59 +523,70 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  tabButtonActive: { backgroundColor: colors.primaryDeepest, borderColor: colors.primaryDeepest },
-  tabButtonText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  tabButtonTextActive: { color: colors.white },
-  surfaceCard: {
+  panelTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  panelTabText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
+  panelTabTextActive: { color: colors.white },
+  surface: {
     borderRadius: 28,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    padding: spacing.xxl,
+    padding: spacing.xl,
     gap: spacing.lg,
     ...shadow.sm,
   },
-  sectionTitle: { ...typography.h3, color: colors.primaryDeepest },
-  sectionBody: { ...typography.body, color: colors.stone500 },
+  surfaceHeader: { gap: spacing.sm },
+  surfaceHeaderCopy: { gap: spacing.xs },
+  surfaceTitle: { ...typography.h3, color: colors.primaryDeepest },
+  surfaceBody: { ...typography.body, color: colors.stone500, maxWidth: 760 },
+  subSectionTitle: { ...typography.h4, color: colors.primaryDeepest, marginTop: spacing.sm },
+  recordGrid: { gap: spacing.md },
+  recordGridTablet: { flexDirection: "row", flexWrap: "wrap" },
   recordCard: {
-    borderRadius: radii.xl,
+    borderRadius: 22,
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     padding: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  recordBody: { gap: 4 },
-  recordTitle: { ...typography.body, color: colors.primaryDeepest, fontWeight: "800" },
+  recordCardTablet: { width: "48%" },
+  recordTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
+  recordTitle: { flex: 1, ...typography.bodyLarge, color: colors.primaryDeepest, fontWeight: "800" },
   recordMeta: { ...typography.small, color: colors.stone500 },
-  recordActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  primaryMiniButton: {
-    minHeight: 40,
+  statusBadge: { alignSelf: "flex-start", paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.pill },
+  statusBadgeText: { ...typography.small, fontWeight: "800" },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs },
+  actionButton: {
+    minHeight: 42,
     paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionButtonPrimary: { backgroundColor: colors.primary },
+  actionButtonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  actionButtonDisabled: { opacity: 0.65 },
+  actionButtonText: { ...typography.small, fontWeight: "800" },
+  actionButtonTextPrimary: { color: colors.white },
+  actionButtonTextSecondary: { color: colors.primaryDeepest },
+  emptyPanel: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    padding: spacing.xxl,
+    borderRadius: radii.xl,
+    backgroundColor: colors.surfaceAlt,
+  },
+  emptyPanelTitle: { ...typography.h4, color: colors.primaryDeepest },
+  emptyPanelBody: { ...typography.body, color: colors.stone500, textAlign: "center", maxWidth: 420 },
+  primaryButton: {
+    minHeight: 52,
+    paddingHorizontal: spacing.xl,
     borderRadius: radii.md,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryMiniText: { ...typography.small, color: colors.white, fontWeight: "800" },
-  secondaryMiniButton: {
-    minHeight: 40,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryMiniText: { ...typography.small, color: colors.primaryDeepest, fontWeight: "700" },
-  analyticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  emptyCard: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.xxl,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surfaceAlt,
-  },
-  emptyCardText: { marginTop: spacing.md, ...typography.body, color: colors.stone500 },
+  primaryButtonText: { ...typography.body, color: colors.white, fontWeight: "800" },
 });

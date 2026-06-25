@@ -27,6 +27,13 @@ function getVisitStatusTone(status?: string) {
   const normalized = String(status || "").trim().toLowerCase();
   switch (normalized) {
     case "pending":
+    case "approval requested":
+      return {
+        label: "Awaiting Approval",
+        bg: colors.pendingBg,
+        text: colors.pendingText,
+        icon: "clock" as const,
+      };
     case "scheduled":
     case "upcoming":
     case "rescheduled":
@@ -194,7 +201,8 @@ export default function VisitsScreen() {
             ) : (
               visits.map((v) => {
                 const tone = getVisitStatusTone(v.status);
-                const canContinue = v.type === "site" && v.property_id && !["cancelled"].includes(String(v.status || "").toLowerCase());
+                const normalizedStatus = String(v.status || "").toLowerCase();
+                const canContinue = v.type === "site" && v.property_id && ["confirmed", "completed"].includes(normalizedStatus);
                 return (
                   <View key={v.id} style={[styles.visitCard, isPhone && styles.visitCardPhone]} testID={`visits-history-${v.id}`}>
                     <View style={[styles.visitIcon, { backgroundColor: tone.text }]}>
@@ -212,6 +220,9 @@ export default function VisitsScreen() {
                         {v.visit_date}{v.visit_time ? ` at ${v.visit_time}` : ""}
                       </Text>
                       <Text style={styles.visitType}>{v.type === "centre" ? "Experience centre visit" : "Site visit"}</Text>
+                      {["pending", "approval requested"].includes(normalizedStatus) ? (
+                        <Text style={styles.visitApprovalHint}>Admin confirmation is pending. Booking unlocks immediately after approval.</Text>
+                      ) : null}
                       <View style={styles.visitActions}>
                         <TouchableOpacity style={styles.visitActionGhost} onPress={() => router.push("/notifications")}>
                           <Text style={styles.visitActionGhostText}>View updates</Text>
@@ -307,6 +318,7 @@ const styles = StyleSheet.create({
   visitTitle: { ...typography.bodyLarge, color: colors.primaryDeepest, fontWeight: "700", flexShrink: 1 },
   visitMeta: { ...typography.small, color: colors.stone600 },
   visitType: { ...typography.label, color: colors.accentDark, fontSize: 9 },
+  visitApprovalHint: { ...typography.small, color: colors.pendingText, fontWeight: "600" },
   visitStatus: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill },
   visitStatusText: { ...typography.small, fontWeight: "800", lineHeight: 16 },
   visitActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs },

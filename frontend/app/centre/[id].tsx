@@ -79,7 +79,7 @@ export default function CentreVisitScreen() {
       setVisitSuccess({
         date,
         time: !isSiteVisit ? time : undefined,
-        status: isSiteVisit ? "Confirmed" : "Confirmed",
+        status: "Pending approval",
       });
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -129,8 +129,8 @@ export default function CentreVisitScreen() {
               </View>
               <Text style={styles.successTitle}>Visit scheduled successfully</Text>
               <Text style={styles.successBody}>
-                Your {isSiteVisit ? "site" : "centre"} visit for {title} is confirmed for {visitSuccess.date}
-                {visitSuccess.time ? ` at ${visitSuccess.time}` : ""}. You can now track the booking flow and next updates from Visits.
+                Your {isSiteVisit ? "site" : "centre"} visit request for {title} was submitted for {visitSuccess.date}
+                {visitSuccess.time ? ` at ${visitSuccess.time}` : ""}. The admin team will confirm it, and the status will update in Visits automatically.
               </Text>
               <View style={[styles.successActions, isPhone && styles.successActionsPhone]}>
                 <Button title="View visit status" onPress={() => router.replace("/(tabs)/visits")} fullWidth={false} style={{ flex: 1 }} />
