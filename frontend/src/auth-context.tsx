@@ -39,6 +39,7 @@ type AuthContextValue = {
   signIn: (token: string, user: User, refreshToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
+  updateUser: (nextUser: User) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -176,9 +177,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsSessionRefreshing(false);
   }
 
+  async function updateUser(nextUser: User) {
+    const normalizedUser = normalizeUserSession(nextUser);
+    await storage.secureSet(USER_CACHE_KEY, JSON.stringify(normalizedUser));
+    await clearRoleScopedCaches(normalizedUser);
+    setUser(normalizedUser);
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isSessionRefreshing, isAuthed: !!user, signIn, signOut, refresh: load }}
+      value={{ user, isLoading, isSessionRefreshing, isAuthed: !!user, signIn, signOut, refresh: load, updateUser }}
     >
       {children}
     </AuthContext.Provider>

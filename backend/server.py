@@ -3181,13 +3181,13 @@ async def update_profile(req: UpdateProfileReq, user: Dict[str, Any] = Depends(g
     if update and await is_database_available():
         await db.users.update_one({"id": user["id"]}, {"$set": update})
         updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-        return clean_user(updated)
+        return apply_session_role(updated, {"session_role": user.get("portal_role")})
     if not ALLOW_LOCAL_AUTH_FALLBACK:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
     user.update(update)
     local_save_user(user)
     updated = local_find_user(user_id=user["id"])
-    return clean_user(updated)
+    return apply_session_role(updated, {"session_role": user.get("portal_role")})
 
 
 # ---------- CRM ----------

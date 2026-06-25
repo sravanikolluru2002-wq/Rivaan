@@ -15,6 +15,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth-context";
 import { colors, radii, shadow, spacing, typography } from "@/src/theme";
 
 type SidebarUser = {
@@ -64,6 +65,7 @@ export default function ProfileSidebar({
   onSupport,
   onLogout,
 }: Props) {
+  const { updateUser } = useAuth();
   const { width } = useWindowDimensions();
   const isPhone = width < 640;
   const [editing, setEditing] = useState(false);
@@ -84,7 +86,8 @@ export default function ProfileSidebar({
     try {
       const payload: Record<string, any> = { name: name.trim() };
       if (email.trim()) payload.email = email.trim();
-      await api.updateProfile(payload);
+      const updatedUser = await api.updateProfile(payload);
+      await updateUser(updatedUser);
       await onRefresh();
       setEditing(false);
     } catch (error: any) {
