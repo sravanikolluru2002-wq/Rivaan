@@ -78,6 +78,14 @@ JWT_EXPIRES_MIN = int(os.environ.get("JWT_EXPIRE_MINUTES", "10080"))
 REFRESH_TOKEN_EXPIRES_MIN = int(os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 30)))
 ALLOW_LOCAL_AUTH_FALLBACK = get_env_bool("ALLOW_LOCAL_AUTH_FALLBACK", False)
 ENABLE_DEMO_DATA = get_env_bool("ENABLE_DEMO_DATA", False)
+DEMO_AUTH_USER_IDS = (
+    "admin-user-001",
+    "agent-main-001",
+    "agent-sub-001",
+    "agent-pending-001",
+    "customer-demo-001",
+    "customer-demo-002",
+)
 MONGO_SERVER_SELECTION_TIMEOUT_MS = int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "15000"))
 MONGO_CONNECT_TIMEOUT_MS = int(os.environ.get("MONGO_CONNECT_TIMEOUT_MS", "15000"))
 MONGO_SOCKET_TIMEOUT_MS = int(os.environ.get("MONGO_SOCKET_TIMEOUT_MS", "20000"))
@@ -662,6 +670,27 @@ async def sync_demo_auth_users_to_db() -> None:
         plot_overrides["plot-1-4"] = {"status": "booked", "owner_id": "customer-demo-001"}
         plot_overrides["villa-2-2"] = {"status": "reserved"}
         save_local_store(store)
+
+
+async def purge_demo_auth_users_from_db() -> None:
+    if not await is_database_available():
+        return
+
+    demo_user_ids = list(DEMO_AUTH_USER_IDS)
+    existing_demo_users = await db.users.find(
+        {"id": {"$in": demo_user_ids}},
+        {"_id": 0, "id": 1},
+    ).to_list(len(demo_user_ids))
+    if not existing_demo_users:
+        return
+
+    ids_to_remove = [item["id"] for item in existing_demo_users if item.get("id")]
+    if not ids_to_remove:
+        return
+
+    await db.user_sessions.delete_many({"user_id": {"$in": ids_to_remove}})
+    await db.users.delete_many({"id": {"$in": ids_to_remove}})
+    logger.info("Purged seeded demo auth users from database: %s", ", ".join(sorted(ids_to_remove)))
 
 
 LOCAL_FALLBACK_PROPERTIES: List[Dict[str, Any]] = [
@@ -2589,6 +2618,8 @@ async def ensure_indexes() -> None:
         await db.users.update_many({"phone": "9911112222"}, {"$set": {"phone": "+919911112222"}})
         if ENABLE_DEMO_DATA:
             await sync_demo_auth_users_to_db()
+        else:
+            await purge_demo_auth_users_from_db()
 
         for index_name in ("email_1", "phone_1", "google_sub_1"):
             try:

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -72,6 +71,7 @@ export default function ProfileSidebar({
   const [mounted, setMounted] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState("");
 
@@ -93,6 +93,7 @@ export default function ProfileSidebar({
     if (!visible) {
       setEditing(false);
       setSaving(false);
+      setSaveError("");
     }
   }, [visible]);
 
@@ -101,6 +102,7 @@ export default function ProfileSidebar({
 
   async function handleSave() {
     setSaving(true);
+    setSaveError("");
     try {
       const payload: Record<string, any> = { name: name.trim() };
       const trimmedEmail = email.trim();
@@ -112,7 +114,7 @@ export default function ProfileSidebar({
       await onRefresh();
       setEditing(false);
     } catch (error: any) {
-      Alert.alert("Profile", error?.message || "Unable to save profile details right now.");
+      setSaveError(error?.message || "Unable to save profile details right now.");
     } finally {
       setSaving(false);
     }
@@ -166,13 +168,13 @@ export default function ProfileSidebar({
               </View>
               <View style={styles.field}>
                 <Text style={styles.label}>Full name</Text>
-                <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your name" placeholderTextColor={colors.stone400} />
+                <TextInput value={name} onChangeText={(value) => { setName(value); if (saveError) setSaveError(""); }} style={styles.input} placeholder="Your name" placeholderTextColor={colors.stone400} />
               </View>
               <View style={styles.field}>
                 <Text style={styles.label}>Email</Text>
                 <TextInput
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(value) => { setEmail(value); if (saveError) setSaveError(""); }}
                   style={styles.input}
                   placeholder="Enter your email"
                   placeholderTextColor={colors.stone400}
@@ -180,6 +182,12 @@ export default function ProfileSidebar({
                   keyboardType="email-address"
                 />
               </View>
+              {saveError ? (
+                <View style={styles.errorBanner}>
+                  <Feather name="alert-circle" size={16} color={colors.danger} />
+                  <Text style={styles.errorText}>{saveError}</Text>
+                </View>
+              ) : null}
               <View style={[styles.editActions, isPhone && styles.editActionsPhone]}>
                 <TouchableOpacity style={styles.secondaryButton} onPress={() => setEditing(false)}>
                   <Text style={styles.secondaryButtonText}>Cancel</Text>
@@ -300,6 +308,23 @@ const styles = StyleSheet.create({
   field: { gap: spacing.sm },
   label: { ...typography.small, color: colors.stone500, fontWeight: "700" },
   input: { minHeight: 52, borderRadius: radii.md, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.borderSoft, paddingHorizontal: spacing.lg, color: colors.primaryDeepest, fontSize: 15 },
+  errorBanner: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#F2C4C4",
+    backgroundColor: "#FFF6F6",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  errorText: {
+    flex: 1,
+    ...typography.small,
+    color: colors.danger,
+    fontWeight: "600",
+  },
   editActions: { flexDirection: "row", gap: spacing.sm },
   editActionsPhone: { flexDirection: "column" },
   secondaryButton: { flex: 1, minHeight: 50, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
