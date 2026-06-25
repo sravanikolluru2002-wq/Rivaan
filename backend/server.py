@@ -137,14 +137,37 @@ def looks_like_firebase_google_token(token: str, project_id: str) -> bool:
 
 
 VILLA_VIDEO_URL = "https://res.cloudinary.com/dzisksq78/video/upload/v1780939161/villa_1_ltxt2q.mp4"
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get(
-        "CORS_ORIGINS",
-        "http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,http://127.0.0.1:19006,https://rivan-auth-live.web.app,https://rivan-auth-live.firebaseapp.com",
-    ).split(",")
-    if origin.strip()
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+    "https://rivan-auth-live.web.app",
+    "https://rivan-auth-live.firebaseapp.com",
+    "https://rivan.onrender.com",
+    "https://rivanreality.com",
+    "https://www.rivanreality.com",
 ]
+
+
+def build_cors_origins(raw_value: str) -> List[str]:
+    merged: List[str] = []
+    seen: set[str] = set()
+    for origin in [*DEFAULT_CORS_ORIGINS, *raw_value.split(",")]:
+        normalized = origin.strip().rstrip("/")
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        merged.append(normalized)
+    return merged
+
+
+CORS_ORIGINS = build_cors_origins(
+    os.environ.get(
+        "CORS_ORIGINS",
+        ",".join(DEFAULT_CORS_ORIGINS),
+    )
+)
 CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX") or None
 
 client = AsyncIOMotorClient(
@@ -171,6 +194,8 @@ DB_AVAILABILITY_TIMEOUT_SECONDS = float(
 )
 _db_availability_cache: Dict[str, Any] = {"value": None, "checked_at": 0.0}
 _rate_limit_store: Dict[str, deque[float]] = defaultdict(deque)
+FEATURED_PROPERTIES_CACHE_TTL_SECONDS = int(os.environ.get("FEATURED_PROPERTIES_CACHE_TTL_SECONDS", "90"))
+_featured_properties_cache: Dict[str, Any] = {"value": None, "expires_at": 0.0}
 
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
@@ -198,6 +223,20 @@ def enforce_rate_limit(key: str, *, limit: int, window_seconds: int) -> None:
             detail="Too many requests. Please wait and try again.",
         )
     bucket.append(now_ts)
+
+
+def get_cached_featured_properties() -> Optional[List[Dict[str, Any]]]:
+    cached_value = _featured_properties_cache.get("value")
+    expires_at = float(_featured_properties_cache.get("expires_at") or 0.0)
+    if cached_value and expires_at > time.time():
+        return cached_value
+    return None
+
+
+def update_featured_properties_cache(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    _featured_properties_cache["value"] = items
+    _featured_properties_cache["expires_at"] = time.time() + FEATURED_PROPERTIES_CACHE_TTL_SECONDS
+    return items
 
 
 def load_local_store() -> Dict[str, Any]:
@@ -3569,12 +3608,21 @@ async def health_check():
 
 @api_router.get("/properties/featured")
 async def featured_properties():
+    cached_items = get_cached_featured_properties()
+    if cached_items is not None:
+        return cached_items
+
     if not await is_database_available():
+        stale_items = _featured_properties_cache.get("value")
+        if stale_items:
+            return stale_items
         if not ALLOW_LOCAL_AUTH_FALLBACK:
             raise HTTPException(status_code=503, detail="Property database is unavailable")
-        return [item for item in local_get_properties() if item.get("featured")]
+        local_items = [item for item in local_get_properties() if item.get("featured")]
+        return update_featured_properties_cache(local_items)
+
     items = await db.properties.find({"featured": True}, {"_id": 0}).to_list(20)
-    return items
+    return update_featured_properties_cache(items)
 
 
 @api_router.get("/properties/{property_id}")
@@ -4851,6 +4899,10 @@ async def admin_create_property(req: AdminPropertyReq, user: Dict[str, Any] = De
 
 # ---------- Seed Data ----------
 async def seed_data():
+    if not ENABLE_DEMO_DATA:
+        logger.info("Demo seed data disabled; skipping startup seed.")
+        return
+
     if not await is_database_available():
         logger.warning("Skipping seed data because MongoDB is unavailable during startup.")
         return
@@ -5518,6 +5570,7 @@ def log_registered_auth_routes() -> None:
         methods = ",".join(sorted(getattr(route, "methods", []) or []))
         auth_routes.append(f"{path} [{methods}]")
     logger.info("Registered auth routes: %s", "; ".join(sorted(auth_routes)))
+    logger.info("CORS origins: %s", ", ".join(CORS_ORIGINS))
 
 
 app.include_router(api_router)

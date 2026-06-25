@@ -76,7 +76,7 @@ export default function MyLandScreen() {
         {loading ? (
           <View style={styles.inlineLoader} testID="myland-loader">
             <ActivityIndicator color={colors.primary} size="small" />
-            <Text style={styles.inlineLoaderText}>Loading your propertiesâ€¦</Text>
+            <Text style={styles.inlineLoaderText}>Loading your properties…</Text>
           </View>
         ) : null}
 
@@ -124,7 +124,7 @@ export default function MyLandScreen() {
 // ====================================================
 function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
   const recentNotifs = isDemo ? [
-    { id: "dn1", title: "Welcome to your owned property", body: "Possession handed over Â· Sale deed registered" },
+    { id: "dn1", title: "Welcome to your owned property", body: "Possession handed over · Sale deed registered" },
     { id: "dn2", title: "Site visit on April 5", body: "Inspection scheduled by Rivan team" },
   ] : notifications.slice(0, 3);
 
@@ -170,7 +170,7 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.ownershipTitle}>Registration Complete</Text>
-            <Text style={styles.ownershipSub}>Sale deed registered Â· Possession handed over</Text>
+            <Text style={styles.ownershipSub}>Sale deed registered · Possession handed over</Text>
           </View>
           <View style={styles.priceBadge}>
             <Text style={styles.priceBadgeLabel}>Property Value</Text>
@@ -196,7 +196,7 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
           <View style={styles.paySummaryDivider} />
           <View style={styles.paySummaryItem}>
             <Text style={styles.paySummaryLabel}>Balance</Text>
-            <Text style={[styles.paySummaryValue, { color: colors.success }]}>â‚¹0</Text>
+            <Text style={[styles.paySummaryValue, { color: colors.success }]}>?0</Text>
           </View>
           <View style={styles.paySummaryDivider} />
           <View style={styles.paySummaryItem}>
@@ -210,7 +210,7 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
           <View style={styles.serviceUnlockIcon}>
             <Feather name="unlock" size={14} color={colors.white} />
           </View>
-          <Text style={styles.serviceUnlockText}>Premium Property Services â€” Unlocked</Text>
+          <Text style={styles.serviceUnlockText}>Premium Property Services — Unlocked</Text>
         </View>
         <SectionHeader title="Property Services" actionLabel="My Requests" onAction={() => router.push("/services")} testID={`myland-services-${land.id}`} />
         <View style={styles.serviceGrid}>
@@ -262,8 +262,8 @@ function PurchasedCard({ land, services, notifications, router, isDemo }: any) {
 function OngoingCard({ land, router, onPay, paying, notifications, isDemo }: any) {
   const progress = (land.payment_progress || 0) * 100;
   const recentPays = isDemo ? [
-    { id: "dp1", title: "Installment #3 paid", body: "â‚¹2,31,250 paid via UPI Â· Receipt generated" },
-    { id: "dp2", title: "Reminder: Next due Apr 15", body: "Installment #4 of â‚¹2,31,250 upcoming" },
+    { id: "dp1", title: "Installment #3 paid", body: "?2,31,250 paid via UPI · Receipt generated" },
+    { id: "dp2", title: "Reminder: Next due Apr 15", body: "Installment #4 of ?2,31,250 upcoming" },
   ] : notifications.filter((n: any) => n.type === "payment").slice(0, 2);
 
   return (
@@ -318,7 +318,7 @@ function OngoingCard({ land, router, onPay, paying, notifications, isDemo }: any
           </View>
         </View>
 
-        {/* Next Due â€” prominent */}
+        {/* Next Due — prominent */}
         {land.next_due ? (
           <View style={styles.nextDueCard}>
             <View style={styles.nextDueHeader}>

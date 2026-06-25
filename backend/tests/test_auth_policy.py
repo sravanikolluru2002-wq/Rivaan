@@ -2,6 +2,8 @@ import os
 import sys
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -11,7 +13,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
 os.environ.setdefault("JWT_SECRET", "test-only-jwt-secret")
 os.environ.setdefault("ALLOW_LOCAL_AUTH_FALLBACK", "false")
 
-from server import admin_access_is_active, app, has_admin_access  # noqa: E402
+from server import CORS_ORIGINS, admin_access_is_active, app, has_admin_access  # noqa: E402
 
 
 def test_admin_access_accepts_database_admin_roles():
@@ -34,3 +36,21 @@ def test_only_otp_admin_login_routes_are_registered():
     assert "/api/auth/admin/firebase" in route_paths
     assert "/api/auth/admin/login" not in route_paths
     assert "/api/auth/admin/demo-access" not in route_paths
+
+
+def test_live_frontend_origins_are_allowed_for_cors():
+    assert "https://rivanreality.com" in CORS_ORIGINS
+    assert "https://www.rivanreality.com" in CORS_ORIGINS
+
+
+def test_preflight_from_live_frontend_receives_cors_headers():
+    client = TestClient(app)
+    response = client.options(
+        "/api/auth/admin/status",
+        headers={
+            "Origin": "https://rivanreality.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://rivanreality.com"

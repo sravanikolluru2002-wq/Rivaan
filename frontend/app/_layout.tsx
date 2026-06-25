@@ -21,13 +21,18 @@ function RootLayoutInner() {
   const router = useRouter();
   const segments = useSegments();
   const normalizedRole = String(user?.role || "").toLowerCase();
+  const rootSegment = String(segments[0] || "");
   const isAdminUser = Boolean(user?.is_admin) || ["admin", "manager", "super_admin"].includes(normalizedRole);
   const isApprovedAgent =
     ["agent", "sub_agent"].includes(normalizedRole) && String(user?.approval_status || "").toLowerCase() === "approved";
+  const requiresResolvedSession =
+    rootSegment === "admin" ||
+    rootSegment === "agent" ||
+    rootSegment === "(tabs)" ||
+    ["documents", "notifications", "services", "wishlist"].includes(rootSegment);
 
   useEffect(() => {
     if (isLoading) return;
-    const rootSegment = String(segments[0] || "");
 
     if (!isAuthed && rootSegment === "admin") {
       router.replace("/admin-login");
@@ -44,7 +49,7 @@ function RootLayoutInner() {
     }
   }, [isAdminUser, isApprovedAgent, isAuthed, isLoading, router, segments]);
 
-  if (isLoading) {
+  if (isLoading && requiresResolvedSession) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" color={colors.primary} />

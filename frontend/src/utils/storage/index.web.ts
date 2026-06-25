@@ -9,7 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
-const COOKIE_KEYS = new Set(["rivan_token", "rivan_user_cache"]);
+const COOKIE_KEYS = new Set(["rivan_token", "rivan_refresh_token", "rivan_user_cache"]);
 
 function canUseCookies() {
   return typeof document !== "undefined";

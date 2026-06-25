@@ -17,7 +17,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
-import { api } from "@/src/api";
+import { api, warmBackendReady } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import CustomerAuthModal from "@/src/components/CustomerAuthModal";
 import { PropertyMedia } from "@/src/components/PropertyMedia";
@@ -78,10 +78,21 @@ export function HomeScreen() {
 
     async function loadProperties() {
       try {
-        const featured = enrichPropertyCollection(normalizePropertyCollection(await api.featured()));
-        const liveProperties = featured.length
-          ? featured
-          : enrichPropertyCollection(normalizePropertyCollection(await api.listProperties()));
+        warmBackendReady();
+        const [featuredResult, propertiesResult] = await Promise.allSettled([
+          api.featured(),
+          api.listProperties(),
+        ]);
+
+        const featured =
+          featuredResult.status === "fulfilled"
+            ? enrichPropertyCollection(normalizePropertyCollection(featuredResult.value))
+            : [];
+        const allProperties =
+          propertiesResult.status === "fulfilled"
+            ? enrichPropertyCollection(normalizePropertyCollection(propertiesResult.value))
+            : [];
+        const liveProperties = featured.length ? featured : allProperties;
 
         if (active) setProperties(liveProperties);
       } catch {
