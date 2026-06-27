@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -80,7 +79,7 @@ export default function LayoutScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 1080;
+  const isDesktop = width >= 1180;
   const isPhone = width < 520;
 
   const isAgent = user?.role === "agent" || user?.role === "sub_agent";
@@ -318,8 +317,8 @@ export default function LayoutScreen() {
         ) : null}
       </ScrollView>
 
-      <Modal transparent visible={Boolean(selectedUnit)} animationType="fade" onRequestClose={() => setSelectedUnit(null)}>
-        <View style={styles.modalBackdrop}>
+      {selectedUnit ? (
+        <View style={styles.modalBackdrop} pointerEvents="box-none">
           <View style={[styles.modalCard, isPhone && styles.modalCardPhone]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderCopy}>
@@ -367,7 +366,7 @@ export default function LayoutScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -384,7 +383,7 @@ function InfoTile({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.offWhite },
   loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
+  content: { width: "100%", maxWidth: 1120, alignSelf: "center", padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   contentPhone: { padding: spacing.md, paddingBottom: spacing.xxl },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   headerButton: {
@@ -401,33 +400,30 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.h3, color: colors.primaryDeepest },
   headerBody: { ...typography.small, color: colors.stone500, marginTop: 2 },
   heroCard: {
-    borderRadius: 22,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    padding: spacing.xl,
-    gap: spacing.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
     ...shadow.md,
   },
-  heroCardPhone: {
-    borderRadius: 18,
-    padding: spacing.lg,
-  },
+  heroCardPhone: { borderRadius: 16, padding: spacing.md },
   heroCardDesktop: { flexDirection: "row", alignItems: "stretch" },
   heroCopy: { flex: 1, gap: spacing.sm },
   heroEyebrow: { ...typography.label, color: colors.primary },
-  heroTitle: { ...typography.h3, color: colors.primaryDeepest },
+  heroTitle: { ...typography.h4, color: colors.primaryDeepest, fontSize: 20, lineHeight: 28 },
   heroBody: { ...typography.body, color: colors.stone500 },
-  heroStats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, flex: 0.92 },
+  heroStats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, flex: 0.92 },
   heroStatsPhone: { gap: spacing.sm },
   heroStatCard: {
     flex: 1,
     minWidth: 120,
-    borderRadius: radii.lg,
+    borderRadius: radii.md,
     backgroundColor: colors.surfaceMuted,
-    padding: spacing.md,
+    padding: spacing.sm,
   },
-  heroStatValue: { ...typography.h3, color: colors.primaryDeepest },
+  heroStatValue: { ...typography.h4, color: colors.primaryDeepest },
   heroStatLabel: { ...typography.small, color: colors.stone500, marginTop: spacing.xs },
   chipRail: { gap: spacing.sm, paddingBottom: spacing.xs },
   statusChip: {
@@ -446,11 +442,11 @@ const styles = StyleSheet.create({
   statusChipText: { ...typography.small, fontWeight: "700", color: colors.primaryDeepest },
   statusChipTextActive: { color: colors.white },
   mapShell: {
-    borderRadius: 22,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.md,
     ...shadow.sm,
   },
@@ -464,31 +460,31 @@ const styles = StyleSheet.create({
   mapCanvas: {
     position: "relative",
     width: "100%",
-    minWidth: 900,
-    minHeight: 700,
-    borderRadius: 20,
+    minWidth: 760,
+    minHeight: 560,
+    borderRadius: 18,
     backgroundColor: "#FBF8F2",
     borderWidth: 1,
     borderColor: colors.borderSoft,
     overflow: "hidden",
   },
   mapCanvasPhone: {
-    width: 900,
-    minHeight: 460,
+    width: 760,
+    minHeight: 420,
   },
   mapPlot: {
     position: "absolute",
     borderWidth: 1,
-    borderRadius: 5,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
   },
-  mapPlotNumber: { fontSize: 8, lineHeight: 10, fontWeight: "800" },
+  mapPlotNumber: { fontSize: 7, lineHeight: 9, fontWeight: "800" },
   unitGrid: { gap: spacing.md },
   unitGridDesktop: { flexDirection: "row", flexWrap: "wrap" },
   unitCard: {
     width: "100%",
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: "hidden",
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -496,7 +492,7 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   unitStatusBar: { height: 6, width: "100%" },
-  unitCardBody: { padding: spacing.lg },
+  unitCardBody: { padding: spacing.md },
   unitTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
   unitNumber: { ...typography.h4, color: colors.primaryDeepest },
   unitStatusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.pill },
@@ -514,7 +510,13 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { marginTop: spacing.md, ...typography.h4, color: colors.primaryDeepest },
   emptyBody: { marginTop: spacing.sm, ...typography.body, color: colors.stone500 },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(6,15,11,0.36)", alignItems: "center", justifyContent: "center", padding: spacing.lg },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(6,15,11,0.36)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
   modalCard: {
     width: "100%",
     maxWidth: 480,

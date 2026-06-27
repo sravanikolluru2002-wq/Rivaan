@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -201,16 +200,17 @@ export function HomeScreen() {
     setMenuOpen(false);
   }, [router, scrollToSection]);
 
-  const openAccessSection = useCallback(() => {
+  const openAgentLogin = useCallback(() => {
     blurActiveWebElement();
-    if (typeof document !== "undefined" && document.getElementById("access")) {
-      scrollToSection("access");
-      setMenuOpen(false);
-      return;
-    }
-    router.push({ pathname: "/", params: { section: "access" } });
+    router.push("/agent-login");
     setMenuOpen(false);
-  }, [router, scrollToSection]);
+  }, [router]);
+
+  const openAdminLogin = useCallback(() => {
+    blurActiveWebElement();
+    router.push("/admin-login");
+    setMenuOpen(false);
+  }, [router]);
 
   useEffect(() => {
     if (params.section !== "featured" && params.section !== "access") return;
@@ -230,7 +230,7 @@ export function HomeScreen() {
         <Image source={LOGO} style={styles.navLogoImage} resizeMode="contain" />
         <View>
           <Text style={styles.logoText}>Rivan</Text>
-          <Text style={styles.logoSup}>REALITY</Text>
+          <Text style={styles.logoSup}>REALTY</Text>
         </View>
       </TouchableOpacity>
 
@@ -241,23 +241,11 @@ export function HomeScreen() {
           </TouchableOpacity>
         ))}
 
-        <TouchableOpacity
-          style={styles.navButtonGhost}
-          onPress={() => {
-            blurActiveWebElement();
-            openAccessSection();
-          }}
-        >
+        <TouchableOpacity style={styles.navButtonGhost} onPress={openAgentLogin}>
           <Text style={styles.navButtonGhostText}>Agent Login</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navButtonGhost}
-          onPress={() => {
-            blurActiveWebElement();
-            openAccessSection();
-          }}
-        >
+        <TouchableOpacity style={styles.navButtonGhost} onPress={openAdminLogin}>
           <Text style={styles.navButtonGhostText}>Admin</Text>
         </TouchableOpacity>
 
@@ -296,20 +284,10 @@ export function HomeScreen() {
       <TouchableOpacity style={styles.mobileMenuLink} onPress={openProperties}>
         <Text style={styles.mobileMenuLinkText}>Properties</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.mobileMenuLink}
-        onPress={() => {
-          openAccessSection();
-        }}
-      >
+      <TouchableOpacity style={styles.mobileMenuLink} onPress={openAgentLogin}>
         <Text style={styles.mobileMenuLinkText}>Agent Login</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.mobileMenuLink}
-        onPress={() => {
-          openAccessSection();
-        }}
-      >
+      <TouchableOpacity style={styles.mobileMenuLink} onPress={openAdminLogin}>
         <Text style={styles.mobileMenuLinkText}>Admin</Text>
       </TouchableOpacity>
       {isAuthed ? (
@@ -368,36 +346,40 @@ export function HomeScreen() {
         }}
       />
 
-      <Modal visible={menuOpen && !isDesktop} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
-          <Pressable style={[styles.menuCard, isPhone && styles.menuCardPhone]}>{mobileMenuContent}</Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal visible={openDropdown !== null} transparent animationType="fade" onRequestClose={() => setOpenDropdown(null)}>
-        <Pressable style={styles.dropdownBackdrop} onPress={() => setOpenDropdown(null)}>
-          <Pressable style={styles.dropdownModal}>
-            <Text style={styles.dropdownTitle}>{openDropdown === "location" ? "Choose location" : "Choose property type"}</Text>
-            {(openDropdown === "location" ? locationOptions : propertyTypeOptions).map((option) => {
-              const selected = openDropdown === "location" ? selectedLocation === option : selectedPropertyType === option;
-              return (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.dropdownOption, selected && styles.dropdownOptionActive]}
-                  onPress={() => {
-                    if (openDropdown === "location") setSelectedLocation(option);
-                    else setSelectedPropertyType(option);
-                    setOpenDropdown(null);
-                  }}
-                >
-                  <Text style={[styles.dropdownOptionText, selected && styles.dropdownOptionTextActive]}>{option}</Text>
-                  {selected ? <Feather name="check" size={16} color={colors.primary} /> : null}
-                </TouchableOpacity>
-              );
-            })}
+      {menuOpen && !isDesktop ? (
+        <View style={styles.overlayRoot} pointerEvents="box-none">
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
+            <Pressable style={[styles.menuCard, isPhone && styles.menuCardPhone]}>{mobileMenuContent}</Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </View>
+      ) : null}
+
+      {openDropdown !== null ? (
+        <View style={styles.overlayRoot} pointerEvents="box-none">
+          <Pressable style={styles.dropdownBackdrop} onPress={() => setOpenDropdown(null)}>
+            <Pressable style={styles.dropdownModal}>
+              <Text style={styles.dropdownTitle}>{openDropdown === "location" ? "Choose location" : "Choose property type"}</Text>
+              {(openDropdown === "location" ? locationOptions : propertyTypeOptions).map((option) => {
+                const selected = openDropdown === "location" ? selectedLocation === option : selectedPropertyType === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.dropdownOption, selected && styles.dropdownOptionActive]}
+                    onPress={() => {
+                      if (openDropdown === "location") setSelectedLocation(option);
+                      else setSelectedPropertyType(option);
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <Text style={[styles.dropdownOptionText, selected && styles.dropdownOptionTextActive]}>{option}</Text>
+                    {selected ? <Feather name="check" size={16} color={colors.primary} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </Pressable>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={[styles.navbar, isPhone && styles.navbarPhone, scrolled && styles.navbarScrolled]}>
         {isDesktop ? (
@@ -408,7 +390,7 @@ export function HomeScreen() {
               <Image source={LOGO} style={styles.navLogoImage} resizeMode="contain" />
               <View>
                 <Text style={styles.logoText}>Rivan</Text>
-                <Text style={styles.logoSup}>REALITY</Text>
+                <Text style={styles.logoSup}>REALTY</Text>
               </View>
             </TouchableOpacity>
             <View style={styles.navMobileActions}>
@@ -799,6 +781,11 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  overlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 60,
+    elevation: 60,
   },
   menuBackdrop: { flex: 1, backgroundColor: "rgba(10,46,31,0.7)", justifyContent: "flex-start" },
   menuCard: {

@@ -51,7 +51,7 @@ export function AuthSplitShell({
               </View>
               <View>
                 <Text style={styles.logoWordDark}>RIVAN</Text>
-                <Text style={styles.logoSubDark}>Reality platform</Text>
+                <Text style={styles.logoSubDark}>Realty platform</Text>
               </View>
             </View>
             <Text style={styles.formEyebrow}>{formEyebrow}</Text>
@@ -103,9 +103,9 @@ const styles = StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 580,
+    maxWidth: 500,
     backgroundColor: "#FBF8F1",
-    borderRadius: 20,
+    borderRadius: 18,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(220,211,197,0.9)",
@@ -136,12 +136,12 @@ const styles = StyleSheet.create({
   formPanel: {
     flex: 1,
     backgroundColor: "#FBF8F1",
-    paddingHorizontal: 18,
-    paddingVertical: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   formPanelPhone: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   formTop: {
     flexDirection: "row",
@@ -166,8 +166,8 @@ const styles = StyleSheet.create({
   },
   formTitle: {
     color: colors.primaryDeepest,
-    fontSize: Platform.OS === "web" ? 18 : 17,
-    lineHeight: Platform.OS === "web" ? 24 : 22,
+    fontSize: Platform.OS === "web" ? 17 : 16,
+    lineHeight: Platform.OS === "web" ? 22 : 21,
     fontWeight: "800",
     fontFamily: fonts.heading,
     marginBottom: 3,

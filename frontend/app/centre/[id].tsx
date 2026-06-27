@@ -20,6 +20,7 @@ export default function CentreVisitScreen() {
   const { width } = useWindowDimensions();
   const isPhone = width < 520;
   const isTablet = width >= 760;
+  const isDesktop = width >= 1180;
 
   const idStr = id as string;
   const isSiteVisit = idStr?.startsWith("site-");
@@ -105,7 +106,7 @@ export default function CentreVisitScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={[styles.scroll, isPhone && styles.scrollPhone]} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.scroll, isPhone && styles.scrollPhone, isDesktop && styles.scrollDesktop]} showsVerticalScrollIndicator={false}>
           {image ? <Image source={{ uri: image }} style={styles.image} /> : null}
 
           <View style={styles.infoCard}>
@@ -222,11 +223,12 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.stone100 },
   headerBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.offWhite, alignItems: "center", justifyContent: "center" },
   headerTitle: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
-  scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
+  scroll: { width: "100%", padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
+  scrollDesktop: { maxWidth: 920, alignSelf: "center" },
   scrollPhone: { padding: spacing.md, paddingBottom: spacing.xxl },
-  image: { width: "100%", height: 160, borderRadius: radii.md },
+  image: { width: "100%", height: 150, borderRadius: radii.md },
   infoCard: { padding: spacing.md, backgroundColor: colors.offWhite, borderRadius: radii.md, gap: 6, borderWidth: 1, borderColor: colors.stone100 },
-  title: { ...typography.h3, color: colors.primaryDeepest, fontWeight: "700" },
+  title: { ...typography.h4, color: colors.primaryDeepest, fontWeight: "700", fontSize: 20, lineHeight: 28 },
   row: { flexDirection: "row", alignItems: "center", gap: 6 },
   meta: { ...typography.small, color: colors.stone600, flex: 1 },
   sectionTitle: { ...typography.h4, color: colors.primaryDeepest, fontWeight: "700", marginTop: spacing.md },
