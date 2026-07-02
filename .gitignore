@@ -99,3 +99,4 @@ android/app/debug.keystore
 # Local backend state
 backend/*.log
 backend/local_auth_store.json
+.env*

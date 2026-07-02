@@ -4388,6 +4388,29 @@ img {
     border-color: rgba(184, 154, 90, 0.14);
   }
 
+  .nav-links .profile-chip,
+  .nav-links .profile-chip strong,
+  .nav-links .profile-chip small,
+  .nav-links .ghost-pill,
+  .nav-links .mini-pill {
+    color: var(--green-900);
+  }
+
+  .nav-links .profile-chip small {
+    color: var(--grey-500);
+  }
+
+  .nav-links .primary-pill {
+    background: var(--green-800);
+    color: var(--white);
+    border-color: var(--green-800);
+  }
+
+  .nav-links .avatar-sm {
+    background: var(--green-800);
+    color: var(--white);
+  }
+
   .hero-copy h1 {
     font-size: clamp(2.3rem, 10vw, 3.4rem);
   }
