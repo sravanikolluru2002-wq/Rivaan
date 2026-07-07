@@ -292,7 +292,8 @@ export default function AdminDashboard() {
 
   const cC = (v, strong) => ({ v, style: strong ? { fontSize: '13px', fontWeight: '700', color: '#16231a' } : { fontSize: '13px', color: '#3d4f40' } });
   const cM = (v) => ({ v, style: { fontSize: '13px', fontWeight: '800', color: '#1a5e2e' } });
-  const cP =  const usersRows = (adminUsers || []).map(u => [
+  const cP = (v, t) => ({ v, style: { ...pill(v, t), display: 'inline-block' } });
+  const usersRows = (adminUsers || []).map(u => [
     cC(u.name || u.full_name || 'N/A', 1),
     cC(u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : 'User'),
     cC(u.email || 'N/A'),
