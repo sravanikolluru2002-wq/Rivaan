@@ -76,8 +76,8 @@ DB_NAME = os.environ.get("DB_NAME", "rivaan")
 JWT_SECRET = require_env("JWT_SECRET")
 JWT_EXPIRES_MIN = int(os.environ.get("JWT_EXPIRE_MINUTES", "10080"))
 REFRESH_TOKEN_EXPIRES_MIN = int(os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 30)))
-ALLOW_LOCAL_AUTH_FALLBACK = get_env_bool("ALLOW_LOCAL_AUTH_FALLBACK", False)
-ENABLE_DEMO_DATA = get_env_bool("ENABLE_DEMO_DATA", False)
+ALLOW_LOCAL_AUTH_FALLBACK = False
+ENABLE_DEMO_DATA = False
 DEMO_AUTH_USER_IDS = (
     "admin-user-001",
     "agent-main-001",
@@ -87,6 +87,19 @@ DEMO_AUTH_USER_IDS = (
     "customer-demo-002",
 )
 ADMIN_DISPLAY_NAME = "Kollu Sravani"
+PRIMARY_ADMIN_PHONE = normalize_phone("9491348973")
+PRIMARY_ADMIN_EMAIL = "admin@rivanreality.com"
+PRIMARY_ADMIN_USER_ID = "admin-user-001"
+ROLE_CUSTOMER = "customer"
+ROLE_AGENT = "agent"
+ROLE_ADMIN = "admin"
+APPROVAL_NOT_REQUIRED = "not_required"
+APPROVAL_PENDING = "pending"
+APPROVAL_APPROVED = "approved"
+APPROVAL_REJECTED = "rejected"
+STATUS_ACTIVE = "active"
+STATUS_SUSPENDED = "suspended"
+STATUS_INACTIVE = "inactive"
 MONGO_SERVER_SELECTION_TIMEOUT_MS = int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "15000"))
 MONGO_CONNECT_TIMEOUT_MS = int(os.environ.get("MONGO_CONNECT_TIMEOUT_MS", "15000"))
 MONGO_SOCKET_TIMEOUT_MS = int(os.environ.get("MONGO_SOCKET_TIMEOUT_MS", "20000"))
@@ -535,7 +548,7 @@ def sanitize_local_store(store: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_production_runtime() -> bool:
-    return not ALLOW_LOCAL_AUTH_FALLBACK
+    return True
 
 
 def rate_limit_key(request: Request, scope: str, identity: Optional[str] = None) -> str:
@@ -1376,36 +1389,37 @@ async def get_admin_user(request: Request, token: Optional[str] = Depends(oauth2
 
 def has_admin_access(user: Dict[str, Any]) -> bool:
     role = str(user.get("role") or "").strip().lower()
-    return bool(user.get("is_admin")) or role in {"admin", "manager", "super_admin"}
+    return role == ROLE_ADMIN
 
 
 def is_primary_admin_login_user(user: Dict[str, Any]) -> bool:
     role = str(user.get("role") or "").strip().lower()
-    return bool(user.get("is_admin")) or role == "admin"
+    phone = str(user.get("phone") or "").strip()
+    return role == ROLE_ADMIN and phone in phone_identity_variants(PRIMARY_ADMIN_PHONE)
 
 
 def admin_access_is_active(user: Dict[str, Any]) -> bool:
-    status_value = str(user.get("status") or "active").strip().lower()
-    approval_status = str(user.get("approval_status") or "approved").strip().lower()
-    return status_value not in {"inactive", "rejected", "suspended"} and approval_status not in {
-        "pending",
-        "rejected",
-        "suspended",
-    }
+    status_value = str(user.get("status") or STATUS_ACTIVE).strip().lower()
+    approval_status = str(user.get("approval_status") or APPROVAL_NOT_REQUIRED).strip().lower()
+    return (
+        is_primary_admin_login_user(user)
+        and status_value == STATUS_ACTIVE
+        and approval_status in {APPROVAL_NOT_REQUIRED, APPROVAL_APPROVED}
+    )
 
 
 def is_agent_role(role: Optional[str]) -> bool:
-    return str(role or "").strip().lower() in {"agent", "sub_agent"}
+    return str(role or "").strip().lower() == ROLE_AGENT
 
 
 def agent_access_is_active(user: Dict[str, Any]) -> bool:
     approval_status = str(user.get("approval_status") or "").strip().lower()
-    status_value = str(user.get("status") or "active").strip().lower()
+    status_value = str(user.get("status") or STATUS_ACTIVE).strip().lower()
     kyc_status = str(user.get("kyc_status") or "").strip().lower()
     return (
         is_agent_role(user.get("role"))
-        and approval_status == "approved"
-        and status_value not in {"inactive", "rejected", "suspended"}
+        and approval_status == APPROVAL_APPROVED
+        and status_value == STATUS_ACTIVE
         and kyc_status not in {"rejected", "suspended"}
     )
 
@@ -1441,26 +1455,24 @@ def apply_session_role(user: Dict[str, Any], session: Optional[Dict[str, Any]]) 
 
 
 def agent_approval_error_message(user: Dict[str, Any]) -> str:
-    approval_status = str(user.get("approval_status") or "pending").strip().lower()
-    if approval_status == "approved":
+    approval_status = str(user.get("approval_status") or APPROVAL_PENDING).strip().lower()
+    if approval_status == APPROVAL_APPROVED:
         return ""
-    if approval_status == "rejected":
-        return "Your agent application was rejected. Please contact your manager for the next steps."
-    if approval_status == "suspended":
-        return "Your agent access is suspended. Please contact your manager."
-    return "Your agent account is pending manager approval"
+    if approval_status == APPROVAL_REJECTED:
+        return "Your agent application was rejected. Please contact admin for the next steps."
+    if approval_status == STATUS_SUSPENDED:
+        return "Your agent access is suspended. Please contact admin."
+    return "Your agent account is pending admin approval"
 
 
 async def get_agent_user(request: Request, token: Optional[str] = Depends(oauth2_scheme)) -> Dict[str, Any]:
     user = await get_current_user(request, token)
     if not is_agent_role(user.get("role")):
         raise HTTPException(status_code=403, detail="Agent access required")
-    if str(user.get("approval_status") or "").strip().lower() != "approved":
+    if str(user.get("approval_status") or "").strip().lower() != APPROVAL_APPROVED:
         raise HTTPException(status_code=403, detail=agent_approval_error_message(user))
     if not agent_access_is_active(user):
-        if str(user.get("kyc_status") or "").strip().lower() != "verified":
-            raise HTTPException(status_code=403, detail="Complete KYC verification before accessing the agent workspace")
-        raise HTTPException(status_code=403, detail="Your agent access is suspended. Please contact your manager.")
+        raise HTTPException(status_code=403, detail="Your agent access is not active.")
     return user
 
 
@@ -2653,6 +2665,58 @@ async def publish_live_update(
     )
 
 
+async def create_audit_log(
+    *,
+    actor_user_id: Optional[str],
+    action: str,
+    entity_type: str,
+    entity_id: Optional[str],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not await is_database_available():
+        return
+    payload = {
+        "id": str(uuid.uuid4()),
+        "actor_user_id": actor_user_id,
+        "action": action,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "metadata": metadata or {},
+        "created_at": now_utc().isoformat(),
+    }
+    await db.audit_logs.insert_one(payload)
+
+
+async def build_dashboard_metrics_snapshot() -> Dict[str, Any]:
+    if not await is_database_available():
+        return {}
+    return {
+        "users": await db.users.count_documents({}),
+        "customers": await db.users.count_documents({"role": ROLE_CUSTOMER}),
+        "agents": await db.users.count_documents({"role": ROLE_AGENT}),
+        "pending_agents": await db.users.count_documents({"role": ROLE_AGENT, "approval_status": APPROVAL_PENDING}),
+        "properties": await db.properties.count_documents({}),
+        "plots_available": await db.plots.count_documents({"status": "available"}),
+        "plots_reserved": await db.plots.count_documents({"status": "reserved"}),
+        "plots_booked": await db.plots.count_documents({"status": "booked"}),
+        "bookings": await db.bookings.count_documents({}),
+        "visits": await db.visits.count_documents({}),
+        "service_requests": await db.service_requests.count_documents({}),
+    }
+
+
+async def publish_dashboard_metrics_update(*, user_ids: Optional[List[str]] = None, roles: Optional[List[str]] = None) -> None:
+    snapshot = await build_dashboard_metrics_snapshot()
+    if not snapshot:
+        return
+    await publish_live_update(
+        "dashboard.metrics_updated",
+        {"metrics": snapshot},
+        user_ids=user_ids,
+        roles=roles or ["admin"],
+    )
+
+
 async def create_notification(user_id: str, title: str, body: str, type_: str = "welcome") -> None:
     normalized_title = replace_live_property_labels(title)
     normalized_body = replace_live_property_labels(body)
@@ -2737,7 +2801,7 @@ async def upsert_user_identity(
     auth_method: str,
 ) -> Dict[str, Any]:
     use_db = await is_database_available()
-    if not use_db and not ALLOW_LOCAL_AUTH_FALLBACK:
+    if not use_db:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
     phone_variants = phone_identity_variants(phone)
     query: Dict[str, Any] = {}
@@ -2756,15 +2820,14 @@ async def upsert_user_identity(
             existing = await db.users.find_one({"email": normalize_email(email)})
         if not existing and phone_variants:
             existing = await db.users.find_one({"phone": {"$in": phone_variants}})
-    else:
-        existing = local_find_user(
-            google_sub=google_sub,
-            email=normalize_email(email) if email else None,
-            phone=phone,
-        )
-
     timestamp = now_utc().isoformat()
     if existing:
+        existing_role = str(existing.get("role") or ROLE_CUSTOMER).strip().lower()
+        if phone and existing_role in {ROLE_AGENT, ROLE_ADMIN} and auth_method == "phone":
+            raise HTTPException(
+                status_code=403,
+                detail=f"This phone number is registered as {existing_role} and cannot use customer login.",
+            )
         updates: Dict[str, Any] = {
             "updated_at": timestamp,
             "auth_methods": auth_methods_union(existing.get("auth_methods"), auth_method),
@@ -2783,26 +2846,24 @@ async def upsert_user_identity(
         if password_hash:
             updates["password_hash"] = password_hash
         if not existing.get("role"):
-            updates["role"] = "customer"
-        if use_db:
-            await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
-            refreshed = await db.users.find_one({"_id": existing["_id"]}, {"_id": 0})
-            return clean_user(refreshed)
-        existing.update(updates)
-        local_save_user(existing)
-        return clean_user(existing)
+            updates["role"] = ROLE_CUSTOMER
+        await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
+        refreshed = await db.users.find_one({"_id": existing["_id"]}, {"_id": 0})
+        return clean_user(refreshed)
 
     user_id = str(uuid.uuid4())
     user = {
         "id": user_id,
         "name": name or (email.split("@")[0] if email else f"User-{(phone or user_id)[-4:]}"),
-        "role": "customer",
+        "role": ROLE_CUSTOMER,
         "auth_methods": [auth_method],
         "address": "",
         "kyc_status": "pending",
         "is_admin": False,
         "email_verified": bool(email),
         "phone_verified": bool(phone),
+        "approval_status": APPROVAL_NOT_REQUIRED,
+        "status": STATUS_ACTIVE,
         "created_at": timestamp,
         "updated_at": timestamp,
         "last_login_at": timestamp,
@@ -2815,10 +2876,7 @@ async def upsert_user_identity(
         user["google_sub"] = google_sub
     if password_hash:
         user["password_hash"] = password_hash
-    if use_db:
-        await db.users.insert_one(user)
-    else:
-        local_save_user(user)
+    await db.users.insert_one(user)
     await create_notification(
         user_id,
         "Welcome to Rivan Reality",
@@ -3111,16 +3169,155 @@ async def ensure_property_media_defaults() -> None:
     )
 
 
+def legacy_auth_disabled(endpoint_name: str) -> None:
+    raise HTTPException(
+        status_code=410,
+        detail=f"{endpoint_name} is disabled. Use Firebase phone OTP login instead.",
+    )
+
+
+def build_sirpuram_property_seed() -> Dict[str, Any]:
+    timestamp = now_utc().isoformat()
+    return {
+        "id": "prop-1",
+        "name": "Sirpuram Gardens",
+        "category": "Open Plots",
+        "location": "Achutapuram, Visakhapatnam",
+        "starting_price": 1600000,
+        "size": "200-360 sq yards",
+        "image": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+        "images": [
+            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_2_mjznar.jpg",
+        ],
+        "description": "Sirpuram Gardens is the live source-of-truth property for the current phase, with plot inventory, documents, approvals, and backend-ready references.",
+        "survey_number": "SY-No 234/3",
+        "facing": "East / West / North / South",
+        "road_width": "40-60 ft internal roads",
+        "availability": "Available",
+        "featured": True,
+        "amenities": ["Street Lighting", "Water Supply", "Underground Drainage", "Rain-water Harvesting", "Landscaping"],
+        "approvals": ["VUDA Approved Layout", "Clear Title Layout Planning"],
+        "nearby": ["Pudimadaka Beach - 10 min", "Kondakarla Tourist Spot - 15 min", "Vizag Airport - 60 min"],
+        "highlights": "Premium plots · Gated community · High growth corridor",
+        "created_at": timestamp,
+        "updated_at": timestamp,
+    }
+
+
+def build_sirpuram_plot_seed() -> List[Dict[str, Any]]:
+    timestamp = now_utc().isoformat()
+    facings = ["East", "West", "North", "South", "North-East", "South-East"]
+    plot_statuses = ["available"] * 10 + ["reserved"] * 4 + ["booked"] * 4 + ["sold"] * 6
+    plots: List[Dict[str, Any]] = []
+    plot_num = 1
+    for row in range(6):
+        for col in range(4):
+            idx = row * 4 + col
+            if idx >= 24:
+                break
+            size_sqy = [200, 240, 300, 360][col]
+            plots.append({
+                "id": f"plot-1-{plot_num}",
+                "property_id": "prop-1",
+                "unit_type": "plot",
+                "plot_number": f"P-{plot_num:03d}",
+                "survey_number": "SY-No 234/3",
+                "size": f"{size_sqy} sq yards",
+                "size_sqy": size_sqy,
+                "facing": facings[idx % len(facings)],
+                "price": size_sqy * 9250,
+                "status": plot_statuses[idx % len(plot_statuses)],
+                "row": row,
+                "col": col,
+                "owner_id": None,
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            })
+            plot_num += 1
+    return plots
+
+
+async def ensure_primary_admin_seed() -> None:
+    timestamp = now_utc().isoformat()
+    await db.users.update_many(
+        {"phone": {"$in": ["9000000000", "94991348973", "9491348973"]}},
+        {"$set": {"phone": PRIMARY_ADMIN_PHONE, "updated_at": timestamp}},
+    )
+    await db.users.update_one(
+        {"phone": PRIMARY_ADMIN_PHONE},
+        {
+            "$set": {
+                "name": ADMIN_DISPLAY_NAME,
+                "phone": PRIMARY_ADMIN_PHONE,
+                "email": PRIMARY_ADMIN_EMAIL,
+                "role": ROLE_ADMIN,
+                "approval_status": APPROVAL_NOT_REQUIRED,
+                "status": STATUS_ACTIVE,
+                "is_admin": True,
+                "is_primary_admin": True,
+                "phone_verified": True,
+                "email_verified": True,
+                "auth_methods": ["phone"],
+                "kyc_status": "verified",
+                "updated_at": timestamp,
+            },
+            "$setOnInsert": {
+                "id": PRIMARY_ADMIN_USER_ID,
+                "address": "Rivan HQ",
+                "created_at": timestamp,
+                "last_login_at": None,
+            },
+        },
+        upsert=True,
+    )
+
+
+async def ensure_sirpuram_dataset() -> None:
+    property_seed = build_sirpuram_property_seed()
+    await db.properties.update_one(
+        {"id": property_seed["id"]},
+        {"$set": property_seed, "$setOnInsert": {"created_at": property_seed["created_at"]}},
+        upsert=True,
+    )
+
+    if await db.plots.count_documents({"property_id": "prop-1"}) == 0:
+        await db.plots.insert_many([plot.copy() for plot in build_sirpuram_plot_seed()])
+
+    default_documents = [
+        {
+            "id": "sirpuram-doc-layout",
+            "property_id": "prop-1",
+            "name": "Sirpuram Gardens Layout Plan",
+            "type": "layout",
+            "url": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+        },
+        {
+            "id": "sirpuram-doc-approval",
+            "property_id": "prop-1",
+            "name": "Sirpuram Gardens Approval Summary",
+            "type": "approval",
+            "url": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_2_mjznar.jpg",
+        },
+    ]
+    for document in default_documents:
+        await db.documents.update_one(
+            {"id": document["id"]},
+            {
+                "$set": {
+                    **document,
+                    "updated_at": now_utc().isoformat(),
+                },
+                "$setOnInsert": {"created_at": now_utc().isoformat()},
+            },
+            upsert=True,
+        )
+
+
 @app.on_event("startup")
 async def ensure_indexes() -> None:
-    ensure_local_demo_users()
-
     if not await is_database_available(force_refresh=True, log_failure=True):
-        if ALLOW_LOCAL_AUTH_FALLBACK:
-            logger.warning("MongoDB unavailable at startup; skipping index sync and using local auth fallback.")
-            await crm_backfill_existing_records()
-        else:
-            logger.warning("MongoDB unavailable at startup; skipping index sync until the database is reachable.")
+        logger.warning("MongoDB unavailable at startup; skipping index sync until the database is reachable.")
         return
 
     try:
@@ -3128,17 +3325,9 @@ async def ensure_indexes() -> None:
         await db.users.update_many({"phone": ""}, {"$unset": {"phone": ""}})
         await db.users.update_many({"google_sub": ""}, {"$unset": {"google_sub": ""}})
         await db.users.update_many({"password_hash": ""}, {"$unset": {"password_hash": ""}})
-        await db.users.update_many({"phone": "9999900001"}, {"$set": {"phone": "+919999900001"}})
-        await db.users.update_many({"phone": "9000000000"}, {"$set": {"phone": "+919491348973"}})
-        await db.users.update_many({"phone": "94991348973"}, {"$set": {"phone": "+919491348973"}})
-        await db.users.update_many({"phone": "9491348973"}, {"$set": {"phone": "+919491348973"}})
-        await db.users.update_many({"phone": "9900001111"}, {"$set": {"phone": "+919900001111"}})
-        await db.users.update_many({"phone": "6303210224"}, {"$set": {"phone": "+916303210224"}})
-        await db.users.update_many({"phone": "9911112222"}, {"$set": {"phone": "+919911112222"}})
-        if ENABLE_DEMO_DATA:
-            await sync_demo_auth_users_to_db()
-        else:
-            await purge_demo_auth_users_from_db()
+        await db.users.update_many({"phone": {"$type": "string"}}, [{"$set": {"phone": {"$trim": {"input": "$phone"}}}}])
+        await purge_demo_auth_users_from_db()
+        await ensure_primary_admin_seed()
 
         for index_name in ("email_1", "phone_1", "google_sub_1"):
             try:
@@ -3150,9 +3339,25 @@ async def ensure_indexes() -> None:
         await db.users.create_index("email", unique=True, sparse=True)
         await db.users.create_index("phone", unique=True, sparse=True)
         await db.users.create_index("google_sub", unique=True, sparse=True)
+        await db.users.create_index("firebase_uid", unique=True, sparse=True)
+        await db.users.create_index([("role", 1), ("approval_status", 1), ("status", 1)])
         await db.user_sessions.create_index("id", unique=True)
         await db.user_sessions.create_index([("user_id", 1), ("revoked_at", 1)])
+        await db.user_sessions.create_index([("user_id", 1), ("session_role", 1), ("refresh_expires_at", 1)])
         await db.user_sessions.create_index("refresh_token_id", sparse=True)
+        await db.properties.create_index("id", unique=True)
+        await db.properties.create_index([("featured", 1), ("name", 1)])
+        await db.plots.create_index("id", unique=True)
+        await db.plots.create_index([("property_id", 1), ("status", 1)])
+        await db.bookings.create_index("id", unique=True, sparse=True)
+        await db.bookings.create_index([("customer_id", 1), ("plot_id", 1)])
+        await db.visits.create_index("id", unique=True, sparse=True)
+        await db.visits.create_index([("customer_id", 1), ("assigned_agent_id", 1), ("visit_date", 1)])
+        await db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])
+        await db.documents.create_index("id", unique=True, sparse=True)
+        await db.documents.create_index([("user_id", 1), ("property_id", 1)])
+        await db.service_requests.create_index("id", unique=True, sparse=True)
+        await db.service_requests.create_index([("user_id", 1), ("status", 1), ("created_at", -1)])
         await db.leads.create_index("id", unique=True)
         await db.leads.create_index("normalized_email", sparse=True)
         await db.leads.create_index("normalized_phone", sparse=True)
@@ -3163,70 +3368,24 @@ async def ensure_indexes() -> None:
         await db.activities.create_index([("lead_id", 1), ("created_at", -1)])
         await db.customer_agent_links.create_index("id", unique=True)
         await db.customer_agent_links.create_index([("customer_id", 1), ("last_activity_at", -1)])
+        await db.audit_logs.create_index("id", unique=True, sparse=True)
+        await db.audit_logs.create_index([("entity_type", 1), ("entity_id", 1), ("created_at", -1)])
+        await ensure_sirpuram_dataset()
         await ensure_property_media_defaults()
         await crm_backfill_existing_records()
     except Exception:
-        if ALLOW_LOCAL_AUTH_FALLBACK:
-            logger.exception("MongoDB unavailable at startup; falling back to local auth store.")
-        else:
-            logger.exception("MongoDB unavailable at startup.")
+        logger.exception("MongoDB unavailable at startup.")
 
 
 # ---------- Auth Routes ----------
 @api_router.post("/auth/register", response_model=TokenResp)
 async def register(req: RegisterReq, request: Request, response: Response):
-    email = normalize_email(req.email)
-    enforce_rate_limit(rate_limit_key(request, "auth_register", email), limit=5, window_seconds=300)
-    validate_password_strength(req.password)
-    if await is_database_available():
-        existing = await db.users.find_one({"email": email})
-    elif ALLOW_LOCAL_AUTH_FALLBACK:
-        existing = local_find_user(email=email)
-    else:
-        raise HTTPException(status_code=503, detail="Authentication database is unavailable")
-    if existing and existing.get("password_hash"):
-        raise HTTPException(status_code=409, detail="An account with this email already exists")
-
-    user = await upsert_user_identity(
-        name=req.name.strip(),
-        email=email,
-        password_hash=hash_password(req.password),
-        auth_method="email",
-    )
-    return await issue_token_response(user, response, request, session_role="customer")
+    legacy_auth_disabled("/api/auth/register")
 
 
 @api_router.post("/auth/login", response_model=TokenResp)
 async def login(req: LoginReq, request: Request, response: Response):
-    email = normalize_email(req.email)
-    enforce_rate_limit(rate_limit_key(request, "auth_login", email), limit=8, window_seconds=300)
-    if await is_database_available():
-        user = await db.users.find_one({"email": email})
-    elif ALLOW_LOCAL_AUTH_FALLBACK:
-        ensure_local_demo_users()
-        user = local_find_user(email=email)
-    else:
-        raise HTTPException(status_code=503, detail="Authentication database is unavailable")
-    if not user or not user.get("password_hash"):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not verify_password(req.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    if is_agent_role(user.get("role")) and user.get("approval_status") != "approved":
-        raise HTTPException(status_code=403, detail=agent_approval_error_message(user))
-
-    if await is_database_available():
-        await db.users.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"updated_at": now_utc().isoformat(), "last_login_at": now_utc().isoformat()}},
-        )
-        refreshed = await db.users.find_one({"_id": user["_id"]}, {"_id": 0})
-        return await issue_token_response(refreshed, response, request, session_role="customer")
-    if not ALLOW_LOCAL_AUTH_FALLBACK:
-        raise HTTPException(status_code=503, detail="Authentication database is unavailable")
-    user["updated_at"] = now_utc().isoformat()
-    user["last_login_at"] = now_utc().isoformat()
-    local_save_user(user)
-    return await issue_token_response(user, response, request, session_role="customer")
+    legacy_auth_disabled("/api/auth/login")
 
 
 @api_router.post("/auth/admin/status")
@@ -3258,28 +3417,12 @@ async def admin_access_status(req: AgentAccessStatusReq, request: Request):
 
 @api_router.post("/auth/send-otp")
 async def send_otp(req: SendOtpReq, request: Request):
-    phone = normalize_phone(req.phone)
-    enforce_rate_limit(rate_limit_key(request, "auth_send_otp", phone), limit=5, window_seconds=300)
-    await supabase_send_phone_otp(phone)
-    return {
-        "success": True,
-        "phone": phone,
-        "message": "OTP sent successfully",
-    }
+    legacy_auth_disabled("/api/auth/send-otp")
 
 
 @api_router.post("/auth/verify-otp", response_model=TokenResp)
 async def verify_otp(req: VerifyOtpReq, request: Request, response: Response):
-    phone = normalize_phone(req.phone)
-    enforce_rate_limit(rate_limit_key(request, "auth_verify_otp", phone), limit=10, window_seconds=300)
-    otp_value = (req.otp or "").strip()
-    await supabase_verify_phone_otp(phone, otp_value)
-    user = await upsert_user_identity(
-        name=req.name.strip() if req.name else phone[-10:],
-        phone=phone,
-        auth_method="phone",
-    )
-    return await issue_token_response(user, response, request, session_role="customer")
+    legacy_auth_disabled("/api/auth/verify-otp")
 
 
 @api_router.post("/auth/agent/apply")
@@ -3299,9 +3442,9 @@ async def apply_agent_access(req: AgentApplicationReq, request: Request):
         "address": (req.address or "").strip(),
         "agent_brand_name": (req.agent_brand_name or "").strip(),
         "application_notes": (req.notes or "").strip(),
-        "approval_status": "pending",
-        "status": "pending",
-        "role": "agent",
+        "approval_status": APPROVAL_PENDING,
+        "status": APPROVAL_PENDING,
+        "role": ROLE_AGENT,
         "kyc_status": "pending",
         "agent_application_submitted_at": now_iso,
         "updated_at": now_iso,
@@ -3309,34 +3452,13 @@ async def apply_agent_access(req: AgentApplicationReq, request: Request):
 
     if await is_database_available():
         existing = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
-        if not existing and email:
-            existing = await db.users.find_one({"email": email})
-    elif ALLOW_LOCAL_AUTH_FALLBACK:
-        existing = local_find_user(phone=phone) or (local_find_user(email=email) if email else None)
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
     if existing:
         if not is_agent_role(existing.get("role")):
-            application_updates["auth_methods"] = auth_methods_union(existing.get("auth_methods"), "agent_application")
-            application_updates["review_notes"] = ""
-            application_updates["reviewed_at"] = None
-            application_updates["reviewed_by_manager"] = None
-            application_updates["approved_by_manager"] = None
-            if await is_database_available():
-                await db.users.update_one({"_id": existing["_id"]}, {"$set": application_updates})
-                updated = await db.users.find_one({"_id": existing["_id"]}, {"_id": 0})
-            else:
-                existing.update(application_updates)
-                local_save_user(existing)
-                updated = local_find_user(user_id=existing["id"])
-            return {
-                "success": True,
-                "already_approved": False,
-                "message": "Agent application submitted. Manager approval is required before login.",
-                "agent": clean_user(updated or existing),
-            }
-        if existing.get("approval_status") == "approved":
+            raise HTTPException(status_code=409, detail="This phone number is already assigned to another role.")
+        if str(existing.get("approval_status") or "").strip().lower() == APPROVAL_APPROVED:
             return {
                 "success": True,
                 "already_approved": True,
@@ -3348,17 +3470,12 @@ async def apply_agent_access(req: AgentApplicationReq, request: Request):
         application_updates["reviewed_at"] = None
         application_updates["reviewed_by_manager"] = None
         application_updates["approved_by_manager"] = None
-        if await is_database_available():
-            await db.users.update_one({"_id": existing["_id"]}, {"$set": application_updates})
-            updated = await db.users.find_one({"_id": existing["_id"]}, {"_id": 0})
-        else:
-            existing.update(application_updates)
-            local_save_user(existing)
-            updated = local_find_user(user_id=existing["id"])
+        await db.users.update_one({"_id": existing["_id"]}, {"$set": application_updates})
+        updated = await db.users.find_one({"_id": existing["_id"]}, {"_id": 0})
         return {
             "success": True,
             "already_approved": False,
-            "message": "Agent application submitted. Manager approval is required before login.",
+            "message": "Agent application submitted. Admin approval is required before login.",
             "agent": clean_user(updated or existing),
         }
 
@@ -3377,16 +3494,19 @@ async def apply_agent_access(req: AgentApplicationReq, request: Request):
         "reviewed_by_manager": None,
         "approved_by_manager": None,
     }
-
-    if await is_database_available():
-        await db.users.insert_one(agent.copy())
-    else:
-        local_save_user(agent)
+    await db.users.insert_one(agent.copy())
+    await create_audit_log(
+        actor_user_id=agent["id"],
+        action="agent.applied",
+        entity_type="user",
+        entity_id=agent["id"],
+        metadata={"phone": phone},
+    )
 
     return {
         "success": True,
         "already_approved": False,
-        "message": "Agent application submitted. Manager approval is required before login.",
+        "message": "Agent application submitted. Admin approval is required before login.",
         "agent": clean_user(agent),
     }
 
@@ -3398,8 +3518,6 @@ async def agent_access_status(req: AgentAccessStatusReq, request: Request):
 
     if await is_database_available():
         user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}}, {"_id": 0})
-    elif ALLOW_LOCAL_AUTH_FALLBACK:
-        user = local_find_user(phone=phone)
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
@@ -3415,7 +3533,7 @@ async def agent_access_status(req: AgentAccessStatusReq, request: Request):
         }
 
     role = user.get("role")
-    approval_status = str(user.get("approval_status") or "pending").strip().lower() if is_agent_role(role) else None
+    approval_status = str(user.get("approval_status") or APPROVAL_PENDING).strip().lower() if is_agent_role(role) else None
     if not is_agent_role(role):
         return {
             "phone": phone,
@@ -3432,8 +3550,8 @@ async def agent_access_status(req: AgentAccessStatusReq, request: Request):
         "exists": True,
         "role": role,
         "approval_status": approval_status,
-        "can_login": approval_status == "approved" and str(user.get("status") or "active").lower() != "suspended",
-        "can_apply": approval_status != "approved",
+        "can_login": approval_status == APPROVAL_APPROVED and str(user.get("status") or STATUS_ACTIVE).lower() == STATUS_ACTIVE,
+        "can_apply": approval_status != APPROVAL_APPROVED,
         "message": (
             "This phone number is approved for agent login."
             if approval_status == "approved"
@@ -3445,71 +3563,7 @@ async def agent_access_status(req: AgentAccessStatusReq, request: Request):
 
 @api_router.post("/auth/google", response_model=TokenResp)
 async def google_auth(req: GoogleAuthReq, request: Request, response: Response):
-    enforce_rate_limit(rate_limit_key(request, "auth_google"), limit=10, window_seconds=300)
-    google_client_ids = get_google_client_ids()
-    firebase_project_id = get_firebase_project_id()
-
-    payload: Dict[str, Any] | None = None
-    google_error: HTTPException | None = None
-    firebase_error: HTTPException | None = None
-    should_try_firebase_first = looks_like_firebase_google_token(req.id_token, firebase_project_id)
-
-    if should_try_firebase_first and firebase_project_id:
-        try:
-            firebase_payload = verify_firebase_id_token(req.id_token, firebase_project_id)
-            if firebase_payload.get("firebase", {}).get("sign_in_provider") == "google.com":
-                payload = {
-                    "sub": firebase_payload.get("user_id") or firebase_payload.get("sub"),
-                    "email": firebase_payload.get("email"),
-                    "name": firebase_payload.get("name"),
-                    "given_name": firebase_payload.get("name"),
-                }
-            else:
-                raise HTTPException(status_code=401, detail="Firebase token is not from Google sign-in")
-        except HTTPException as exc:
-            firebase_error = exc
-
-    if payload is None and google_client_ids:
-        try:
-            payload = verify_google_id_token(
-                req.id_token,
-                google_client_ids,
-            )
-        except HTTPException as exc:
-            google_error = exc
-
-    if payload is None and firebase_project_id and not should_try_firebase_first:
-        try:
-            firebase_payload = verify_firebase_id_token(req.id_token, firebase_project_id)
-            if firebase_payload.get("firebase", {}).get("sign_in_provider") == "google.com":
-                payload = {
-                    "sub": firebase_payload.get("user_id") or firebase_payload.get("sub"),
-                    "email": firebase_payload.get("email"),
-                    "name": firebase_payload.get("name"),
-                    "given_name": firebase_payload.get("name"),
-                }
-            else:
-                raise HTTPException(status_code=401, detail="Firebase token is not from Google sign-in")
-        except HTTPException as exc:
-            firebase_error = exc
-
-    if payload is None:
-        if firebase_error and should_try_firebase_first:
-            raise firebase_error
-        if google_error:
-            raise google_error
-        if firebase_error:
-            raise firebase_error
-        logger.error("Google auth failed: Google OAuth client IDs and Firebase project ID are not configured on the backend")
-        raise HTTPException(status_code=503, detail="Google sign-in is not configured on the backend")
-
-    user = await upsert_user_identity(
-        name=payload.get("name") or payload.get("given_name") or payload["email"].split("@")[0],
-        email=payload["email"],
-        google_sub=payload["sub"],
-        auth_method="google",
-    )
-    return await issue_token_response(user, response, request, session_role="customer")
+    legacy_auth_disabled("/api/auth/google")
 
 
 @api_router.post("/auth/firebase", response_model=TokenResp)
@@ -3536,27 +3590,39 @@ async def firebase_auth(req: FirebaseAuthReq, request: Request, response: Respon
         logger.warning("Firebase auth failed: request phone does not match token phone")
         raise HTTPException(status_code=401, detail="Firebase phone token does not match requested phone")
 
+    existing = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}}, {"_id": 0})
+    if existing and str(existing.get("role") or "").strip().lower() in {ROLE_AGENT, ROLE_ADMIN}:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This phone number is registered as {str(existing.get('role')).lower()} and cannot use customer login.",
+        )
+
     user = await upsert_user_identity(
         name=req.name.strip() if req.name else payload.get("name") or phone[-10:],
         phone=phone,
         auth_method="phone",
     )
-    if await is_database_available():
-        await db.users.update_one(
-            {"id": user["id"]},
-            {"$set": {"firebase_uid": payload.get("user_id") or payload.get("sub"), "updated_at": now_utc().isoformat(), "last_login_at": now_utc().isoformat()}},
-        )
-        refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-        logger.info("Firebase phone auth succeeded for user_id=%s", refreshed.get("id") if refreshed else user.get("id"))
-        return await issue_token_response(refreshed, response, request, session_role="customer")
-    if not ALLOW_LOCAL_AUTH_FALLBACK:
-        raise HTTPException(status_code=503, detail="Authentication database is unavailable")
-    user["firebase_uid"] = payload.get("user_id") or payload.get("sub")
-    user["updated_at"] = now_utc().isoformat()
-    user["last_login_at"] = now_utc().isoformat()
-    local_save_user(user)
-    logger.info("Firebase phone auth succeeded for user_id=%s", user.get("id"))
-    return await issue_token_response(user, response, request, session_role="customer")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$set": {
+                "firebase_uid": payload.get("user_id") or payload.get("sub"),
+                "updated_at": now_utc().isoformat(),
+                "last_login_at": now_utc().isoformat(),
+                "role": ROLE_CUSTOMER,
+                "status": STATUS_ACTIVE,
+                "approval_status": APPROVAL_NOT_REQUIRED,
+            }
+        },
+    )
+    refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    logger.info("Firebase phone auth succeeded for user_id=%s", refreshed.get("id") if refreshed else user.get("id"))
+    return await issue_token_response(refreshed, response, request, session_role="customer")
+
+
+@api_router.post("/auth/customer/firebase", response_model=TokenResp)
+async def customer_firebase_auth(req: FirebaseAuthReq, request: Request, response: Response):
+    return await firebase_auth(req, request, response)
 
 
 @api_router.post("/auth/agent/firebase", response_model=TokenResp)
@@ -3583,8 +3649,6 @@ async def agent_firebase_auth(req: AgentFirebaseAuthReq, request: Request, respo
 
     if await is_database_available():
         user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
-    elif ALLOW_LOCAL_AUTH_FALLBACK:
-        user = local_find_user(phone=phone)
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
@@ -3592,37 +3656,31 @@ async def agent_firebase_auth(req: AgentFirebaseAuthReq, request: Request, respo
         raise HTTPException(status_code=404, detail="No approved agent account exists for this phone number")
     if not is_agent_role(user.get("role")):
         raise HTTPException(status_code=403, detail="This phone number does not belong to an agent account")
-    if str(user.get("approval_status") or "").strip().lower() != "approved":
+    if str(user.get("approval_status") or "").strip().lower() != APPROVAL_APPROVED:
         raise HTTPException(status_code=403, detail=agent_approval_error_message(user))
-    status_value = str(user.get("status") or "active").strip().lower()
+    status_value = str(user.get("status") or STATUS_ACTIVE).strip().lower()
     approval_value = str(user.get("approval_status") or "").strip().lower()
     kyc_value = str(user.get("kyc_status") or "").strip().lower()
-    if status_value in {"rejected", "suspended"}:
-        raise HTTPException(status_code=403, detail="Your agent access is suspended. Please contact your manager.")
+    if status_value != STATUS_ACTIVE:
+        raise HTTPException(status_code=403, detail="Your agent access is not active.")
 
     updates = {
         "firebase_uid": payload.get("user_id") or payload.get("sub"),
         "phone": phone,
         "phone_verified": True,
-        "role": str(user.get("role") or "").strip().lower() or "agent",
-        "approval_status": approval_value or "approved",
-        "status": "active" if approval_value == "approved" and status_value not in {"rejected", "suspended"} else status_value or "active",
-        "kyc_status": "verified" if approval_value == "approved" and kyc_value != "verified" else (kyc_value or "verified"),
+        "role": ROLE_AGENT,
+        "approval_status": approval_value or APPROVAL_APPROVED,
+        "status": STATUS_ACTIVE,
+        "kyc_status": "verified" if approval_value == APPROVAL_APPROVED and kyc_value != "verified" else (kyc_value or "verified"),
         "updated_at": now_utc().isoformat(),
         "last_login_at": now_utc().isoformat(),
         "auth_methods": auth_methods_union(user.get("auth_methods"), "phone"),
     }
 
-    if await is_database_available():
-        await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
-        refreshed = await db.users.find_one({"_id": user["_id"]}, {"_id": 0})
-        logger.info("Agent Firebase phone auth succeeded for user_id=%s", refreshed.get("id") if refreshed else user.get("id"))
-        return await issue_token_response(refreshed, response, request, session_role="agent")
-
-    user.update(updates)
-    local_save_user(user)
-    logger.info("Agent Firebase phone auth succeeded for user_id=%s", user.get("id"))
-    return await issue_token_response(user, response, request, session_role="agent")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
+    refreshed = await db.users.find_one({"_id": user["_id"]}, {"_id": 0})
+    logger.info("Agent Firebase phone auth succeeded for user_id=%s", refreshed.get("id") if refreshed else user.get("id"))
+    return await issue_token_response(refreshed, response, request, session_role="agent")
 
 
 @api_router.post("/auth/admin/firebase", response_model=TokenResp)
@@ -3647,10 +3705,10 @@ async def admin_firebase_auth(req: AdminFirebaseAuthReq, request: Request, respo
     if token_phone != phone:
         logger.warning("Admin Firebase auth rejected a phone/token mismatch")
         raise HTTPException(status_code=401, detail="Firebase phone token does not match requested phone")
+    if phone not in phone_identity_variants(PRIMARY_ADMIN_PHONE):
+        raise HTTPException(status_code=403, detail="This mobile number is not authorized for admin access")
     if await is_database_available():
         user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
-    elif ALLOW_LOCAL_AUTH_FALLBACK:
-        user = local_find_user(phone=phone)
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
@@ -3668,16 +3726,17 @@ async def admin_firebase_auth(req: AdminFirebaseAuthReq, request: Request, respo
         "last_login_at": timestamp,
         "auth_methods": auth_methods_union(user.get("auth_methods"), "phone"),
     }
-    if await is_database_available():
-        await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
-        refreshed = await db.users.find_one({"_id": user["_id"]}, {"_id": 0})
-        logger.info("Admin Firebase phone auth succeeded for user_id=%s", refreshed.get("id") if refreshed else user.get("id"))
-        return await issue_token_response(refreshed or {**user, **updates}, response, request, session_role="admin")
-
-    user.update(updates)
-    local_save_user(user)
-    logger.info("Admin Firebase phone auth succeeded for user_id=%s", user.get("id"))
-    return await issue_token_response(user, response, request, session_role="admin")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
+    refreshed = await db.users.find_one({"_id": user["_id"]}, {"_id": 0})
+    await create_audit_log(
+        actor_user_id=refreshed.get("id") if refreshed else user.get("id"),
+        action="admin.login",
+        entity_type="session",
+        entity_id=refreshed.get("id") if refreshed else user.get("id"),
+        metadata={"phone": phone},
+    )
+    logger.info("Admin Firebase phone auth succeeded for user_id=%s", refreshed.get("id") if refreshed else user.get("id"))
+    return await issue_token_response(refreshed or {**user, **updates}, response, request, session_role="admin")
 
 
 @api_router.post("/auth/refresh", response_model=TokenResp)
@@ -4241,10 +4300,33 @@ async def list_properties(
 @api_router.get("/health")
 async def health_check():
     if await is_database_available():
-        return {"ok": True, "database": "connected", "mode": "mongo"}
+        return {
+            "ok": True,
+            "database": "connected",
+            "mode": "mongo",
+            "firebase_project_id_configured": bool(get_firebase_project_id()),
+        }
     if ALLOW_LOCAL_AUTH_FALLBACK:
         return {"ok": True, "database": "offline", "mode": "local-auth-fallback"}
     raise HTTPException(status_code=503, detail="Database unavailable")
+
+
+@api_router.get("/ready")
+async def readiness_check():
+    missing = []
+    if not MONGO_URL:
+        missing.append("MONGO_URL")
+    if not JWT_SECRET:
+        missing.append("JWT_SECRET")
+    if not get_firebase_project_id():
+        missing.append("FIREBASE_PROJECT_ID")
+    if not CORS_ORIGINS:
+        missing.append("CORS_ORIGINS")
+    if missing:
+        raise HTTPException(status_code=503, detail={"ready": False, "missing": missing})
+    if not await is_database_available():
+        raise HTTPException(status_code=503, detail={"ready": False, "missing": ["mongodb_connection"]})
+    return {"ready": True}
 
 
 @api_router.get("/properties/featured")
@@ -4363,6 +4445,7 @@ async def create_booking(req: BookingReq, user: Dict[str, Any] = Depends(get_cur
             user_ids=[user["id"], *( [assigned_agent_id] if assigned_agent_id else [])],
             roles=["admin"],
         )
+        await publish_dashboard_metrics_update(user_ids=[user["id"], *( [assigned_agent_id] if assigned_agent_id else [])], roles=["admin"])
         return {"success": True, "booking": booking, "message": "Booking request submitted. Your assigned agent will review it shortly."}
 
     plot = await db.plots.find_one({"id": req.plot_id}, {"_id": 0})
@@ -4424,6 +4507,7 @@ async def create_booking(req: BookingReq, user: Dict[str, Any] = Depends(get_cur
         user_ids=[user["id"], *( [assigned_agent_id] if assigned_agent_id else [])],
         roles=["admin"],
     )
+    await publish_dashboard_metrics_update(user_ids=[user["id"], *( [assigned_agent_id] if assigned_agent_id else [])], roles=["admin"])
     return {"success": True, "booking": booking, "message": "Booking request submitted. Your assigned agent will review it shortly."}
 
 
@@ -4507,48 +4591,22 @@ async def can_request_services(user: Dict[str, Any] = Depends(get_current_user))
 # ---------- Payments ----------
 @api_router.get("/payments/summary")
 async def payments_summary(user: Dict[str, Any] = Depends(get_current_user)):
-    installments = await db.installments.find({"user_id": user["id"]}, {"_id": 0}).to_list(200)
-    installments = filter_live_customer_items(installments)
-    total = sum(i["amount"] for i in installments)
-    paid = sum(i["amount"] for i in installments if i["status"] == "paid")
-    balance = total - paid
-    today_iso = now_utc().date().isoformat()
-    upcoming = [i for i in installments if i["status"] != "paid" and i["due_date"] >= today_iso]
-    upcoming.sort(key=lambda x: x["due_date"])
-    overdue = [i for i in installments if i["status"] != "paid" and i["due_date"] < today_iso]
-    return {
-        "total_cost": total,
-        "amount_paid": paid,
-        "balance": balance,
-        "upcoming_installment": upcoming[0] if upcoming else None,
-        "overdue_count": len(overdue),
-        "total_installments": len(installments),
-        "paid_count": len([i for i in installments if i["status"] == "paid"]),
-    }
+    raise HTTPException(status_code=501, detail="Payments are out of scope for the current production phase.")
 
 
 @api_router.get("/payments/installments")
 async def list_installments(user: Dict[str, Any] = Depends(get_current_user)):
-    items = await db.installments.find({"user_id": user["id"]}, {"_id": 0}).to_list(200)
-    items = filter_live_customer_items(items)
-    today_iso = now_utc().date().isoformat()
-    # Auto-mark overdue
-    for it in items:
-        if it["status"] == "upcoming" and it["due_date"] < today_iso:
-            it["status"] = "overdue"
-    items.sort(key=lambda x: x["due_date"])
-    return items
+    raise HTTPException(status_code=501, detail="Payments are out of scope for the current production phase.")
 
 
 @api_router.get("/payments/history")
 async def payment_history(user: Dict[str, Any] = Depends(get_current_user)):
-    items = await db.payments.find({"user_id": user["id"]}, {"_id": 0}).sort("paid_at", -1).to_list(200)
-    items = filter_live_customer_items(items)
-    return items
+    raise HTTPException(status_code=501, detail="Payments are out of scope for the current production phase.")
 
 
 @api_router.post("/payments/pay")
 async def pay_installment(req: PayInstallmentReq, user: Dict[str, Any] = Depends(get_current_user)):
+    raise HTTPException(status_code=501, detail="Payments are out of scope for the current production phase.")
     inst = await db.installments.find_one({"id": req.installment_id, "user_id": user["id"]}, {"_id": 0})
     if not inst:
         raise HTTPException(status_code=404, detail="Installment not found")
@@ -4589,8 +4647,11 @@ async def pay_installment(req: PayInstallmentReq, user: Dict[str, Any] = Depends
 
 # ---------- Documents ----------
 @api_router.get("/documents")
-async def list_documents(user: Dict[str, Any] = Depends(get_current_user)):
-    items = await db.documents.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+async def list_documents(property_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    query: Dict[str, Any] = {"$or": [{"user_id": user["id"]}, {"property_id": {"$exists": True}}]}
+    if property_id:
+        query["property_id"] = property_id
+    items = await db.documents.find(query, {"_id": 0}).to_list(100)
     items = filter_live_customer_items(items)
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items
@@ -4653,11 +4714,12 @@ async def request_service(req: ServiceReq, user: Dict[str, Any] = Depends(get_cu
         actor_user_id=user["id"],
     )
     await publish_live_update(
-        "service_request.created",
+        "service_request.updated",
         {"request": sr},
         user_ids=[user["id"]],
         roles=["admin"],
     )
+    await publish_dashboard_metrics_update(user_ids=[user["id"]], roles=["admin"])
     return {"success": True, "request": sr}
 
 
@@ -4906,11 +4968,22 @@ async def list_notifications(user: Dict[str, Any] = Depends(get_current_user)):
     return [normalize_live_visit_record(item) for item in items]
 
 
+@api_router.get("/notifications/unread-count")
+async def unread_notification_count(user: Dict[str, Any] = Depends(get_current_user)):
+    count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    return {"unread_count": count}
+
+
 @api_router.post("/notifications/{notif_id}/read")
 async def read_notification(notif_id: str, user: Dict[str, Any] = Depends(get_current_user)):
     await db.notifications.update_one(
         {"id": notif_id, "user_id": user["id"]},
-        {"$set": {"read": True}}
+        {"$set": {"read": True, "updated_at": now_utc().isoformat()}}
+    )
+    await publish_live_update(
+        "notification.read",
+        {"notification_id": notif_id, "user_id": user["id"]},
+        user_ids=[user["id"]],
     )
     return {"success": True}
 
@@ -4919,7 +4992,12 @@ async def read_notification(notif_id: str, user: Dict[str, Any] = Depends(get_cu
 async def read_all_notifications(user: Dict[str, Any] = Depends(get_current_user)):
     await db.notifications.update_many(
         {"user_id": user["id"], "read": False},
-        {"$set": {"read": True}}
+        {"$set": {"read": True, "updated_at": now_utc().isoformat()}}
+    )
+    await publish_live_update(
+        "notification.read",
+        {"all": True, "user_id": user["id"]},
+        user_ids=[user["id"]],
     )
     return {"success": True}
 
@@ -4989,10 +5067,11 @@ async def live_updates_websocket(websocket: WebSocket):
                     }
                 )
             elif action == "subscribe-dashboard":
+                metrics = await build_dashboard_metrics_snapshot() if user and websocket_role_for_user(user) == "admin" else {}
                 await websocket.send_json(
                     {
                         "event": "dashboard.subscribed",
-                        "payload": {"role": websocket_role_for_user(user)},
+                        "payload": {"role": websocket_role_for_user(user), "metrics": metrics},
                         "sent_at": now_utc().isoformat(),
                     }
                 )
@@ -5039,12 +5118,24 @@ async def admin_stats(user: Dict[str, Any] = Depends(get_admin_user)):
 
 
 @api_router.get("/admin/users")
-async def admin_users(user: Dict[str, Any] = Depends(get_admin_user)):
+async def admin_users(
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    approval_status: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_admin_user),
+):
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
             raise HTTPException(status_code=503, detail="User database is unavailable")
         return [clean_user(item) for item in load_local_store().get("users", []) if not should_hide_demo_item(item)]
-    items = await db.users.find({}, {"_id": 0}).to_list(500)
+    query: Dict[str, Any] = {}
+    if role:
+        query["role"] = role.strip().lower()
+    if status:
+        query["status"] = status.strip().lower()
+    if approval_status:
+        query["approval_status"] = approval_status.strip().lower()
+    items = await db.users.find(query, {"_id": 0}).to_list(500)
     return [item for item in items if not should_hide_demo_item(item)]
 
 
@@ -5064,6 +5155,27 @@ async def admin_bookings(user: Dict[str, Any] = Depends(get_admin_user)):
         for item in filter_live_customer_items(await db.bookings.find({}, {"_id": 0}).to_list(500))
     ]
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return items
+
+
+@api_router.get("/admin/properties")
+async def admin_properties(user: Dict[str, Any] = Depends(get_admin_user)):
+    items = await db.properties.find({}, {"_id": 0}).to_list(500)
+    return [normalize_live_property_record(item) for item in items if not should_hide_demo_item(item)]
+
+
+@api_router.get("/admin/plots")
+async def admin_plots(property_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_admin_user)):
+    query: Dict[str, Any] = {}
+    if property_id:
+        query["property_id"] = property_id
+    items = await db.plots.find(query, {"_id": 0}).to_list(1000)
+    return [item for item in items if not should_hide_demo_item(item)]
+
+
+@api_router.get("/admin/audit-logs")
+async def admin_audit_logs(limit: int = Query(100, ge=1, le=500), user: Dict[str, Any] = Depends(get_admin_user)):
+    items = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return items
 
 
@@ -5149,6 +5261,14 @@ async def admin_confirm_booking(booking_id: str, user: Dict[str, Any] = Depends(
         user_ids=[booking.get("user_id"), booking.get("agent_id")],
         roles=["admin"],
     )
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action="booking.confirmed",
+        entity_type="booking",
+        entity_id=booking_id,
+        metadata={"plot_id": booking.get("plot_id"), "customer_id": booking.get("user_id")},
+    )
+    await publish_dashboard_metrics_update(user_ids=[booking.get("user_id"), booking.get("agent_id")], roles=["admin"])
     return {"success": True}
 
 
@@ -5165,7 +5285,7 @@ async def admin_agents(user: Dict[str, Any] = Depends(get_admin_user)):
         agents.sort(key=lambda x: (x.get("approval_status") != "pending", x.get("name", "")))
         return agents
 
-    agents = await db.users.find({"role": {"$in": ["agent", "sub_agent"]}}, {"_id": 0}).to_list(500)
+    agents = await db.users.find({"role": ROLE_AGENT}, {"_id": 0}).to_list(500)
     agents = [clean_user(agent) for agent in agents if not should_hide_demo_item(agent)]
     agents.sort(key=lambda x: (x.get("approval_status") != "pending", x.get("name", "")))
     return agents
@@ -5270,7 +5390,7 @@ async def admin_overview(user: Dict[str, Any] = Depends(get_admin_user)):
             "reminders": build_reminders(agents, visits),
         }
 
-    agents = await db.users.find({"role": {"$in": ["agent", "sub_agent"]}}, {"_id": 0}).to_list(500)
+    agents = await db.users.find({"role": ROLE_AGENT}, {"_id": 0}).to_list(500)
     agents = [clean_user(agent) for agent in agents if not should_hide_demo_item(agent)]
     agents.sort(key=lambda x: (x.get("approval_status") != "pending", x.get("name", "")))
     visits = filter_live_customer_items(await db.visits.find({}, {"_id": 0}).to_list(500))
@@ -5291,29 +5411,29 @@ async def admin_update_agent_status(
     req: AdminAgentApprovalReq,
     user: Dict[str, Any] = Depends(get_admin_user),
 ):
-    allowed_statuses = {"pending", "approved", "rejected", "suspended"}
+    allowed_statuses = {APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_REJECTED, STATUS_SUSPENDED}
     approval_status = req.approval_status.strip().lower()
     if approval_status not in allowed_statuses:
         raise HTTPException(status_code=400, detail="Invalid approval status")
 
-    manager_name = user.get("name", "Manager")
+    manager_name = user.get("name", "Admin")
     now_iso = now_utc().isoformat()
     updates: Dict[str, Any] = {
         "approval_status": approval_status,
         "review_notes": (req.review_notes or "").strip(),
         "reviewed_at": now_iso,
-        "reviewed_by_manager": manager_name,
+        "reviewed_by_admin": manager_name,
         "updated_at": now_iso,
     }
-    if approval_status == "approved":
-        updates["approved_by_manager"] = manager_name
-        updates["status"] = "active"
+    if approval_status == APPROVAL_APPROVED:
+        updates["approved_by_admin"] = manager_name
+        updates["status"] = STATUS_ACTIVE
         updates["kyc_status"] = "verified"
-    elif approval_status == "suspended":
-        updates["status"] = "suspended"
+    elif approval_status == STATUS_SUSPENDED:
+        updates["status"] = STATUS_SUSPENDED
     else:
-        updates["status"] = "pending"
-        updates["approved_by_manager"] = None
+        updates["status"] = APPROVAL_PENDING
+        updates["approved_by_admin"] = None
 
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
@@ -5321,7 +5441,7 @@ async def admin_update_agent_status(
         agent = local_find_user(user_id=agent_id)
         if not agent or not is_agent_role(agent.get("role")):
             raise HTTPException(status_code=404, detail="Agent not found")
-        if approval_status == "approved":
+        if approval_status == APPROVAL_APPROVED:
             updates["phone_verified"] = True
             updates["email_verified"] = bool(agent.get("email"))
             updates["auth_methods"] = auth_methods_union(agent.get("auth_methods"), "phone")
@@ -5332,10 +5452,17 @@ async def admin_update_agent_status(
             "Agent access updated",
             (
                 "Your agent application is approved. You can now continue with OTP login."
-                if approval_status == "approved"
+                if approval_status == APPROVAL_APPROVED
                 else f"Your agent access status is now {approval_status}."
             ),
             "agent",
+        )
+        await create_audit_log(
+            actor_user_id=user["id"],
+            action=f"agent.{approval_status}",
+            entity_type="user",
+            entity_id=agent["id"],
+            metadata={"phone": agent.get("phone")},
         )
         await publish_live_update(
             "agent.status_updated",
@@ -5343,14 +5470,15 @@ async def admin_update_agent_status(
             user_ids=[agent["id"]],
             roles=["admin"],
         )
-        if approval_status in {"pending", "rejected", "suspended"}:
+        await publish_dashboard_metrics_update(user_ids=[agent["id"]], roles=["admin"])
+        if approval_status in {APPROVAL_PENDING, APPROVAL_REJECTED, STATUS_SUSPENDED}:
             await revoke_user_sessions_for_user(agent["id"], session_role="agent")
         return {"success": True, "agent": clean_user(agent)}
 
     agent = await db.users.find_one({"id": agent_id}, {"_id": 0})
     if not agent or not is_agent_role(agent.get("role")):
         raise HTTPException(status_code=404, detail="Agent not found")
-    if approval_status == "approved":
+    if approval_status == APPROVAL_APPROVED:
         updates["phone_verified"] = True
         updates["email_verified"] = bool(agent.get("email"))
         updates["auth_methods"] = auth_methods_union(agent.get("auth_methods"), "phone")
@@ -5361,10 +5489,17 @@ async def admin_update_agent_status(
         "Agent access updated",
         (
             "Your agent application is approved. You can now continue with OTP login."
-            if approval_status == "approved"
+            if approval_status == APPROVAL_APPROVED
             else f"Your agent access status is now {approval_status}."
         ),
         "agent",
+    )
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action=f"agent.{approval_status}",
+        entity_type="user",
+        entity_id=agent["id"],
+        metadata={"phone": agent.get("phone")},
     )
     await publish_live_update(
         "agent.status_updated",
@@ -5372,7 +5507,8 @@ async def admin_update_agent_status(
         user_ids=[agent["id"]],
         roles=["admin"],
     )
-    if approval_status in {"pending", "rejected", "suspended"}:
+    await publish_dashboard_metrics_update(user_ids=[agent["id"]], roles=["admin"])
+    if approval_status in {APPROVAL_PENDING, APPROVAL_REJECTED, STATUS_SUSPENDED}:
         await revoke_user_sessions_for_user(agent["id"], session_role="agent")
     return {"success": True, "agent": clean_user(updated)}
 
@@ -5425,13 +5561,21 @@ async def admin_update_visit_status(
                 f"Your visit request for {updated.get('property_name') or updated.get('centre_name') or 'the selected location'} is now {next_status}.",
                 "visit",
             )
-        await publish_live_update(
-            "visit.updated",
-            {"visit": normalize_live_visit_record(updated), "scope": "admin_review"},
-            user_ids=[updated.get("user_id"), updated.get("assigned_agent_id")],
-            roles=["admin"],
-        )
-        return {"success": True, "visit": normalize_live_visit_record(updated)}
+    await publish_live_update(
+        "visit.updated",
+        {"visit": normalize_live_visit_record(updated), "scope": "admin_review"},
+        user_ids=[updated.get("user_id"), updated.get("assigned_agent_id")],
+        roles=["admin"],
+    )
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action=f"visit.{next_status}",
+        entity_type="visit",
+        entity_id=visit_id,
+        metadata={"user_id": updated.get("user_id"), "assigned_agent_id": updated.get("assigned_agent_id")},
+    )
+    await publish_dashboard_metrics_update(user_ids=[updated.get("user_id"), updated.get("assigned_agent_id")], roles=["admin"])
+    return {"success": True, "visit": normalize_live_visit_record(updated)}
 
     existing = await db.visits.find_one({"id": visit_id}, {"_id": 0})
     if not existing:
@@ -5472,13 +5616,7 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
     if not await is_database_available():
         return build_local_agent_dashboard(user)
 
-    sub_agent_ids = user.get("sub_agent_ids", []) if user.get("role") == "agent" else []
-    accessible_agent_ids = [user["id"], *sub_agent_ids]
-
-    sub_agents = await db.users.find(
-        {"id": {"$in": sub_agent_ids}},
-        {"_id": 0}
-    ).to_list(100)
+    accessible_agent_ids = [user["id"]]
 
     plots = await db.plots.find({"agent_id": {"$in": accessible_agent_ids}}, {"_id": 0}).to_list(300)
     property_ids = sorted({plot["property_id"] for plot in plots})
@@ -5512,10 +5650,18 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
 
     bookings.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     assets.sort(key=lambda x: (x.get("status") != "available", x.get("plot_number", "")))
+    notifications_count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    visits_count = await db.visits.count_documents({"assigned_agent_id": user["id"]})
 
     return {
         "profile": clean_user(user),
-        "sub_agents": [clean_user(sub_agent) for sub_agent in sub_agents],
+        "sub_agents": [],
+        "kpis": {
+            "assets": len(assets),
+            "bookings": len(bookings),
+            "visits": visits_count,
+            "unread_notifications": notifications_count,
+        },
         "assets": assets,
         "bookings": bookings,
     }
@@ -5726,99 +5872,19 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
 
 @api_router.post("/agent/agents")
 async def agent_create_sub_agent(req: AgentUpsertReq, user: Dict[str, Any] = Depends(get_agent_user)):
-    if user.get("role") != "agent":
-        raise HTTPException(status_code=403, detail="Only primary agents can create sub-agents")
-    sub_agent = {
-        "id": str(uuid.uuid4()),
-        "name": req.name,
-        "phone": req.phone,
-        "email": normalize_email(req.email) if req.email else "",
-        "age": req.age,
-        "aadhaar_number": req.aadhaar_number,
-        "bank_details": req.bank_details,
-        "role": "sub_agent",
-        "status": req.status or "active",
-        "approval_status": "approved",
-        "manager_id": user["id"],
-        "manager_name": user.get("name"),
-        "auth_methods": ["manager_created"],
-        "created_at": now_utc().isoformat(),
-        "updated_at": now_utc().isoformat(),
-    }
-    if not await is_database_available():
-        local_save_user(sub_agent)
-        user["sub_agent_ids"] = sorted(set([*user.get("sub_agent_ids", []), sub_agent["id"]]))
-        local_save_user(user)
-        return {"success": True, "agent": clean_user(sub_agent)}
-    await db.users.insert_one(sub_agent.copy())
-    await db.users.update_one({"id": user["id"]}, {"$addToSet": {"sub_agent_ids": sub_agent["id"]}})
-    return {"success": True, "agent": clean_user(sub_agent)}
+    raise HTTPException(status_code=410, detail="Sub-agent management is disabled in the current production phase.")
 
 @api_router.put("/agent/agents/{agent_id}")
 async def agent_update_sub_agent(agent_id: str, req: AgentUpsertReq, user: Dict[str, Any] = Depends(get_agent_user)):
-    if agent_id not in user.get("sub_agent_ids", []):
-        raise HTTPException(status_code=403, detail="You do not manage this agent")
-    updates = {
-        "name": req.name,
-        "phone": req.phone,
-        "email": normalize_email(req.email) if req.email else "",
-        "age": req.age,
-        "aadhaar_number": req.aadhaar_number,
-        "bank_details": req.bank_details,
-        "status": req.status or "active",
-        "updated_at": now_utc().isoformat(),
-    }
-    if not await is_database_available():
-        agent = local_find_user(user_id=agent_id)
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        agent.update(updates)
-        local_save_user(agent)
-        return {"success": True, "agent": clean_user(agent)}
-    result = await db.users.update_one({"id": agent_id}, {"$set": updates})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    agent = await db.users.find_one({"id": agent_id}, {"_id": 0})
-    return {"success": True, "agent": clean_user(agent)}
+    raise HTTPException(status_code=410, detail="Sub-agent management is disabled in the current production phase.")
 
 @api_router.put("/agent/agents/{agent_id}/status")
 async def agent_update_sub_agent_status(agent_id: str, req: AgentStatusReq, user: Dict[str, Any] = Depends(get_agent_user)):
-    allowed_statuses = {"active", "pending", "suspended"}
-    status_value = req.status.strip().lower()
-    if status_value not in allowed_statuses:
-        raise HTTPException(status_code=400, detail="Invalid agent status")
-    if agent_id not in user.get("sub_agent_ids", []):
-        raise HTTPException(status_code=403, detail="You do not manage this agent")
-    updates = {"status": status_value, "updated_at": now_utc().isoformat()}
-    if not await is_database_available():
-        agent = local_find_user(user_id=agent_id)
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        agent.update(updates)
-        local_save_user(agent)
-        return {"success": True, "agent": clean_user(agent)}
-    await db.users.update_one({"id": agent_id}, {"$set": updates})
-    agent = await db.users.find_one({"id": agent_id}, {"_id": 0})
-    return {"success": True, "agent": clean_user(agent)}
+    raise HTTPException(status_code=410, detail="Sub-agent management is disabled in the current production phase.")
 
 @api_router.post("/agent/agents/{agent_id}/assign")
 async def agent_assign_properties(agent_id: str, req: AgentAssignReq, user: Dict[str, Any] = Depends(get_agent_user)):
-    if agent_id not in user.get("sub_agent_ids", []):
-        raise HTTPException(status_code=403, detail="You do not manage this agent")
-    if not req.plot_ids:
-        raise HTTPException(status_code=400, detail="Select at least one asset")
-    if not await is_database_available():
-        for plot_id in req.plot_ids:
-            plot = local_get_plot(plot_id)
-            if not plot or plot.get("agent_id") not in agent_accessible_ids(user):
-                raise HTTPException(status_code=403, detail="One or more assets are outside your access")
-            local_save_plot_override(plot_id, {"agent_id": agent_id})
-        return {"success": True, "assigned_plot_ids": req.plot_ids}
-    plots = await db.plots.find({"id": {"$in": req.plot_ids}}, {"_id": 0}).to_list(500)
-    if len(plots) != len(req.plot_ids) or any(plot.get("agent_id") not in agent_accessible_ids(user) for plot in plots):
-        raise HTTPException(status_code=403, detail="One or more assets are outside your access")
-    await db.plots.update_many({"id": {"$in": req.plot_ids}}, {"$set": {"agent_id": agent_id, "updated_at": now_utc().isoformat()}})
-    return {"success": True, "assigned_plot_ids": req.plot_ids}
+    raise HTTPException(status_code=410, detail="Sub-agent management is disabled in the current production phase.")
 
 @api_router.get("/agent/site-visits")
 async def agent_site_visits(user: Dict[str, Any] = Depends(get_agent_user)):
@@ -6035,6 +6101,7 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
         user_ids=[booking.get("user_id"), booking.get("agent_id")],
         roles=["admin"],
     )
+    await publish_dashboard_metrics_update(user_ids=[booking.get("user_id"), booking.get("agent_id")], roles=["admin"])
     return {"success": True, "status": "completed"}
 
 
@@ -6062,6 +6129,20 @@ async def admin_update_service_status(req_id: str, status_val: str = Query(...),
                 f"Your {existing.get('service_type') or 'service'} request is now {status_val.replace('_', ' ')}.",
                 "service",
             )
+        await create_audit_log(
+            actor_user_id=user["id"],
+            action=f"service_request.{status_val}",
+            entity_type="service_request",
+            entity_id=req_id,
+            metadata={"user_id": existing.get("user_id")},
+        )
+        await publish_live_update(
+            "service_request.updated",
+            {"request": updated},
+            user_ids=[existing.get("user_id")] if existing.get("user_id") else None,
+            roles=["admin"],
+        )
+        await publish_dashboard_metrics_update(user_ids=[existing.get("user_id")] if existing.get("user_id") else None, roles=["admin"])
         return {"success": True, "request": updated}
     await db.service_requests.update_one(
         {"id": req_id},
@@ -6075,6 +6156,20 @@ async def admin_update_service_status(req_id: str, status_val: str = Query(...),
             f"Your {updated.get('service_type') or 'service'} request is now {status_val.replace('_', ' ')}.",
             "service",
         )
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action=f"service_request.{status_val}",
+        entity_type="service_request",
+        entity_id=req_id,
+        metadata={"user_id": updated.get("user_id") if updated else None},
+    )
+    await publish_live_update(
+        "service_request.updated",
+        {"request": updated},
+        user_ids=[updated.get("user_id")] if updated and updated.get("user_id") else None,
+        roles=["admin"],
+    )
+    await publish_dashboard_metrics_update(user_ids=[updated.get("user_id")] if updated and updated.get("user_id") else None, roles=["admin"])
     return {"success": True, "request": updated}
 
 
