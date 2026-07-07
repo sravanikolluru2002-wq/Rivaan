@@ -5,10 +5,10 @@
     "dev": "node scripts/dev.js",
     "start": "node scripts/dev.js",
     "backend": "node scripts/dev.js --backend-only",
-    "frontend": "npm --prefix frontend run start -- --lan -c",
+    "frontend": "npm --prefix frontend run dev -- --host 127.0.0.1 --port 8082",
     "build": "npm --prefix frontend run build",
     "build:web": "npm --prefix frontend run build",
-    "web": "npm --prefix frontend run web",
+    "web": "npm --prefix frontend run dev -- --host 127.0.0.1 --port 8082",
     "lint": "npm --prefix frontend run lint"
   },
   "dependencies": {

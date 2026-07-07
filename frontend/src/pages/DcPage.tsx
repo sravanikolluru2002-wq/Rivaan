@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as ReactDOMClient from "react-dom/client";
-import { loadSession } from "../lib/auth";
+import { loadSession, getJson } from "../lib/auth";
+import { useNavigate } from "react-router-dom";
 
 declare global {
   interface Window {
@@ -93,7 +94,7 @@ function personalizeRenderedPage(host: HTMLDivElement, title: string) {
     host.querySelectorAll("*").forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       const text = node.textContent?.trim();
-      if (text === "Sravani K") node.textContent = userName;
+      if (text === "Ananya Sharma") node.textContent = userName;
       if (text === "Super Agent") node.textContent = "Agent";
       if (text === "SK") node.textContent = initials;
     });
@@ -115,9 +116,17 @@ type DcPageProps = {
 };
 
 export function DcPage({ sourcePath, title }: DcPageProps) {
+  const navigate = useNavigate();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const managedHeadRef = useRef<HTMLElement[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    const session = loadSession();
+    if (!session?.access_token || session.user.role !== 'agent') {
+      navigate('/login', { replace: true });
+    }
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,11 +152,35 @@ export function DcPage({ sourcePath, title }: DcPageProps) {
       const html = rewriteNavigation(await response.text());
       if (cancelled) return;
 
+      
+      let agentDataStr = "";
+      if (title.includes("Agent")) {
+        try {
+          const session = loadSession();
+          if (session?.access_token) {
+            const [dashboard, leads, bookings, visits] = await Promise.all([
+              getJson('/api/agent/dashboard', session.access_token).catch(()=>null),
+              getJson('/api/crm/leads', session.access_token).catch(()=>[]),
+              getJson('/api/agent/bookings', session.access_token).catch(()=>[]),
+              getJson('/api/agent/site-visits', session.access_token).catch(()=>[]),
+            ]);
+            agentDataStr = `<script>
+              window.__AGENT_DATA = {
+                dashboard: ${JSON.stringify(dashboard)},
+                leads: ${JSON.stringify(leads)},
+                bookings: ${JSON.stringify(bookings)},
+                visits: ${JSON.stringify(visits)}
+              };
+            </script>`;
+          }
+        } catch (e) { console.error("Agent fetch err", e); }
+      }
+
       const sourceDoc = new DOMParser().parseFromString(html, "text/html");
       const bodyMarkup = sourceDoc.body.innerHTML;
       const headBefore = new Set(Array.from(document.head.children));
 
-      host.innerHTML = bodyMarkup;
+      host.innerHTML = agentDataStr + bodyMarkup;
       window.__dcBoot?.();
       personalizeRenderedPage(host, title);
 

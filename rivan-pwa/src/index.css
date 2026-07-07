@@ -1,0 +1,164 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { 
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif; 
+  -webkit-font-smoothing: antialiased; 
+  background: #ffffff; 
+}
+
+.rv-scroll::-webkit-scrollbar { width: 0; display: none; }
+.rv-scroll { scrollbar-width: none; }
+
+@keyframes rvFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes rvShimmer { 0% { background-position: -320px 0; } 100% { background-position: 320px 0; } }
+@keyframes rvPop { 0% { opacity: 0; transform: scale(.9); } 100% { opacity: 1; transform: scale(1); } }
+
+.rv-screen { animation: rvFade .38s cubic-bezier(.22,.61,.36,1) both; }
+.rv-skel { background: linear-gradient(90deg, #eef3ec 25%, #f7faf5 50%, #eef3ec 75%); background-size: 320px 100%; animation: rvShimmer 1.1s infinite linear; }
+
+input::placeholder { color: #9aa89c; }
+input:focus, select:focus { outline: none; }
+input[type=range] { -webkit-appearance: none; height: 6px; border-radius: 5px; background: #e2e8e0; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #e2822a; border: 3px solid #fff; box-shadow: 0 3px 8px rgba(226,130,42,.5); cursor: pointer; }
+
+/* ─── Stage / outer wrapper ─────────────────────────────── */
+.rv-stage {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+  background: #ffffff;
+}
+
+/* ─── Phone / content card ───────────────────────────────── */
+.rv-phone {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  background: #ffffff;
+  border-radius: 0;
+  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+  flex: none;
+}
+.rv-phone.login-phone {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ─── Hide phone-shell chrome on desktop ─────────────────── */
+.rv-phone-notch { display: none !important; }
+.rv-phone-status-bar { display: none !important; }
+
+/* ─── Navigation ── */
+.rv-nav {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 68px;
+  z-index: 40;
+  background: linear-gradient(180deg, #1a5229 0%, #112e1a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 8px 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 -4px 20px rgba(9,32,16,.35);
+}
+
+.rv-nav-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: rgba(255,255,255,.5);
+  font-family: inherit;
+  padding: 6px 12px;
+  border-radius: 12px;
+  transition: background .15s, color .15s;
+  min-width: 52px;
+}
+.rv-nav-btn:hover { color: rgba(255,255,255,.85); background: rgba(255,255,255,.06); }
+.rv-nav-btn.active { color: #fff; }
+.rv-nav-btn.active svg { stroke: #fff; }
+.rv-nav-btn span.nav-label { font-size: 10px; font-weight: 700; }
+.rv-nav-btn svg { transition: stroke .15s; }
+
+/* Scroll area accounts for bottom nav */
+.rv-scroll.with-nav { padding-bottom: 74px !important; }
+
+/* ─── Desktop: left sidebar ─────────────────────────────────── */
+@media (min-width: 768px) {
+  .rv-nav {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    width: 80px;
+    height: 100%;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 4px;
+    padding: 24px 8px 24px;
+    border-top: none;
+    border-right: 1px solid rgba(255,255,255,.08);
+    box-shadow: 4px 0 20px rgba(9,32,16,.2);
+  }
+
+  .rv-nav::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 36px;
+    background: url('/assets/logo-mark-white.png') center/contain no-repeat;
+    margin-bottom: 16px;
+    opacity: .9;
+  }
+
+  .rv-nav-btn {
+    width: 100%;
+    padding: 10px 8px;
+    border-radius: 14px;
+  }
+
+  .rv-nav-btn span.nav-label { font-size: 9.5px; }
+
+  .rv-scroll.with-nav {
+    padding-bottom: 24px !important;
+    left: 80px !important;
+    right: 0 !important;
+    width: auto !important;
+  }
+}
+
+@media (min-width: 1100px) {
+  .rv-nav {
+    width: 200px;
+    align-items: flex-start;
+    padding: 28px 12px;
+  }
+  .rv-nav::before { margin-left: 8px; margin-bottom: 24px; }
+  .rv-nav-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    width: 100%;
+    border-radius: 14px;
+  }
+  .rv-nav-btn span.nav-label { font-size: 13px; font-weight: 600; }
+  .rv-nav-btn.active { background: rgba(255,255,255,.12); }
+  .rv-scroll.with-nav {
+    left: 200px !important;
+  }
+}

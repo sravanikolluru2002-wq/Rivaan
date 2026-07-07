@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Rivan Reality</title>
+  <meta name="description" content="Discover, visit and own verified plots, villas and homes with Rivan Reality.">
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#12351d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Rivan">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
+
+  <!-- Entry point: hand off to the login flow -->
+  <meta http-equiv="refresh" content="0; url=./Rivan Login.dc.html">
+  <style>
+    html,body{margin:0;height:100%}
+    body{
+      background:#12351d;
+      display:flex;align-items:center;justify-content:center;
+      font-family:-apple-system,BlinkMacSystemFont,'Plus Jakarta Sans',sans-serif;
+    }
+    .boot{display:flex;flex-direction:column;align-items:center;gap:18px}
+    .boot img{width:120px;height:120px}
+    .boot span{color:#b8cbb6;font-size:13px;font-weight:600;letter-spacing:.3px}
+  </style>
+</head>
+<body>
+  <div class="boot">
+    <img src="./icons/icon-512.png" alt="Rivan Reality">
+    <span>Loading Rivan Reality…</span>
+  </div>
+  <script>
+    // Register the service worker (enables install + offline).
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js').catch(function (e) {
+        console.warn('SW registration failed:', e);
+      });
+    }
+    // JS fallback in case the meta-refresh is blocked.
+    setTimeout(function () {
+      if (!/Rivan Login/.test(location.href)) {
+        location.replace('./Rivan Login.dc.html');
+      }
+    }, 400);
+  </script>
+</body>
+</html>

@@ -17,23 +17,24 @@ from server import CORS_ORIGINS, admin_access_is_active, app, has_admin_access, 
 
 
 def test_admin_access_accepts_database_admin_roles():
-    assert has_admin_access({"role": "manager"})
     assert has_admin_access({"role": "admin"})
-    assert has_admin_access({"role": "super_admin"})
-    assert has_admin_access({"role": "customer", "is_admin": True})
+    assert not has_admin_access({"role": "manager"})
+    assert not has_admin_access({"role": "super_admin"})
+    assert not has_admin_access({"role": "customer", "is_admin": True})
 
 
 def test_admin_access_rejects_non_admin_roles_and_inactive_records():
     assert not has_admin_access({"role": "agent", "is_admin": False})
-    assert admin_access_is_active({"role": "manager", "status": "active"})
-    assert not admin_access_is_active({"role": "manager", "status": "suspended"})
-    assert not admin_access_is_active({"role": "admin", "approval_status": "pending"})
+    assert admin_access_is_active({"role": "admin", "phone": "+919491348973", "status": "active", "approval_status": "not_required"})
+    assert not admin_access_is_active({"role": "admin", "phone": "+919491348973", "status": "suspended", "approval_status": "not_required"})
+    assert not admin_access_is_active({"role": "admin", "phone": "+919491348973", "approval_status": "pending"})
 
 
 def test_primary_admin_login_is_limited_to_admin_records():
-    assert is_primary_admin_login_user({"role": "admin"})
-    assert is_primary_admin_login_user({"role": "customer", "is_admin": True})
-    assert not is_primary_admin_login_user({"role": "manager", "is_admin": False})
+    assert is_primary_admin_login_user({"role": "admin", "phone": "+919491348973"})
+    assert is_primary_admin_login_user({"role": "admin", "phone": "9491348973"})
+    assert not is_primary_admin_login_user({"role": "customer", "is_admin": True, "phone": "+919491348973"})
+    assert not is_primary_admin_login_user({"role": "manager", "is_admin": False, "phone": "+919491348973"})
     assert not is_primary_admin_login_user({"role": "super_admin", "is_admin": False})
 
 

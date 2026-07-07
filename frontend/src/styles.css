@@ -1,0 +1,15 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #ffffff;
+}
+
+.dc-react-page,
+.dc-react-host {
+  height: 100%;
+}

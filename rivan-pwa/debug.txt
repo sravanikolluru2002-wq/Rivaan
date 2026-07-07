@@ -1,0 +1,15 @@
+  const sel = selData;
+  const cat = catData;
+  const quickActions = qIcons;
+
+  return (
+    <>
+    <div style={{'position': 'absolute', 'top': '0', 'left': '50%', 'transform': 'translateX(-50%)', 'width': '150px', 'height': '30px', 'background': '#0c2615', 'borderRadius': '0 0 20px 20px', 'zIndex': '60'}}></div>
+    <div style={{position: 'absolute', top: '0', left: '0', right: '0', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', fontSize: '13.5px', fontWeight: '700', color: statusColor, zIndex: '50', pointerEvents: 'none'}}>
+      <span>9:41</span><span style={{'fontSize': '11px', 'letterSpacing': '1px'}}>▟▟▟ 100%</span>
+    </div>
+
+    <div className="rv-scroll" style={{'position': 'absolute', 'inset': '0', 'overflowY': 'auto'}}>
+
+      {/* ===================== MY LANDS ===================== */}
+      {isLands && (

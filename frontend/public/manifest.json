@@ -1,0 +1,24 @@
+{
+  "name": "Rivan Reality",
+  "short_name": "Rivan",
+  "description": "Discover, visit and own verified plots, villas and homes with Rivan Reality.",
+  "id": "/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#12351d",
+  "background_color": "#12351d",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "lifestyle", "shopping"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "My Lands", "short_name": "Lands", "url": "/my-lands" },
+    { "name": "My Visits", "short_name": "Visits", "url": "/visits" }
+  ]
+}

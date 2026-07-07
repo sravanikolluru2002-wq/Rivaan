@@ -1,0 +1,30 @@
+  const quickActions = qIcons;
+
+  return (
+    <>
+    <div style={{'position': 'absolute', 'top': '0', 'left': '50%', 'transform': 'translateX(-50%)', 'width': '150px', 'height': '30px', 'background': '#0c2615', 'borderRadius': '0 0 20px 20px', 'zIndex': '60'}}></div>
+    <div style={{position: 'absolute', top: '0', left: '0', right: '0', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', fontSize: '13.5px', fontWeight: '700', color: statusColor, zIndex: '50', pointerEvents: 'none'}}>
+      <span>9:41</span><span style={{'fontSize': '11px', 'letterSpacing': '1px'}}>▟▟▟ 100%</span>
+    </div>
+
+    <div className="rv-scroll" style={{'position': 'absolute', 'inset': '0', 'overflowY': 'auto'}}>
+
+      {/* ===================== MY LANDS ===================== */}
+      {isLands && (
+      <div className="rv-screen">
+        <div style={{'background': 'linear-gradient(160deg,#1a5e2e 0%,#123f21 100%)', 'padding': '56px 22px 22px', 'borderRadius': '0 0 26px 26px'}}>
+          <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
+            <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '10px'}}>
+              <img src="assets/logo-mark-white.png" alt="Rivan" style={{'height': '26px', 'opacity': '.95'}} />
+              <span style={{'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>My Lands</span>
+            </div>
+            <button style={{'width': '40px', 'height': '40px', 'borderRadius': '12px', 'border': 'none', 'background': 'rgba(255,255,255,.14)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'cursor': 'pointer', 'position': 'relative'}}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 0 0 4 0"/></svg>
+              <span style={{'position': 'absolute', 'top': '9px', 'right': '10px', 'width': '7px', 'height': '7px', 'borderRadius': '50%', 'background': '#eb9236', 'border': '1.5px solid #123f21'}}></span>
+            </button>
+          </div>
+          <div style={{'marginTop': '16px', 'background': 'rgba(255,255,255,.1)', 'border': '1px solid rgba(255,255,255,.16)', 'borderRadius': '18px', 'padding': '16px', 'display': 'flex'}}>
+            <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '11.5px', 'color': '#bcd6bd', 'fontWeight': '600'}}>Total Lands</p><p style={{'margin': '7px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>{totalLands}</p></div>
+            <div style={{'width': '1px', 'background': 'rgba(255,255,255,.16)'}}></div>
+            <div style={{'flex': '1.4', 'paddingLeft': '16px'}}><p style={{'margin': '0', 'fontSize': '11.5px', 'color': '#bcd6bd', 'fontWeight': '600'}}>Total Investment</p><p style={{'margin': '7px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>{totalInvest}</p></div>
+          </div>

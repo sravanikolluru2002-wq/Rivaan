@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json && node scripts/build-web.mjs",
-    "build:web": "npm run build",
-    "preview": "vite preview"
+    "dev": "vite --host 127.0.0.1 --port 8082",
+    "build": "vite build",
+    "build:web": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 8082"
   },
   "dependencies": {
     "firebase": "^10.14.1",
