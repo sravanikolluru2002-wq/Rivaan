@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadSession, clearSession, putJson, getJson, saveSession } from '../lib/auth';
+import { loadSession, clearSession, putJson, getJson, getWebSocketUrl, saveSession } from '../lib/auth';
 
 export default function AppDashboard() {
   const navigate = useNavigate();
@@ -237,20 +237,24 @@ export default function AppDashboard() {
   const emiInterest = fmtL(interest);
 
   const [notifs, setNotifs] = useState([]);
+  const mapNotification = (n) => ({
+    id: n.id,
+    title: n.title || 'Notification',
+    body: n.body || n.message || '',
+    time: n.created_at
+      ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(n.created_at))
+      : '',
+    unread: !(n.read ?? n.is_read),
+    icon: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18',
+    iconColor: '#1a5e2e',
+    iconBg: '#eef6ea',
+    bg: !(n.read ?? n.is_read) ? '#f4faf1' : '#fff'
+  });
   useEffect(() => {
     const fetchNotifs = async () => {
       try {
         const data = await getJson('/api/notifications', session.access_token);
-        const mapped = data.map(n => ({
-          title: n.title || 'Notification',
-          body: n.body || n.message || '',
-          time: new Date(n.created_at).toLocaleDateString(),
-          unread: !n.is_read,
-          icon: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18',
-          iconColor: '#1a5e2e',
-          iconBg: '#eef6ea',
-          bg: !n.is_read ? '#f4faf1' : '#fff'
-        }));
+        const mapped = data.map(mapNotification);
         setNotifs(mapped);
       } catch (err) {
         console.error("Failed to fetch notifications:", err);
@@ -260,6 +264,30 @@ export default function AppDashboard() {
       fetchNotifs();
     }
   }, [session]);
+
+  useEffect(() => {
+    if (!session?.access_token) return undefined;
+    const ws = new WebSocket(getWebSocketUrl(session.access_token));
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message?.event === 'notification.created' && message?.payload?.notification) {
+          setNotifs((current) => [mapNotification(message.payload.notification), ...current]);
+        } else if (message?.event === 'notification.read') {
+          setNotifs((current) =>
+            current.map((item) =>
+              message.payload?.all || item.id === message.payload?.notification_id
+                ? { ...item, unread: false, bg: '#fff' }
+                : item,
+            ),
+          );
+        }
+      } catch {}
+    };
+
+    return () => ws.close();
+  }, [session?.access_token]);
 
   const tg = (key, label, icon, idx) => {
     const on = toggles[key];

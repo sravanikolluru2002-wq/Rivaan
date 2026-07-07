@@ -5190,6 +5190,135 @@ async def admin_audit_logs(limit: int = Query(100, ge=1, le=500), user: Dict[str
     return items
 
 
+@api_router.get("/admin/visits")
+async def admin_visits(user: Dict[str, Any] = Depends(get_admin_user)):
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Visit database is unavailable")
+        items = filter_live_customer_items(local_list_visits())
+        items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return [normalize_live_visit_record(item) for item in items]
+    items = await db.visits.find({}, {"_id": 0}).to_list(500)
+    items = filter_live_customer_items(items)
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return [normalize_live_visit_record(item) for item in items]
+
+
+@api_router.get("/admin/support-tickets")
+async def admin_support_tickets(user: Dict[str, Any] = Depends(get_admin_user)):
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Support ticket database is unavailable")
+        requests = local_list_collection("service_requests")
+        users_by_id = {item.get("id"): item for item in load_local_store().get("users", [])}
+    else:
+        requests = await db.service_requests.find({}, {"_id": 0}).to_list(500)
+        user_ids = sorted({item.get("user_id") for item in requests if item.get("user_id")})
+        user_docs = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0}).to_list(500)
+        users_by_id = {item.get("id"): item for item in user_docs}
+
+    tickets = []
+    for index, item in enumerate(sorted(requests, key=lambda x: x.get("created_at", ""), reverse=True), start=1):
+        customer = users_by_id.get(item.get("user_id"), {})
+        status_value = str(item.get("status") or "pending").replace("_", " ").title()
+        priority = "High" if status_value in {"Pending", "Open"} else "Medium"
+        created_at = item.get("created_at") or now_utc().isoformat()
+        tickets.append({
+            "id": item.get("id") or f"ticket-{index}",
+            "ticket_number": f"TKT-{2040 + index}",
+            "customer_name": customer.get("name") or item.get("contact") or "Customer",
+            "subject": f"{item.get('service_type') or 'Service'} request",
+            "priority": priority,
+            "status": status_value,
+            "created_at": created_at,
+            "description": item.get("description") or "",
+            "service_type": item.get("service_type") or "Service",
+        })
+    return tickets
+
+
+@api_router.get("/admin/settings")
+async def admin_settings(user: Dict[str, Any] = Depends(get_admin_user)):
+    defaults = {
+        "role_label": "Admin",
+        "permissions": {
+            "User Management": True,
+            "Agent Management": True,
+            "Customer Management": True,
+            "Property Management": True,
+            "Notification Center": True,
+            "Audit Logs": True,
+            "Support Queue": True,
+            "Service Requests": True,
+        },
+        "notification_preferences": {
+            "New Customer Registration": True,
+            "New Agent Registration": True,
+            "Site Visit Bookings": True,
+            "Booking Confirmations": True,
+            "Service Requests": True,
+            "System Alerts": True,
+        },
+    }
+    if not await is_database_available():
+        return defaults
+
+    existing = await db.admin_settings.find_one({"key": "primary_admin_settings"}, {"_id": 0})
+    if not existing:
+        payload = {
+            "key": "primary_admin_settings",
+            **defaults,
+            "updated_at": now_utc().isoformat(),
+            "updated_by_user_id": user.get("id"),
+        }
+        await db.admin_settings.insert_one(payload.copy())
+        payload.pop("_id", None)
+        return payload
+    return {
+        **defaults,
+        **existing,
+        "permissions": {**defaults["permissions"], **(existing.get("permissions") or {})},
+        "notification_preferences": {
+            **defaults["notification_preferences"],
+            **(existing.get("notification_preferences") or {}),
+        },
+    }
+
+
+@api_router.put("/admin/settings")
+async def update_admin_settings(request: Request, user: Dict[str, Any] = Depends(get_admin_user)):
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid settings payload")
+
+    settings_update = {
+        "permissions": payload.get("permissions") or {},
+        "notification_preferences": payload.get("notification_preferences") or {},
+        "updated_at": now_utc().isoformat(),
+        "updated_by_user_id": user.get("id"),
+    }
+    if not await is_database_available():
+        return {"success": True, **settings_update}
+
+    await db.admin_settings.update_one(
+        {"key": "primary_admin_settings"},
+        {
+            "$set": settings_update,
+            "$setOnInsert": {"key": "primary_admin_settings"},
+        },
+        upsert=True,
+    )
+    updated = await admin_settings(user)
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action="admin.settings_updated",
+        entity_type="admin_settings",
+        entity_id="primary_admin_settings",
+        metadata={"fields": sorted(settings_update.keys())},
+    )
+    return {"success": True, "settings": updated}
+
+
 @api_router.post("/admin/bookings/{booking_id}/confirm")
 async def admin_confirm_booking(booking_id: str, user: Dict[str, Any] = Depends(get_admin_user)):
     now_iso = now_utc().isoformat()

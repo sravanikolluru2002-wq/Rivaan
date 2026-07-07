@@ -8,6 +8,11 @@ export function getBackendUrl() {
   return BACKEND_URL.replace(/\/$/, "");
 }
 
+export function getWebSocketUrl(token) {
+  const base = getBackendUrl().replace(/^http/, "ws");
+  return `${base}/ws/live?token=${encodeURIComponent(token || "")}`;
+}
+
 export function saveSession(session) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
