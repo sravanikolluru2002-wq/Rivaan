@@ -3399,6 +3399,12 @@ async def admin_access_status(req: AgentAccessStatusReq, request: Request):
             {"phone": {"$in": phone_identity_variants(phone)}},
             {"_id": 0},
         )
+        if not user and phone in phone_identity_variants(PRIMARY_ADMIN_PHONE):
+            await ensure_primary_admin_seed()
+            user = await db.users.find_one(
+                {"phone": {"$in": phone_identity_variants(phone)}},
+                {"_id": 0},
+            )
     elif ALLOW_LOCAL_AUTH_FALLBACK:
         user = local_find_user(phone=phone)
     else:
@@ -3711,6 +3717,9 @@ async def admin_firebase_auth(req: AdminFirebaseAuthReq, request: Request, respo
         raise HTTPException(status_code=403, detail="This mobile number is not authorized for admin access")
     if await is_database_available():
         user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
+        if not user and phone in phone_identity_variants(PRIMARY_ADMIN_PHONE):
+            await ensure_primary_admin_seed()
+            user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
     else:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
 
