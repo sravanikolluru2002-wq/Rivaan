@@ -43,6 +43,31 @@ export default function AppDashboard() {
   const [rate, setRate] = useState(9);
   const [years, setYears] = useState(10);
   const [toggles, setToggles] = useState({ push: true, biometric: true, promo: false, dark: false });
+  const [profileForm, setProfileForm] = useState({
+    name: user.name || '',
+    email: user.email || '',
+    address: user.address || ''
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  const handleProfileChange = (e) => {
+    setProfileForm({ ...profileForm, [e.target.name]: e.target.value });
+  };
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      const res = await putJson('/api/auth/profile', profileForm, session.access_token);
+      if (res.success && res.user) {
+        saveSession({ ...session, user: res.user });
+        alert('Profile saved successfully!');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save profile');
+    }
+    setProfileSaving(false);
+  };
 
   const cur = stack[stack.length - 1];
 
