@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadSession, clearSession, getJson } from '../lib/auth';
+import { loadSession, clearSession, getJson, putJson, saveSession } from '../lib/auth';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -45,6 +45,33 @@ export default function AdminDashboard() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminAudit, setAdminAudit] = useState([]);
   const [adminProperties, setAdminProperties] = useState([]);
+
+  const [profileForm, setProfileForm] = useState({
+    name: user.name || user.full_name || '',
+    email: user.email || '',
+    address: user.address || ''
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  const handleProfileChange = (e) => {
+    setProfileForm({ ...profileForm, [e.target.name]: e.target.value });
+  };
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      const res = await putJson('/api/auth/profile', profileForm, session.access_token);
+      if (res.success && res.user) {
+        saveSession({ ...session, user: res.user });
+        alert('Admin profile saved successfully!');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save profile');
+    }
+    setProfileSaving(false);
+  };
+
   
   useEffect(() => {
     const fetchData = async () => {
@@ -587,7 +614,6 @@ export default function AdminDashboard() {
             <p style={{'margin': '5px 0 0', 'fontSize': '13px', 'color': '#bcd6bd', 'fontWeight': '500'}}>Super Admin · Head Office, Visakhapatnam · Emp ID RVN-ADM-001</p>
           </div>
           <div style={{'display': 'flex', 'gap': '10px', 'flexWrap': 'wrap'}}>
-            <button style={{'height': '42px', 'padding': '0 18px', 'border': 'none', 'borderRadius': '12px', 'background': '#fff', 'color': '#12351d', 'fontFamily': 'inherit', 'fontSize': '12.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Edit Profile</button>
             <button onClick={() => { clearSession(); window.location.href = '/login'; }} style={{'height': '42px', 'padding': '0 18px', 'border': '1px solid rgba(255,255,255,.3)', 'borderRadius': '12px', 'background': 'transparent', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '12.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Logout</button>
           </div>
         </section>
@@ -603,7 +629,33 @@ export default function AdminDashboard() {
           {/* personal info */}
           <section style={{'background': '#fff', 'border': '1px solid #e7ede3', 'borderRadius': '18px', 'padding': '20px', 'boxShadow': '0 14px 34px -28px rgba(18,53,29,.55)'}}>
             <h3 style={{'margin': '0 0 14px', 'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d'}}>Personal Information</h3>
-            <div style={{'display': 'flex', 'flexDirection': 'column', 'gap': '12px'}}>{ personalInfo.map((i, index) => (<div style={{display: 'flex', justifyContent: 'space-between', gap: '12px', borderBottom: i.border, paddingBottom: '10px'}}><span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>{i.label}</span><span style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#16231a', 'textAlign': 'right'}}>{i.value}</span></div>))}</div>
+            <div style={{'display': 'flex', 'flexDirection': 'column', 'gap': '12px'}}>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                <span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>Full Name</span>
+                <input type="text" name="name" value={profileForm.name} onChange={handleProfileChange} style={{'width': '100%', 'height': '44px', 'padding': '0 14px', 'borderRadius': '10px', 'border': '1px solid #d4ddd0', 'background': '#fff', 'color': '#16231a', 'fontSize': '13px', 'fontWeight': '600'}} />
+              </div>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                <span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>Email Address</span>
+                <input type="email" name="email" value={profileForm.email} onChange={handleProfileChange} style={{'width': '100%', 'height': '44px', 'padding': '0 14px', 'borderRadius': '10px', 'border': '1px solid #d4ddd0', 'background': '#fff', 'color': '#16231a', 'fontSize': '13px', 'fontWeight': '600'}} />
+              </div>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                <span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>Address</span>
+                <input type="text" name="address" value={profileForm.address} onChange={handleProfileChange} style={{'width': '100%', 'height': '44px', 'padding': '0 14px', 'borderRadius': '10px', 'border': '1px solid #d4ddd0', 'background': '#fff', 'color': '#16231a', 'fontSize': '13px', 'fontWeight': '600'}} />
+              </div>
+              <div style={{display: 'flex', justifyContent: 'space-between', gap: '12px', borderTop: '1px solid #e7ede3', paddingTop: '10px'}}>
+                <span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>Mobile</span>
+                <span style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#16231a', 'textAlign': 'right'}}>{user.phone ? '+91 ' + user.phone : '+91 9491348973'}</span>
+              </div>
+              <div style={{display: 'flex', justifyContent: 'space-between', gap: '12px'}}>
+                <span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>Employee ID</span>
+                <span style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#16231a', 'textAlign': 'right'}}>RVN-ADM-001</span>
+              </div>
+              <div style={{display: 'flex', justifyContent: 'space-between', gap: '12px', paddingBottom: '10px'}}>
+                <span style={{'fontSize': '12px', 'fontWeight': '600', 'color': '#8a9a8c'}}>Designation</span>
+                <span style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#16231a', 'textAlign': 'right'}}>Super Admin</span>
+              </div>
+              <button onClick={saveProfile} disabled={profileSaving} style={{'marginTop': '6px', 'width': '100%', 'height': '46px', 'border': 'none', 'borderRadius': '12px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 10px 20px -10px rgba(18,68,35,.7)', 'opacity': profileSaving ? 0.7 : 1}}>{profileSaving ? 'Saving...' : 'Save Changes'}</button>
+            </div>
           </section>
           {/* company info */}
           <section style={{'background': '#fff', 'border': '1px solid #e7ede3', 'borderRadius': '18px', 'padding': '20px', 'boxShadow': '0 14px 34px -28px rgba(18,53,29,.55)'}}>
