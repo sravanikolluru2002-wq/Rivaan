@@ -3275,9 +3275,11 @@ async def ensure_primary_admin_seed() -> None:
 
 async def ensure_sirpuram_dataset() -> None:
     property_seed = build_sirpuram_property_seed()
+    property_update = property_seed.copy()
+    created_at = property_update.pop("created_at")
     await db.properties.update_one(
         {"id": property_seed["id"]},
-        {"$set": property_seed, "$setOnInsert": {"created_at": property_seed["created_at"]}},
+        {"$set": property_update, "$setOnInsert": {"created_at": created_at}},
         upsert=True,
     )
 
