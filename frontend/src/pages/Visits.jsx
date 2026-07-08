@@ -10,7 +10,7 @@ export default function Visits() {
   const [tab, setTab] = useState('Upcoming');
   const [sel, setSel] = useState(null);
   const [mode, setMode] = useState('book');
-  const [pickDate, setPickDate] = useState(22);
+  const [pickDate, setPickDate] = useState(() => new Date().getDate());
   const [pickTime, setPickTime] = useState('11:00 AM');
   const [showCancel, setShowCancel] = useState(false);
   const [visitRows, setVisitRows] = useState([]);
@@ -48,10 +48,9 @@ export default function Visits() {
   };
   const buildVisitDate = () => {
     const base = new Date();
-    const next = new Date(base.getFullYear(), base.getMonth(), Number(pickDate || base.getDate()));
-    if (next < base) {
-      next.setMonth(next.getMonth() + 1);
-    }
+    const selected = Number(pickDate || base.getDate());
+    const next = new Date(base.getFullYear(), base.getMonth(), selected);
+    next.setHours(0, 0, 0, 0);
     return next.toISOString().slice(0, 10);
   };
 
@@ -262,19 +261,36 @@ export default function Visits() {
   ];
 
   const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-  const blanks = [null, null, null, null];
-  const days = Array.from({ length: 31 }, (_, k) => k + 1);
-  const calendar = [...blanks.map(() => ({ label: '', style: { height: '38px' } })), ...days.map((d) => {
-    const on = d === pickDate; const past = d < 20;
-    return {
-      label: String(d), pick: () => past ? null : setPickDate(d),
-      style: on
-        ? { height: '38px', borderRadius: '11px', border: 'none', background: '#1a5e2e', color: '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: '800', cursor: 'pointer' }
-        : past
-        ? { height: '38px', borderRadius: '11px', border: 'none', background: 'transparent', color: '#cdd6cb', fontFamily: 'inherit', fontSize: '13px', fontWeight: '500', cursor: 'default' }
-        : { height: '38px', borderRadius: '11px', border: '1px solid #edf2ea', background: '#fff', color: '#3d4f40', fontFamily: 'inherit', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }
-    };
-  })];
+  const calendarBase = new Date();
+  const calendarYear = calendarBase.getFullYear();
+  const calendarMonth = calendarBase.getMonth();
+  const todayDate = calendarBase.getDate();
+  const firstWeekday = new Date(calendarYear, calendarMonth, 1).getDay();
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const monthLabel = new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(
+    new Date(calendarYear, calendarMonth, 1),
+  );
+  const calendar = [
+    ...Array.from({ length: firstWeekday }, () => ({
+      label: '',
+      pick: undefined,
+      style: { height: '38px', border: 'none', background: 'transparent', cursor: 'default' },
+    })),
+    ...Array.from({ length: daysInMonth }, (_, offset) => {
+      const dayNumber = offset + 1;
+      const isPast = dayNumber < todayDate;
+      const isSelected = dayNumber === pickDate;
+      return {
+        label: isPast ? '' : String(dayNumber),
+        pick: isPast ? undefined : () => setPickDate(dayNumber),
+        style: isSelected
+          ? { height: '38px', borderRadius: '11px', border: 'none', background: '#1a5e2e', color: '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: '800', cursor: 'pointer' }
+          : isPast
+          ? { height: '38px', border: 'none', background: 'transparent', color: 'transparent', cursor: 'default' }
+          : { height: '38px', borderRadius: '11px', border: '1px solid #edf2ea', background: '#fff', color: '#3d4f40', fontFamily: 'inherit', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }
+      };
+    }),
+  ];
   const slotList = ['10:00 AM', '11:00 AM', '12:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'];
   const slots = slotList.map((l) => ({
     label: l, pick: () => setPickTime(l),
@@ -654,11 +670,11 @@ export default function Visits() {
             <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '14.5px', 'fontWeight': '800', 'color': '#16231a'}}>{selData.name}</p><p style={{'margin': '3px 0 0', 'fontSize': '11.5px', 'color': '#8a988c', 'fontWeight': '500'}}>{selData.plot} · {selData.location}</p></div>
           </div>
 
-          <p style={{'margin': '22px 0 12px', 'fontSize': '14px', 'fontWeight': '800', 'color': '#12351d'}}>Select Date · May 2025</p>
+          <p style={{'margin': '22px 0 12px', 'fontSize': '14px', 'fontWeight': '800', 'color': '#12351d'}}>{`Select Date · ${monthLabel}`}</p>
           <div style={{'display': 'grid', 'gridTemplateColumns': 'repeat(7,1fr)', 'gap': '6px'}}>
             { weekdays.map((w, index) => (<span style={{'textAlign': 'center', 'fontSize': '10.5px', 'fontWeight': '700', 'color': '#9aa89c'}}>{w}</span>))}
             { calendar.map((d, index) => (
-              <button onClick={d.pick} style={d.style}>{d.label}</button>
+              <button key={`calendar-${index}`} onClick={d.pick} disabled={!d.pick} style={d.style}>{d.label}</button>
             ))}
           </div>
 
@@ -675,7 +691,7 @@ export default function Visits() {
             <div style={{'display': 'flex', 'justifyContent': 'space-between', 'padding': '6px 0'}}><span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>Mobile</span><span style={{'fontSize': '13px', 'color': '#16231a', 'fontWeight': '700'}}>{session?.user?.phone ? `+${String(session.user.phone).replace(/^\+/, '')}` : '—'}</span></div>
           </div>
 
-          <button onClick={confirmBook} style={{'margin': '20px 0', 'width': '100%', 'height': '56px', 'border': 'none', 'borderRadius': '16px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>{confirmLabel} · {pickedDate} May, {pickedTime}</button>
+          <button onClick={confirmBook} style={{'margin': '20px 0', 'width': '100%', 'height': '56px', 'border': 'none', 'borderRadius': '16px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>{confirmLabel} · {selectedVisitDateLabel}, {pickedTime}</button>
         </div>
       </div>
       )}
