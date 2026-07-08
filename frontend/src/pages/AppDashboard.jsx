@@ -80,10 +80,20 @@ function amenityList(property) {
   return ['Gated Security', 'Clubhouse', 'Landscaped Parks', 'Wide Roads', 'Water Supply', 'Power Backup'];
 }
 
+function loadGuestSession() {
+  try {
+    const raw = localStorage.getItem('rivan_guest_session');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function AppDashboard() {
   const navigate = useNavigate();
 
   const [session, setSession] = useState(() => loadSession());
+  const [guestSession, setGuestSession] = useState(() => loadGuestSession());
   const [stack, setStack] = useState(['home']);
   const [chip, setChip] = useState('All');
   const [myTab, setMyTab] = useState('Active');
@@ -150,39 +160,55 @@ export default function AppDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!session?.access_token || session?.user?.role !== 'customer') {
+    const isGuest = !!guestSession?.guest;
+    if (!isGuest && (!session?.access_token || session?.user?.role !== 'customer')) {
       navigate('/login', { replace: true });
     }
-  }, [navigate, session]);
+  }, [guestSession, navigate, session]);
 
   useEffect(() => {
-    if (!session?.access_token || session?.user?.role !== 'customer') return;
+    const isGuest = !!guestSession?.guest;
+    if (!isGuest && (!session?.access_token || session?.user?.role !== 'customer')) return;
     let active = true;
 
     const loadData = async () => {
       try {
         setPageLoading(true);
         setPageError('');
-        const [me, featuredApi, propertiesApi, myLandApi, notificationsApi, documentsApi, servicesApi] = await Promise.all([
-          getJson('/api/auth/me', session.access_token),
-          getJson('/api/properties/featured', session.access_token).catch(() => []),
-          getJson('/api/properties', session.access_token).catch(() => []),
-          getJson('/api/myland', session.access_token).catch(() => []),
-          getJson('/api/notifications', session.access_token).catch(() => []),
-          getJson('/api/documents', session.access_token).catch(() => []),
-          getJson('/api/services/mine', session.access_token).catch(() => []),
-        ]);
+        const token = session?.access_token;
+        const requests = isGuest
+          ? [
+              Promise.resolve({ name: 'Guest', email: '', address: '' }),
+              getJson('/api/properties/featured').catch(() => []),
+              getJson('/api/properties').catch(() => []),
+              Promise.resolve([]),
+              Promise.resolve([]),
+              Promise.resolve([]),
+              Promise.resolve([]),
+            ]
+          : [
+              getJson('/api/auth/me', token),
+              getJson('/api/properties/featured', token).catch(() => []),
+              getJson('/api/properties', token).catch(() => []),
+              getJson('/api/myland', token).catch(() => []),
+              getJson('/api/notifications', token).catch(() => []),
+              getJson('/api/documents', token).catch(() => []),
+              getJson('/api/services/mine', token).catch(() => []),
+            ];
+        const [me, featuredApi, propertiesApi, myLandApi, notificationsApi, documentsApi, servicesApi] = await Promise.all(requests);
         if (!active) return;
 
-        const nextSession = {
-          ...session,
-          user: {
-            ...session.user,
-            ...me,
-          },
-        };
-        setSession(nextSession);
-        saveSession(nextSession);
+        if (!isGuest) {
+          const nextSession = {
+            ...session,
+            user: {
+              ...session.user,
+              ...me,
+            },
+          };
+          setSession(nextSession);
+          saveSession(nextSession);
+        }
         setProfileForm({
           name: me?.name || '',
           email: me?.email || '',
@@ -207,10 +233,10 @@ export default function AppDashboard() {
     return () => {
       active = false;
     };
-  }, [session?.access_token, session?.user?.role]);
+  }, [guestSession, session?.access_token, session?.user?.role]);
 
   useEffect(() => {
-    if (!session?.access_token) return undefined;
+    if (!session?.access_token || guestSession?.guest) return undefined;
     const socket = new WebSocket(getWebSocketUrl(session.access_token));
     socket.addEventListener('open', () => setLiveStatus('live'));
     socket.addEventListener('close', () => setLiveStatus('offline'));
@@ -232,7 +258,7 @@ export default function AppDashboard() {
     });
 
     return () => socket.close();
-  }, [session?.access_token]);
+  }, [guestSession, session?.access_token]);
 
   const fmtL = (n) => {
     if (n >= 10000000) return '₹' + (n / 10000000).toFixed(2).replace(/\.00$/, '') + ' Cr';
@@ -406,6 +432,7 @@ export default function AppDashboard() {
   if (profileMenu.length) {
     profileMenu[profileMenu.length - 1].go = () => {
       clearSession();
+      localStorage.removeItem('rivan_guest_session');
       navigate('/login', { replace: true });
     };
   }

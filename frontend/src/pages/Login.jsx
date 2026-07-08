@@ -31,6 +31,19 @@ function formatPhoneLabel(digits) {
   return `+91 ${digits.slice(0, 5)} ${digits.slice(5, 10)}`.trim();
 }
 
+function startGuestBrowsing(navigate) {
+  clearSession();
+  localStorage.setItem(
+    "rivan_guest_session",
+    JSON.stringify({
+      role: "customer",
+      guest: true,
+      started_at: new Date().toISOString(),
+    }),
+  );
+  navigate("/app");
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const recaptchaRef = useRef(null);
@@ -96,6 +109,7 @@ export default function Login() {
 
   const openPortal = (nextRole) => {
     clearSession();
+    localStorage.removeItem("rivan_guest_session");
     setRole(nextRole);
     setPhone("");
     resetFlowState();
@@ -103,6 +117,7 @@ export default function Login() {
   };
 
   const backToSplash = () => {
+    localStorage.removeItem("rivan_guest_session");
     setScreen("splash");
     setPhone("");
     resetFlowState();
@@ -404,7 +419,7 @@ export default function Login() {
                   Get Started <span style={{ fontSize: "19px" }}>→</span>
                 </button>
                 <button
-                  onClick={() => navigate("/app")}
+                  onClick={() => startGuestBrowsing(navigate)}
                   style={{
                     width: "100%",
                     height: "58px",
@@ -655,13 +670,13 @@ export default function Login() {
 
               {role === "admin" && (
                 <p style={{ margin: "14px 0 0", fontSize: "13px", color: "#6d7d6f" }}>
-                  Admin access is restricted to the authorized mobile number only.
+                  Admin login is available only for the registered admin mobile number.
                 </p>
               )}
 
               {role === "agent" && (
                 <p style={{ margin: "14px 0 0", fontSize: "13px", color: "#6d7d6f" }}>
-                  Approved agent login is enabled for the registered number ending in 4345. Other numbers open the real application flow instead of fake OTP access.
+                  Approved agents can continue with OTP using the registered mobile number ending in 4345. New numbers can submit an application from here.
                 </p>
               )}
 

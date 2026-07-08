@@ -84,6 +84,18 @@ function initialsOf(name) {
     .join('') || 'AG';
 }
 
+function formatPhoneDisplay(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(-10);
+  return digits ? `+91 ${digits}` : '';
+}
+
+function liveStatusLabel(value) {
+  if (value === 'connected') return 'Live updates are on';
+  if (value === 'polling') return 'Refreshing automatically';
+  if (value === 'disconnected') return 'Reconnecting updates';
+  return 'Connecting updates';
+}
+
 function isoNowLocalDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -449,10 +461,10 @@ export default function AgentDashboard() {
               {page === 'dashboard' ? 'Agent Dashboard' : navItems.find(([id]) => id === page)?.[1] || 'Agent'}
             </h1>
             <p style={{ margin: '6px 0 0', color: '#8a9a8c', fontSize: '12px' }}>
-              Live updates: {liveStatus}
+              {liveStatusLabel(liveStatus)}
             </p>
             <p style={{ margin: '6px 0 0', color: '#6d7d6f', fontSize: '14px' }}>
-              Logged in as {user.name || 'Agent'} • realtime updates are connected through live websocket events
+              Welcome, {user.name || 'Agent'}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -470,7 +482,7 @@ export default function AgentDashboard() {
               </div>
               <div>
                 <div style={{ fontWeight: 800 }}>{user.name || 'Agent'}</div>
-                <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{user.phone ? `+91 ${user.phone}` : 'Agent'}</div>
+                <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{formatPhoneDisplay(user.phone) || 'Agent'}</div>
               </div>
             </div>
           </div>
@@ -718,7 +730,7 @@ export default function AgentDashboard() {
             <div style={{ display: 'grid', gap: '14px' }}>
               <input value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
-              <input value={user.phone ? `+91 ${user.phone}` : ''} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
+              <input value={formatPhoneDisplay(user.phone)} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
               <input value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <button onClick={saveProfile} disabled={savingProfile} style={{ height: '46px', border: 'none', borderRadius: '12px', background: '#1a5e2e', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: savingProfile ? 0.7 : 1 }}>
                 {savingProfile ? 'Saving...' : 'Save Profile'}

@@ -64,6 +64,18 @@ function initialsOf(name) {
     .join('') || 'AD';
 }
 
+function formatPhoneDisplay(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(-10);
+  return digits ? `+91 ${digits}` : '';
+}
+
+function liveStatusLabel(value) {
+  if (value === 'connected') return 'Live updates are on';
+  if (value === 'polling') return 'Refreshing automatically';
+  if (value === 'disconnected') return 'Reconnecting updates';
+  return 'Connecting updates';
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [session, setSession] = useState(() => loadSession());
@@ -381,7 +393,7 @@ export default function AdminDashboard() {
         <div>
           <img src="/assets/logo-full.png" alt="Rivan" style={{ width: '152px', height: 'auto' }} />
           <p style={{ margin: '18px 0 0', fontSize: '12px', color: '#bcd6bd', lineHeight: 1.5 }}>
-            Live admin workspace backed by the current API only.
+            Manage approvals, users, properties, bookings, and support activity from one place.
           </p>
         </div>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -421,10 +433,10 @@ export default function AdminDashboard() {
               {page === 'dashboard' ? 'Admin Dashboard' : navItems.find(([id]) => id === page)?.[1] || 'Admin'}
             </h1>
             <p style={{ margin: '6px 0 0', color: '#8a9a8c', fontSize: '12px' }}>
-              Live updates: {liveStatus}
+              {liveStatusLabel(liveStatus)}
             </p>
             <p style={{ margin: '6px 0 0', color: '#6d7d6f', fontSize: '14px' }}>
-              Signed in as {user.name || 'Admin'} • {settings.role_label || 'Admin'}
+              Welcome, {user.name || 'Admin'} • {settings.role_label || 'Admin'}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -442,7 +454,7 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <div style={{ fontWeight: 800 }}>{user.name || 'Admin'}</div>
-                <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{user.phone ? `+91 ${user.phone}` : settings.role_label || 'Admin'}</div>
+                <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{formatPhoneDisplay(user.phone) || settings.role_label || 'Admin'}</div>
               </div>
             </div>
           </div>
@@ -643,9 +655,9 @@ export default function AdminDashboard() {
         {!loading && page === 'settings' && (
           <div style={{ display: 'grid', gap: '18px' }}>
             <section style={cardStyle}>
-              <h3 style={{ marginTop: 0 }}>Live Role Settings</h3>
+              <h3 style={{ marginTop: 0 }}>Access & Role Settings</h3>
               <p style={{ marginTop: 0, color: '#6d7d6f', fontSize: '13px' }}>
-                Active backend-supported role: <strong>{settings.role_label || 'Admin'}</strong>
+                Current access level: <strong>{settings.role_label || 'Admin'}</strong>
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '12px' }}>
                 {Object.entries(settings.permissions || {}).map(([key, value]) => (
@@ -697,7 +709,7 @@ export default function AdminDashboard() {
             <div style={{ display: 'grid', gap: '14px' }}>
               <input name="name" value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input name="email" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
-              <input value={user.phone ? `+91 ${user.phone}` : ''} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
+              <input value={formatPhoneDisplay(user.phone)} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
               <input name="address" value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <button onClick={saveProfile} disabled={savingProfile} style={{ height: '46px', border: 'none', borderRadius: '12px', background: '#1a5e2e', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: savingProfile ? 0.7 : 1 }}>
                 {savingProfile ? 'Saving...' : 'Save Profile'}
