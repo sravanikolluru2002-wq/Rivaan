@@ -1,37 +1,89 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadSession, clearSession, putJson, getJson, getWebSocketUrl, saveSession } from '../lib/auth';
+import {
+  clearSession,
+  getJson,
+  getWebSocketUrl,
+  loadSession,
+  postJson,
+  putJson,
+  saveSession,
+} from '../lib/auth';
+
+const G = [
+  'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)',
+  'linear-gradient(150deg,#356b52 0%,#5a9a7a 55%,#b6d7bf 100%)',
+  'linear-gradient(150deg,#4a6b2f 0%,#84a95a 55%,#d3dfa0 100%)',
+];
+
+function initialsFromName(name) {
+  return String(name || 'CU')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'CU';
+}
+
+function formatCurrency(value) {
+  const amount = Number(value || 0);
+  return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+}
+
+function formatShortAmount(value) {
+  const amount = Number(value || 0);
+  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2).replace(/\.00$/, '')} Cr`;
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1).replace(/\.0$/, '')} L`;
+  return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+}
+
+function formatDateOnly(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
+
+function formatRelativeTime(value) {
+  if (!value) return 'Just now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const diffMs = date.getTime() - Date.now();
+  const diffMinutes = Math.round(diffMs / 60000);
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (Math.abs(diffMinutes) < 60) return rtf.format(diffMinutes, 'minute');
+  const diffHours = Math.round(diffMinutes / 60);
+  if (Math.abs(diffHours) < 24) return rtf.format(diffHours, 'hour');
+  return rtf.format(Math.round(diffHours / 24), 'day');
+}
+
+function propertyGradient(index) {
+  return G[index % G.length];
+}
+
+function propertyTag(property) {
+  const raw = String(property?.location || property?.address || '').split(',')[0].trim();
+  return raw || 'Project';
+}
+
+function propertyType(property, land) {
+  const haystack = `${property?.property_type || ''} ${property?.category || ''} ${land?.plot_number || ''}`.toLowerCase();
+  if (haystack.includes('villa')) return 'Villas';
+  if (haystack.includes('apartment') || haystack.includes('flat')) return 'Apartments';
+  return 'Plots';
+}
+
+function amenityList(property) {
+  if (Array.isArray(property?.amenities) && property.amenities.length) {
+    return property.amenities.slice(0, 6);
+  }
+  return ['Gated Security', 'Clubhouse', 'Landscaped Parks', 'Wide Roads', 'Water Supply', 'Power Backup'];
+}
 
 export default function AppDashboard() {
   const navigate = useNavigate();
-  const session = loadSession();
 
-  useEffect(() => {
-    if (!session?.access_token) {
-      navigate('/login', { replace: true });
-    }
-  }, [session, navigate]);
-
-  const user = session?.user || {};
-  const property = {
-    name: 'Sirpuram Gardens',
-    loc: 'Madhurawada, Visakhapatnam',
-    tag: 'Siripuram',
-    price: 'â‚¹4,850',
-    grad: 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)',
-    heroImage: 'Property Image 1.jpeg',
-    cardImage: 'Property Image 2.jpeg',
-    mapImage: 'Map.jpeg',
-    featuresImage: 'Features.jpeg',
-    eastImage: 'East Face.jpeg',
-    westImage: 'West Face.jpeg',
-    plot: 'Plot No. SG-120',
-    spec: '267 Sq.Yd  |  East Facing',
-    type: 'Premium Villa Plot',
-    status: 'Available',
-    rera: 'RERA/AP/PRJ/2024/001278',
-  };
-
+  const [session, setSession] = useState(() => loadSession());
   const [stack, setStack] = useState(['home']);
   const [chip, setChip] = useState('All');
   const [myTab, setMyTab] = useState('Active');
@@ -39,35 +91,29 @@ export default function AppDashboard() {
   const [exploreLoading, setExploreLoading] = useState(false);
   const [liked, setLiked] = useState({});
   const [showPaidModal, setShowPaidModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('Request Submitted');
+  const [modalMessage, setModalMessage] = useState('Your latest request has been recorded against the live backend workflow.');
   const [amount, setAmount] = useState(2000000);
   const [rate, setRate] = useState(9);
   const [years, setYears] = useState(10);
   const [toggles, setToggles] = useState({ push: true, biometric: true, promo: false, dark: false });
+  const [liveStatus, setLiveStatus] = useState('connecting');
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
+  const [featuredRows, setFeaturedRows] = useState([]);
+  const [propertyRows, setPropertyRows] = useState([]);
+  const [landRows, setLandRows] = useState([]);
+  const [notificationRows, setNotificationRows] = useState([]);
+  const [documentRows, setDocumentRows] = useState([]);
+  const [serviceRows, setServiceRows] = useState([]);
   const [profileForm, setProfileForm] = useState({
-    name: user.name || '',
-    email: user.email || '',
-    address: user.address || ''
+    name: '',
+    email: '',
+    address: '',
+    date_of_birth: '',
   });
-  const [profileSaving, setProfileSaving] = useState(false);
-
-  const handleProfileChange = (e) => {
-    setProfileForm({ ...profileForm, [e.target.name]: e.target.value });
-  };
-
-  const saveProfile = async () => {
-    setProfileSaving(true);
-    try {
-      const res = await putJson('/api/auth/profile', profileForm, session.access_token);
-      if (res.success && res.user) {
-        saveSession({ ...session, user: res.user });
-        alert('Profile saved successfully!');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Failed to save profile');
-    }
-    setProfileSaving(false);
-  };
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [contactMessage, setContactMessage] = useState('');
 
   const cur = stack[stack.length - 1];
 
@@ -93,7 +139,7 @@ export default function AppDashboard() {
     setTimeout(scrollTop, 10);
   };
   const openFirstProject = () => {
-    openProject(property);
+    openProject(featured[0] || { name: 'Sirpuram Gardens', loc: 'Achutapuram, Visakhapatnam', tag: 'Achutapuram', price: '₹0', grad: 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)' });
   };
 
   useEffect(() => {
@@ -103,6 +149,91 @@ export default function AppDashboard() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!session?.access_token || session?.user?.role !== 'customer') {
+      navigate('/login', { replace: true });
+    }
+  }, [navigate, session]);
+
+  useEffect(() => {
+    if (!session?.access_token || session?.user?.role !== 'customer') return;
+    let active = true;
+
+    const loadData = async () => {
+      try {
+        setPageLoading(true);
+        setPageError('');
+        const [me, featuredApi, propertiesApi, myLandApi, notificationsApi, documentsApi, servicesApi] = await Promise.all([
+          getJson('/api/auth/me', session.access_token),
+          getJson('/api/properties/featured', session.access_token).catch(() => []),
+          getJson('/api/properties', session.access_token).catch(() => []),
+          getJson('/api/myland', session.access_token).catch(() => []),
+          getJson('/api/notifications', session.access_token).catch(() => []),
+          getJson('/api/documents', session.access_token).catch(() => []),
+          getJson('/api/services/mine', session.access_token).catch(() => []),
+        ]);
+        if (!active) return;
+
+        const nextSession = {
+          ...session,
+          user: {
+            ...session.user,
+            ...me,
+          },
+        };
+        setSession(nextSession);
+        saveSession(nextSession);
+        setProfileForm({
+          name: me?.name || '',
+          email: me?.email || '',
+          address: me?.address || me?.city || '',
+          date_of_birth: me?.date_of_birth || '',
+        });
+        setFeaturedRows(Array.isArray(featuredApi) ? featuredApi : []);
+        setPropertyRows(Array.isArray(propertiesApi) ? propertiesApi : []);
+        setLandRows(Array.isArray(myLandApi) ? myLandApi : []);
+        setNotificationRows(Array.isArray(notificationsApi) ? notificationsApi : []);
+        setDocumentRows(Array.isArray(documentsApi) ? documentsApi : []);
+        setServiceRows(Array.isArray(servicesApi) ? servicesApi : []);
+      } catch (error) {
+        if (!active) return;
+        setPageError(error?.message || 'Unable to load customer dashboard.');
+      } finally {
+        if (active) setPageLoading(false);
+      }
+    };
+
+    loadData();
+    return () => {
+      active = false;
+    };
+  }, [session?.access_token, session?.user?.role]);
+
+  useEffect(() => {
+    if (!session?.access_token) return undefined;
+    const socket = new WebSocket(getWebSocketUrl(session.access_token));
+    socket.addEventListener('open', () => setLiveStatus('live'));
+    socket.addEventListener('close', () => setLiveStatus('offline'));
+    socket.addEventListener('error', () => setLiveStatus('offline'));
+    socket.addEventListener('message', async (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (['notification.created', 'notification.read', 'visit.updated', 'booking.updated', 'service_request.updated'].includes(data?.event)) {
+          const [notificationsApi, myLandApi] = await Promise.all([
+            getJson('/api/notifications', session.access_token).catch(() => []),
+            getJson('/api/myland', session.access_token).catch(() => []),
+          ]);
+          setNotificationRows(Array.isArray(notificationsApi) ? notificationsApi : []);
+          setLandRows(Array.isArray(myLandApi) ? myLandApi : []);
+        }
+      } catch {
+        setLiveStatus('offline');
+      }
+    });
+
+    return () => socket.close();
+  }, [session?.access_token]);
+
   const fmtL = (n) => {
     if (n >= 10000000) return '₹' + (n / 10000000).toFixed(2).replace(/\.00$/, '') + ' Cr';
     return '₹' + (n / 100000).toFixed(1).replace(/\.0$/, '') + ' L';
@@ -111,15 +242,16 @@ export default function AppDashboard() {
     return '₹' + Math.round(n).toLocaleString('en-IN');
   };
 
-  const G = [
-    'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)',
-    'linear-gradient(150deg,#356b52 0%,#5a9a7a 55%,#b6d7bf 100%)',
-    'linear-gradient(150deg,#4a6b2f 0%,#84a95a 55%,#d3dfa0 100%)',
+  const featured = [
+    { name: 'Emerald Estate', loc: 'Visakhapatnam', tag: 'Vizag', price: '₹4,500', grad: G[0] },
+    { name: 'Emerald Green City', loc: 'Anakapalle', tag: 'Anakapalle', price: '₹3,200', grad: G[1] },
+  ].map((f) => ({ ...f, open: () => openProject(f) }));
+
+  const nearbyAll = [
+    { name: 'Emerald Estate', loc: 'Visakhapatnam', price: '₹4,500', type: 'Villas', grad: G[0] },
+    { name: 'Emerald Green City', loc: 'Anakapalle', price: '₹3,200', type: 'Plots', grad: G[1] },
+    { name: 'Emerald Springs', loc: 'Yendada', price: '₹5,200', type: 'Apartments', grad: G[2] },
   ];
-
-  const featured = [{ ...property }].map((f) => ({ ...f, open: () => openProject(f) }));
-
-  const nearbyAll = [{ ...property, type: 'Plots' }];
   const nearby = nearbyAll
     .filter((n) => chip === 'All' || n.type === chip)
     .map((n) => {
@@ -136,6 +268,28 @@ export default function AppDashboard() {
       };
     });
 
+  featured.splice(0, featured.length, {
+    name: 'Sirpuram Gardens',
+    loc: 'Achutapuram, Visakhapatnam',
+    tag: 'Achutapuram',
+    price: 'â‚¹0',
+    grad: G[0],
+    open: () => openProject({
+      name: 'Sirpuram Gardens',
+      loc: 'Achutapuram, Visakhapatnam',
+      tag: 'Achutapuram',
+      price: 'â‚¹0',
+      grad: G[0],
+    }),
+  });
+  nearbyAll.splice(0, nearbyAll.length, {
+    name: 'Sirpuram Gardens',
+    loc: 'Achutapuram, Visakhapatnam',
+    price: 'â‚¹0',
+    type: 'Plots',
+    grad: G[0],
+  });
+
   const getChip = (l) => ({
     label: l,
     pick: () => setChip(l),
@@ -144,7 +298,7 @@ export default function AppDashboard() {
         ? { flex: 'none', padding: '9px 18px', borderRadius: '12px', border: 'none', background: '#1a5e2e', color: '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }
         : { flex: 'none', padding: '9px 18px', borderRadius: '12px', border: '1px solid #e2e8e0', background: '#fff', color: '#3d4f40', fontFamily: 'inherit', fontSize: '13px', fontWeight: '600', cursor: 'pointer' },
   });
-  const chips = ['All', 'Plots'].map(getChip);
+  const chips = ['All', 'Plots', 'Villas', 'Apartments'].map(getChip);
 
   const filterIcons = [
     { label: 'Filter', icon: 'M4 6h16M7 12h10M10 18h4' },
@@ -165,15 +319,66 @@ export default function AppDashboard() {
   const myTabs = ['All', 'Active', 'Completed'].map(getMyTab);
 
   const propsAll = [
-    { name: property.name, plot: property.plot, spec: property.spec, date: '12 Jan 2025', pct: 62, status: 'Active', grad: property.grad },
+    { name: 'Emerald Estate', plot: 'Plot No. A-120', spec: '200 Sq.Yd  |  East Facing', date: '12 Jan 2025', pct: 60, status: 'Active', grad: G[0] },
+    { name: 'Emerald Green City', plot: 'Plot No. B-45', spec: '150 Sq.Yd  |  West Facing', date: '02 Mar 2025', pct: 40, status: 'Active', grad: G[1] },
   ];
+  propsAll.splice(0, propsAll.length);
   const shownProps = myTab === 'Completed' ? propsAll.filter((p) => p.status === 'Completed') : myTab === 'Active' ? propsAll.filter((p) => p.status === 'Active') : propsAll;
   const myProps = shownProps.map((m) => ({
     ...m,
     width: m.pct + '%',
     pct: m.pct + '%',
-    open: () => openProject(property),
+    open: () => openProject({ name: m.name, loc: 'Visakhapatnam', price: '₹4,500', grad: m.grad }),
   }));
+
+  if (featuredRows.length || propertyRows.length) {
+    const liveFeatured = (featuredRows.length ? featuredRows : propertyRows.slice(0, 2)).map((property, index) => ({
+      id: property.id || `featured-${index}`,
+      name: property.name || 'Sirpuram Gardens',
+      loc: property.location || property.address || 'Achutapuram, Visakhapatnam',
+      tag: propertyTag(property),
+      price: formatCurrency(property.starting_price || property.base_price || property.market_value || 0),
+      grad: propertyGradient(index),
+      property,
+      open: () => openProject({
+        id: property.id || `featured-${index}`,
+        name: property.name || 'Sirpuram Gardens',
+        loc: property.location || property.address || 'Achutapuram, Visakhapatnam',
+        tag: propertyTag(property),
+        price: formatCurrency(property.starting_price || property.base_price || property.market_value || 0),
+        grad: propertyGradient(index),
+        property,
+      }),
+    }));
+    featured.splice(0, featured.length, ...liveFeatured);
+  }
+
+  if (propertyRows.length) {
+    nearbyAll.splice(0, nearbyAll.length, ...propertyRows.map((property, index) => ({
+      id: property.id || `property-${index}`,
+      name: property.name || 'Sirpuram Gardens',
+      loc: property.location || property.address || 'Achutapuram, Visakhapatnam',
+      price: formatCurrency(property.starting_price || property.base_price || property.market_value || 0),
+      type: propertyType(property),
+      grad: propertyGradient(index),
+      property,
+    })));
+  }
+
+  if (landRows.length) {
+    propsAll.splice(0, propsAll.length, ...landRows.map((land, index) => ({
+      id: land.id || `land-${index}`,
+      name: land.property?.name || land.property_name || 'Sirpuram Gardens',
+      plot: `Plot No. ${land.plot_number || land.unit_number || 'Allocated'}`,
+      spec: `${land.area || land.plot_area || '—'}  |  ${land.facing || '—'} Facing`,
+      date: formatDateOnly(land.created_at),
+      pct: Math.round((Number(land.payment_progress || 0)) * 100),
+      status: land.purchase_complete ? 'Completed' : 'Active',
+      grad: propertyGradient(index),
+      loc: land.property?.location || land.location || 'Achutapuram, Visakhapatnam',
+      price: formatCurrency(land.property?.starting_price || land.market_value || land.total_amount || 0),
+    })));
+  }
 
   const iconBg = '#eef6ea';
   const pm = (icon, label, goName, extra = {}) => ({
@@ -184,7 +389,7 @@ export default function AppDashboard() {
     textColor: extra.textColor || '#16231a',
     badge: !!extra.badge,
     badgeText: extra.badge || '',
-    go: typeof goName === 'function' ? goName : (goName ? () => go(goName) : () => {}),
+    go: goName ? () => go(goName) : () => {},
   });
   const profileMenuRaw = [
     pm('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M5 20c0-3.5 3-6 7-6s7 2.5 7 6', 'Personal Details', 'personal'),
@@ -193,11 +398,17 @@ export default function AppDashboard() {
     pm('M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M3 20c0-3 2.5-5 6-5s6 2 6 5M17 6a3 3 0 0 1 0 6', 'Nominee Details', null),
     pm('M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 0 0 4 0', 'Notifications', 'notif'),
     pm('M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M9.5 9a2.5 2.5 0 0 1 4 2c0 1.5-2 2-2 3.5M12 17h.01', 'Help Center', null),
-    pm('M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z', 'Support Tickets', null),
+    pm('M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z', 'Service Requests', null),
     pm('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M12 3v2M12 19v2M4 12H2M22 12h-2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4', 'Settings', 'settings'),
-    pm('M15 4h4v16h-4M10 8l-4 4 4 4M6 12h9', 'Logout', () => { clearSession(); window.location.href = '/login'; }, { iconBg: '#fdecec', iconColor: '#c0392b', textColor: '#c0392b' }),
+    pm('M15 4h4v16h-4M10 8l-4 4 4 4M6 12h9', 'Logout', null, { iconBg: '#fdecec', iconColor: '#c0392b', textColor: '#c0392b' }),
   ];
   const profileMenu = profileMenuRaw.map((i, idx) => ({ ...i, border: idx === 0 ? 'none' : '1px solid #f0f4ee' }));
+  if (profileMenu.length) {
+    profileMenu[profileMenu.length - 1].go = () => {
+      clearSession();
+      navigate('/login', { replace: true });
+    };
+  }
 
   const payLinks = [
     { icon: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h4', label: 'Payment History', go: () => go('payhistory') },
@@ -206,25 +417,49 @@ export default function AppDashboard() {
     { icon: 'M6 3h12v18H6zM9 7h6M8 11h.01M12 11h.01M16 11v6M8 15h.01M12 15h.01', label: 'EMI Calculator', go: () => go('emi') },
   ].map((p, idx) => ({ ...p, border: idx === 0 ? 'none' : '1px solid #f0f4ee' }));
 
-  const selData = sel || property;
+  const selData = sel || { name: 'Emerald Estate', loc: 'Visakhapatnam', price: '₹4,500', grad: G[0] };
   const specGrid = [
-    { k: 'Plot Size', v: '267 Sq.Yd' },
+    { k: 'Plot Size', v: '200 Sq.Yd' },
     { k: 'Facing', v: 'East' },
-    { k: 'Type', v: property.type },
-    { k: 'Status', v: property.status },
+    { k: 'Type', v: 'Villa Plot' },
+    { k: 'Status', v: 'Available' },
   ];
   const skeletons = [1, 2, 3];
   const exploreReady = !exploreLoading;
   const myEmpty = shownProps.length === 0;
   const myHasList = shownProps.length > 0;
   const amountLabel = fmtL(amount);
-  const amenities = ['Grand Entrance Arch', '40 ft CC Roads', 'Avenue Plantation', 'Water Line Provision', 'Electricity Provision', 'Compound Fencing'];
+  const amenities = ['Gated Security', 'Clubhouse', 'Landscaped Parks', 'Wide Roads', 'Water Supply', 'Power Backup'];
+  const selectedProperty = selData.property
+    || propertyRows.find((item) => item.id === selData.id)
+    || featuredRows.find((item) => item.id === selData.id)
+    || propertyRows[0]
+    || featuredRows[0]
+    || null;
+  const selectedImage = selectedProperty?.images?.[0] || selectedProperty?.image || '';
+  if (selectedProperty) {
+    selData.name = selectedProperty.name || selData.name;
+    selData.loc = selectedProperty.location || selectedProperty.address || selData.loc;
+    selData.price = formatCurrency(selectedProperty.starting_price || selectedProperty.base_price || selectedProperty.market_value || 0);
+    selData.property = selectedProperty;
+  }
+  specGrid.splice(0, specGrid.length,
+    { k: 'Plot Size', v: selectedProperty?.plot_size || selectedProperty?.area_range || selectedProperty?.plot_area || 'Available in live records' },
+    { k: 'Facing', v: selectedProperty?.facing || 'Multiple options' },
+    { k: 'Type', v: selectedProperty?.property_type || selectedProperty?.category || 'Plot / Land' },
+    { k: 'Status', v: selectedProperty?.availability_label || 'Live inventory' },
+  );
+  amenities.splice(0, amenities.length, ...amenityList(selectedProperty));
 
   const history = [
+    { title: 'Installment #6', date: '12 May 2025', mode: 'UPI', amt: '₹1,00,000' },
+    { title: 'Installment #5', date: '12 Apr 2025', mode: 'Net Banking', amt: '₹1,00,000' },
+    { title: 'Installment #4', date: '12 Mar 2025', mode: 'UPI', amt: '₹1,00,000' },
     { title: 'Booking Amount', date: '12 Jan 2025', mode: 'Cheque', amt: '₹2,00,000' },
     { title: 'Token Advance', date: '02 Jan 2025', mode: 'UPI', amt: '₹50,000' },
-    { title: 'Development Installment', date: '12 Mar 2025', mode: 'UPI', amt: '₹1,50,000' },
   ];
+
+  history.splice(0, history.length);
 
   const P = amount,
     r = rate / 1200,
@@ -236,58 +471,14 @@ export default function AppDashboard() {
   const emiTotal = fmtL(total);
   const emiInterest = fmtL(interest);
 
-  const [notifs, setNotifs] = useState([]);
-  const mapNotification = (n) => ({
-    id: n.id,
-    title: n.title || 'Notification',
-    body: n.body || n.message || '',
-    time: n.created_at
-      ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(n.created_at))
-      : '',
-    unread: !(n.read ?? n.is_read),
-    icon: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18',
-    iconColor: '#1a5e2e',
-    iconBg: '#eef6ea',
-    bg: !(n.read ?? n.is_read) ? '#f4faf1' : '#fff'
-  });
-  useEffect(() => {
-    const fetchNotifs = async () => {
-      try {
-        const data = await getJson('/api/notifications', session.access_token);
-        const mapped = data.map(mapNotification);
-        setNotifs(mapped);
-      } catch (err) {
-        console.error("Failed to fetch notifications:", err);
-      }
-    };
-    if (session?.access_token) {
-      fetchNotifs();
-    }
-  }, [session]);
+  const notifs = [
+    { title: 'Payment Due Reminder', body: 'Your next installment of ₹1,00,000 is due on 12 Jun 2025.', time: '2 hours ago', unread: true, icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', iconColor: '#e2822a', iconBg: '#fdefe0' },
+    { title: 'New Project Launched', body: 'Emerald Springs at Yendada is now open for bookings.', time: 'Yesterday', unread: true, icon: 'M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5', iconColor: '#1a5e2e', iconBg: '#eef6ea' },
+    { title: 'Payment Received', body: 'We received your installment #6 of ₹1,00,000. Thank you!', time: '2 days ago', unread: false, icon: 'M5 12l4 4 10-10', iconColor: '#1a5e2e', iconBg: '#eef6ea' },
+    { title: 'KYC Verified', body: 'Your identity documents have been successfully verified.', time: '5 days ago', unread: false, icon: 'M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z', iconColor: '#1a5e2e', iconBg: '#eef6ea' },
+  ].map((n) => ({ ...n, bg: n.unread ? '#f4faf1' : '#fff' }));
 
-  useEffect(() => {
-    if (!session?.access_token) return undefined;
-    const ws = new WebSocket(getWebSocketUrl(session.access_token));
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message?.event === 'notification.created' && message?.payload?.notification) {
-          setNotifs((current) => [mapNotification(message.payload.notification), ...current]);
-        } else if (message?.event === 'notification.read') {
-          setNotifs((current) =>
-            current.map((item) =>
-              message.payload?.all || item.id === message.payload?.notification_id
-                ? { ...item, unread: false, bg: '#fff' }
-                : item,
-            ),
-          );
-        }
-      } catch {}
-    };
-
-    return () => ws.close();
-  }, [session?.access_token]);
+  notifs.splice(0, notifs.length);
 
   const tg = (key, label, icon, idx) => {
     const on = toggles[key];
@@ -297,7 +488,7 @@ export default function AppDashboard() {
       border: idx === 0 ? 'none' : '1px solid #f0f4ee',
       track: on ? '#1a5e2e' : '#d4ddd0',
       knob: on ? '23px' : '3px',
-      toggle: () => setToggles((st) => ({ ...st, [key]: !st[key] })),
+      toggle: () => openNotice('Backend Preference Pending', `${label} is not persisted by the current backend release yet, so it has been left unchanged instead of acting like fake local state.`),
     };
   };
   const togglesArr = [
@@ -313,10 +504,14 @@ export default function AppDashboard() {
     { icon: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 8v5M12 16h.01', label: 'About Rivan', value: 'v1.0.0' },
   ].map((x, idx) => ({ ...x, border: idx === 0 ? 'none' : '1px solid #f0f4ee' }));
 
+  settingLinks.forEach((item) => {
+    item.go = () => openNotice(item.label, `${item.label} is preserved for UI parity, but this release does not expose a separate backend flow for it yet.`);
+  });
+
   const personalFields = [
-    { label: 'Full Name', value: user.name || user.full_name || 'Rivan User' },
-    { label: 'Phone Number', value: user.phone ? '+91 ' + user.phone : 'N/A' },
-    { label: 'Email Address', value: user.email || 'customer@rivan.com' },
+    { label: 'Full Name', value: 'Sravani K' },
+    { label: 'Phone Number', value: '+91 98765 43210' },
+    { label: 'Email Address', value: 'sravani@gmail.com' },
     { label: 'City', value: 'Visakhapatnam' },
     { label: 'Date of Birth', value: '14 Aug 1996' },
   ];
@@ -325,6 +520,52 @@ export default function AppDashboard() {
     { name: 'PAN Card', num: 'ABCPX••••K' },
     { name: 'Address Proof', num: 'Electricity Bill' },
   ];
+
+  if (landRows.length) {
+    history.splice(0, history.length, ...landRows.map((land, index) => ({
+      title: land.purchase_complete ? 'Registration Complete' : 'Purchase Progress',
+      date: formatDateOnly(land.created_at),
+      mode: land.purchase_complete ? 'Completed' : 'In Progress',
+      amt: formatCurrency(land.paid_amount || 0),
+      id: land.id || `history-${index}`,
+    })));
+  }
+
+  if (notificationRows.length) {
+    notifs.splice(0, notifs.length, ...notificationRows.map((item) => {
+      const type = String(item.type || '').toLowerCase();
+      const iconMap = {
+        booking: ['M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', '#e2822a', '#fdefe0'],
+        service: ['M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z', '#1a5e2e', '#eef6ea'],
+        visit: ['M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M9 14l2 2 4-4', '#1a5e2e', '#eef6ea'],
+      };
+      const [icon, iconColor, iconBg] = iconMap[type] || ['M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z', '#1a5e2e', '#eef6ea'];
+      return {
+        ...item,
+        time: formatRelativeTime(item.updated_at || item.created_at),
+        unread: !item.read,
+        icon,
+        iconColor,
+        iconBg,
+        bg: !item.read ? '#f4faf1' : '#fff',
+      };
+    }));
+  }
+
+  personalFields.splice(0, personalFields.length, ...[
+    { label: 'Full Name', value: profileForm.name || session?.user?.name || '' },
+    { label: 'Phone Number', value: session?.user?.phone ? `+${String(session.user.phone).replace(/^\+/, '')}` : '' },
+    { label: 'Email Address', value: profileForm.email || '' },
+    { label: 'City', value: profileForm.address || '' },
+    { label: 'Date of Birth', value: profileForm.date_of_birth || '' },
+  ]);
+
+  if (documentRows.length) {
+    kycDocs.splice(0, kycDocs.length, ...documentRows.slice(0, 3).map((doc) => ({
+      name: doc.title || doc.name || 'Property Document',
+      num: doc.document_number || doc.reference_number || doc.url || 'Available in your records',
+    })));
+  }
 
   const tabOf = {
     home: 'home',
@@ -386,8 +627,8 @@ export default function AppDashboard() {
     { icon: 'M6 4h12v16l-6-3-6 3z', label: 'Contact Sales', go: () => go('contact') },
   ];
 
-  const userName = String(user.name || user.full_name || 'Rivan User').split(' ')[0];
-  const initials = String(user.name || user.full_name || 'RU').substring(0, 2).toUpperCase();
+  const userName = String(session?.user?.name || profileForm.name || 'Customer').trim();
+  const initials = initialsFromName(userName);
   const statusColor = greenHeader && cur !== 'propDetail' ? '#ffffff' : cur === 'propDetail' ? '#ffffff' : '#12351d';
   const scrollPad = showNav ? '86px' : '0px';
 
@@ -418,8 +659,116 @@ export default function AppDashboard() {
     setExploreLoading(true);
     setTimeout(() => setExploreLoading(false), 1300);
   };
-  const payNow = () => setShowPaidModal(true);
+  const payNow = () => openNotice('Payments Unavailable', 'Payments are intentionally excluded from this release. Use live booking requests, visits, documents, notifications, and service workflows for production testing.');
+  const requestBooking = async () => {
+    if (!session?.access_token) return;
+    try {
+      const propertyId = selData?.property?.id || featuredRows[0]?.id || propertyRows[0]?.id;
+      if (!propertyId) {
+        setShowPaidModal(true);
+        return;
+      }
+      const plots = await getJson(`/api/properties/${propertyId}/plots`, session.access_token).catch(() => []);
+      const plot = Array.isArray(plots) ? plots.find((item) => ['available', 'reserved'].includes(String(item.status || '').toLowerCase())) : null;
+      if (!plot?.id) {
+        setShowPaidModal(true);
+        return;
+      }
+      await postJson('/api/bookings', {
+        plot_id: plot.id,
+        name: session.user?.name || userName || 'Customer',
+        mobile: session.user?.phone || '',
+        whatsapp: session.user?.phone || '',
+        message: `Booking request for ${selData?.name || 'Sirpuram Gardens'}`,
+      }, session.access_token);
+      const [nextLands, nextNotifications] = await Promise.all([
+        getJson('/api/myland', session.access_token).catch(() => []),
+        getJson('/api/notifications', session.access_token).catch(() => []),
+      ]);
+      setLandRows(Array.isArray(nextLands) ? nextLands : []);
+      setNotificationRows(Array.isArray(nextNotifications) ? nextNotifications : []);
+      setShowPaidModal(true);
+    } catch {
+      setShowPaidModal(true);
+    }
+  };
+  const saveProfile = async () => {
+    if (!session?.access_token) return;
+    try {
+      setSavingProfile(true);
+      const updated = await putJson('/api/auth/profile', {
+        name: profileForm.name,
+        email: profileForm.email || null,
+        address: profileForm.address || null,
+        date_of_birth: profileForm.date_of_birth || null,
+      }, session.access_token);
+      const nextSession = { ...session, user: { ...session.user, ...updated } };
+      setSession(nextSession);
+      saveSession(nextSession);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+  const openNotice = (title, message) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setShowPaidModal(true);
+  };
+  const submitContactSales = async (requestChannel = 'contact_sales', overrideMessage = '') => {
+    if (!session?.access_token) return;
+    const message = String(overrideMessage || contactMessage || '').trim();
+    if (!message) {
+      openNotice('Add a Message', 'Enter a short note so the sales team knows what you need.');
+      return;
+    }
+    try {
+      await postJson('/api/contact-sales', {
+        property_id: selectedProperty?.id || null,
+        subject: requestChannel === 'callback' ? 'Request Callback' : requestChannel === 'booking_interest' ? 'Booking Interest' : 'Sales Inquiry',
+        message,
+        contact: session.user?.phone || '',
+        preferred_date: new Date().toISOString().slice(0, 10),
+        request_channel: requestChannel,
+      }, session.access_token);
+      const [nextNotifications, nextServices] = await Promise.all([
+        getJson('/api/notifications', session.access_token).catch(() => []),
+        getJson('/api/services/mine', session.access_token).catch(() => []),
+      ]);
+      setNotificationRows(Array.isArray(nextNotifications) ? nextNotifications : []);
+      setServiceRows(Array.isArray(nextServices) ? nextServices : []);
+      setContactMessage('');
+      openNotice('Request Submitted', 'Your live sales request was submitted successfully and is now visible to the backend workflow.');
+    } catch (error) {
+      openNotice('Request Failed', error?.message || 'We could not submit the request right now.');
+    }
+  };
   const closeModal = () => setShowPaidModal(false);
+  const contactActions = [
+    {
+      label: 'Request Callback',
+      sub: session?.user?.phone ? `Use ${String(session.user.phone).replace(/^\+/, '+')}` : 'Create a live callback request',
+      color: '#1a5e2e',
+      bg: '#eef6ea',
+      icon: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.07 3.18 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72c.13 1.01.36 2 .71 2.96a2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.96.35 1.95.58 2.96.71A2 2 0 0 1 21 16z',
+      action: () => submitContactSales('callback', `Please call me back regarding ${selectedProperty?.name || 'the property'} .`),
+    },
+    {
+      label: 'Sales Inquiry',
+      sub: 'Create a live backend-tracked inquiry',
+      color: '#e2822a',
+      bg: '#fdefe0',
+      icon: 'M4 6h16v12H4zM4 7l8 6 8-6',
+      action: () => submitContactSales('email', contactMessage || `I need more details about ${selectedProperty?.name || 'this property'}.`),
+    },
+    {
+      label: 'WhatsApp Request',
+      sub: 'Submit a live follow-up request',
+      color: '#25D366',
+      bg: '#edfbf1',
+      icon: 'M4 5h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z',
+      action: () => submitContactSales('whatsapp', contactMessage || `Please continue the conversation on WhatsApp for ${selectedProperty?.name || 'this property'}.`),
+    },
+  ];
 
   return (
 
@@ -435,7 +784,7 @@ export default function AppDashboard() {
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
             <div>
               <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>Hello, {userName} 👋</p>
-              <p style={{'margin': '4px 0 0', 'fontSize': '13px', 'color': '#bcd6bd', 'fontWeight': '500'}}>Explore the live details for Sirpuram Gardens</p>
+              <p style={{'margin': '4px 0 0', 'fontSize': '13px', 'color': '#bcd6bd', 'fontWeight': '500'}}>Let's find your dream property</p>
             </div>
             <img src="assets/logo-mark-white.png" alt="Rivan" style={{'height': '34px', 'width': 'auto', 'opacity': '.95'}} />
           </div>
@@ -450,11 +799,12 @@ export default function AppDashboard() {
 
         <div style={{'padding': '20px 22px 0'}}>
           {/* hero banner */}
-          <div onClick={openFirstProject} style={{'position': 'relative', 'height': '172px', 'borderRadius': '22px', 'overflow': 'hidden', 'cursor': 'pointer', 'backgroundImage': `linear-gradient(180deg,rgba(9,32,16,.05),rgba(9,32,16,.55)), url("${property.heroImage}")`, 'backgroundSize': 'cover', 'backgroundPosition': 'center', 'boxShadow': '0 16px 34px -18px rgba(18,53,29,.6)'}}>
+          <div onClick={openFirstProject} style={{'position': 'relative', 'height': '172px', 'borderRadius': '22px', 'overflow': 'hidden', 'cursor': 'pointer', 'background': selectedImage ? `center / cover no-repeat url(${selectedImage})` : 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 52%,#c7dc9c 100%)', 'boxShadow': '0 16px 34px -18px rgba(18,53,29,.6)'}}>
+            <div style={{'position': 'absolute', 'inset': '0', 'background': 'radial-gradient(80% 60% at 78% 22%,rgba(255,247,214,.35),transparent 60%),linear-gradient(180deg,rgba(9,32,16,.12),rgba(9,32,16,.62))'}}></div>
             <div style={{'position': 'absolute', 'inset': '0', 'padding': '20px', 'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'space-between'}}>
               <div>
-                <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>{property.name}</p>
-                <p style={{'margin': '3px 0 0', 'fontSize': '12.5px', 'color': '#eaf3e4', 'fontWeight': '500'}}>{property.type}</p>
+                <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>{selectedProperty?.name || 'Sirpuram Gardens'}</p>
+                <p style={{'margin': '3px 0 0', 'fontSize': '12.5px', 'color': '#eaf3e4', 'fontWeight': '500'}}>{selectedProperty?.property_type || selectedProperty?.category || 'Live property details'}</p>
               </div>
               <span style={{'alignSelf': 'flex-start', 'background': '#fff', 'color': '#12351d', 'fontSize': '12.5px', 'fontWeight': '700', 'padding': '9px 16px', 'borderRadius': '11px'}}>Explore Now →</span>
             </div>
@@ -462,13 +812,13 @@ export default function AppDashboard() {
 
           {/* featured */}
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'margin': '24px 0 12px'}}>
-            <span style={{'fontSize': '16px', 'fontWeight': '800', 'color': '#12351d'}}>Featured Property</span>
-            <a onClick={goExplore} style={{'fontSize': '13px', 'fontWeight': '700', 'color': '#e2822a', 'cursor': 'pointer'}}>Open Details</a>
+            <span style={{'fontSize': '16px', 'fontWeight': '800', 'color': '#12351d'}}>Featured Projects</span>
+            <a onClick={goExplore} style={{'fontSize': '13px', 'fontWeight': '700', 'color': '#e2822a', 'cursor': 'pointer'}}>View All</a>
           </div>
           <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '13px'}}>
             { featured.map((f, index) => (
               <div onClick={f.open} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
-                <div style={{height: '96px', backgroundImage: `url("${property.cardImage}")`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative'}}>
+                <div style={{height: '96px', background: f.grad, position: 'relative'}}>
                   <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>📍 {f.tag}</span>
                 </div>
                 <div style={{'padding': '11px 12px 13px'}}>
@@ -529,7 +879,7 @@ export default function AppDashboard() {
           </div>
 
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'margin': '18px 0 12px'}}>
-            <span style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d'}}>Property Overview</span>
+            <span style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d'}}>Projects Near You</span>
             <a onClick={refreshExplore} style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#e2822a', 'cursor': 'pointer'}}>↻ Refresh</a>
           </div>
 
@@ -554,7 +904,7 @@ export default function AppDashboard() {
           <div style={{'display': 'flex', 'flexDirection': 'column', 'gap': '12px'}}>
             { nearby.map((n, index) => (
               <div onClick={n.open} style={{'display': 'flex', 'gap': '13px', 'background': '#fff', 'borderRadius': '16px', 'padding': '12px', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -22px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
-                <div style={{width: '82px', height: '82px', borderRadius: '13px', backgroundImage: `url("${property.cardImage}")`, backgroundSize: 'cover', backgroundPosition: 'center', flex: 'none'}}></div>
+                <div style={{width: '82px', height: '82px', borderRadius: '13px', background: n.grad, flex: 'none'}}></div>
                 <div style={{'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center'}}>
                   <p style={{'margin': '0', 'fontSize': '14.5px', 'fontWeight': '700', 'color': '#16231a'}}>{n.name}</p>
                   <p style={{'margin': '3px 0 8px', 'fontSize': '12px', 'color': '#8a988c', 'fontWeight': '500'}}>{n.loc}</p>
@@ -579,11 +929,11 @@ export default function AppDashboard() {
           <div style={{'display': 'flex', 'gap': '12px'}}>
             <div style={{'flex': '1', 'background': 'rgba(255,255,255,.1)', 'border': '1px solid rgba(255,255,255,.16)', 'borderRadius': '16px', 'padding': '14px'}}>
               <p style={{'margin': '0', 'fontSize': '11.5px', 'color': '#bcd6bd', 'fontWeight': '600'}}>Total Properties</p>
-              <p style={{'margin': '6px 0 0', 'fontSize': '22px', 'fontWeight': '800', 'color': '#fff'}}>1</p>
+              <p style={{'margin': '6px 0 0', 'fontSize': '22px', 'fontWeight': '800', 'color': '#fff'}}>{propsAll.length}</p>
             </div>
             <div style={{'flex': '1', 'background': 'rgba(255,255,255,.1)', 'border': '1px solid rgba(255,255,255,.16)', 'borderRadius': '16px', 'padding': '14px'}}>
               <p style={{'margin': '0', 'fontSize': '11.5px', 'color': '#bcd6bd', 'fontWeight': '600'}}>Total Investment</p>
-              <p style={{'margin': '6px 0 0', 'fontSize': '22px', 'fontWeight': '800', 'color': '#fff'}}>₹12,94,950</p>
+              <p style={{'margin': '6px 0 0', 'fontSize': '22px', 'fontWeight': '800', 'color': '#fff'}}>{formatShortAmount(landRows.reduce((sum, land) => sum + Number(land.total_amount || 0), 0))}</p>
             </div>
           </div>
         </div>
@@ -610,7 +960,7 @@ export default function AppDashboard() {
             { myProps.map((m, index) => (
               <div onClick={m.open} style={{'background': '#fff', 'borderRadius': '20px', 'padding': '14px', 'border': '1px solid #eef3ec', 'boxShadow': '0 12px 30px -22px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
                 <div style={{'display': 'flex', 'gap': '13px'}}>
-                  <div style={{width: '88px', height: '88px', borderRadius: '14px', backgroundImage: `url("${property.cardImage}")`, backgroundSize: 'cover', backgroundPosition: 'center', flex: 'none'}}></div>
+                  <div style={{width: '88px', height: '88px', borderRadius: '14px', background: m.grad, flex: 'none'}}></div>
                   <div style={{'flex': '1'}}>
                     <p style={{'margin': '0', 'fontSize': '15px', 'fontWeight': '800', 'color': '#16231a'}}>{m.name}</p>
                     <p style={{'margin': '3px 0 6px', 'fontSize': '13px', 'fontWeight': '700', 'color': '#3d4f40'}}>{m.plot}</p>
@@ -644,7 +994,7 @@ export default function AppDashboard() {
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
             <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '14px'}}>
               <button onClick={goHome} style={{'width': '38px', 'height': '38px', 'borderRadius': '12px', 'border': 'none', 'background': 'rgba(255,255,255,.14)', 'color': '#fff', 'fontSize': '18px', 'cursor': 'pointer'}}>←</button>
-              <span style={{'fontSize': '18px', 'fontWeight': '800', 'color': '#fff'}}>Sirpuram Gardens Payments</span>
+              <span style={{'fontSize': '18px', 'fontWeight': '800', 'color': '#fff'}}>Payments Overview</span>
             </div>
             <button onClick={goNotif} style={{'width': '38px', 'height': '38px', 'borderRadius': '12px', 'border': 'none', 'background': 'rgba(255,255,255,.14)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'cursor': 'pointer'}}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 0 0 4 0"/></svg>
@@ -654,18 +1004,18 @@ export default function AppDashboard() {
           <div style={{'marginTop': '18px', 'display': 'grid', 'gridTemplateColumns': '1fr 1fr 1fr', 'gap': '10px'}}>
             <div style={{'background': 'rgba(255,255,255,.1)', 'border': '1px solid rgba(255,255,255,.16)', 'borderRadius': '16px', 'padding': '14px', 'textAlign': 'center'}}>
               <p style={{'margin': '0', 'fontSize': '10px', 'color': '#bcd6bd', 'fontWeight': '600', 'textTransform': 'uppercase', 'letterSpacing': '.4px'}}>Paid</p>
-              <p style={{'margin': '8px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>70%</p>
-              <p style={{'margin': '4px 0 0', 'fontSize': '10px', 'color': '#8db991', 'fontWeight': '500'}}>of total</p>
+              <p style={{'margin': '8px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>Live</p>
+              <p style={{'margin': '4px 0 0', 'fontSize': '10px', 'color': '#8db991', 'fontWeight': '500'}}>customer workflows</p>
             </div>
             <div style={{'background': 'rgba(255,255,255,.1)', 'border': '1px solid rgba(255,255,255,.16)', 'borderRadius': '16px', 'padding': '14px', 'textAlign': 'center'}}>
               <p style={{'margin': '0', 'fontSize': '10px', 'color': '#bcd6bd', 'fontWeight': '600', 'textTransform': 'uppercase', 'letterSpacing': '.4px'}}>Remaining</p>
-              <p style={{'margin': '8px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#eb9236'}}>30%</p>
-              <p style={{'margin': '4px 0 0', 'fontSize': '10px', 'color': '#8db991', 'fontWeight': '500'}}>of total</p>
+              <p style={{'margin': '8px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#eb9236'}}>Off</p>
+              <p style={{'margin': '4px 0 0', 'fontSize': '10px', 'color': '#8db991', 'fontWeight': '500'}}>payments disabled</p>
             </div>
             <div style={{'background': 'rgba(255,255,255,.1)', 'border': '1px solid rgba(255,255,255,.16)', 'borderRadius': '16px', 'padding': '14px', 'textAlign': 'center'}}>
               <p style={{'margin': '0', 'fontSize': '10px', 'color': '#bcd6bd', 'fontWeight': '600', 'textTransform': 'uppercase', 'letterSpacing': '.4px'}}>Properties</p>
-              <p style={{'margin': '8px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>2</p>
-              <p style={{'margin': '4px 0 0', 'fontSize': '10px', 'color': '#8db991', 'fontWeight': '500'}}>plots</p>
+              <p style={{'margin': '8px 0 0', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>{landRows.length || propertyRows.length || 1}</p>
+              <p style={{'margin': '4px 0 0', 'fontSize': '10px', 'color': '#8db991', 'fontWeight': '500'}}>live records</p>
             </div>
           </div>
         </div>
@@ -676,21 +1026,20 @@ export default function AppDashboard() {
             <div style={{'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '14px'}}>
               <div>
                 <p style={{'margin': '0', 'fontSize': '12px', 'color': '#8a988c', 'fontWeight': '600'}}>Paid So Far</p>
-                <p style={{'margin': '6px 0 0', 'fontSize': '28px', 'fontWeight': '800', 'color': '#1a5e2e'}}>70%</p>
+                <p style={{'margin': '6px 0 0', 'fontSize': '28px', 'fontWeight': '800', 'color': '#1a5e2e'}}>Unavailable</p>
               </div>
               <div style={{'textAlign': 'right'}}>
                 <p style={{'margin': '0', 'fontSize': '12px', 'color': '#8a988c', 'fontWeight': '600'}}>Balance Due</p>
-                <p style={{'margin': '6px 0 0', 'fontSize': '28px', 'fontWeight': '800', 'color': '#e2822a'}}>30%</p>
+                <p style={{'margin': '6px 0 0', 'fontSize': '28px', 'fontWeight': '800', 'color': '#e2822a'}}>Unavailable</p>
               </div>
             </div>
             {/* Segmented progress bar */}
             <div style={{'height': '10px', 'borderRadius': '6px', 'background': '#eef3ec', 'overflow': 'hidden', 'display': 'flex'}}>
-              <div style={{'height': '100%', 'width': '70%', 'background': 'linear-gradient(90deg,#1a5e2e,#2f8544)', 'borderRadius': '6px 0 0 6px'}}></div>
-              <div style={{'height': '100%', 'width': '30%', 'background': 'linear-gradient(90deg,#eb9236,#e2822a)', 'borderRadius': '0 6px 6px 0'}}></div>
+              <div style={{'height': '100%', 'width': '100%', 'background': 'linear-gradient(90deg,#1a5e2e,#2f8544)', 'borderRadius': '6px'}}></div>
             </div>
             <div style={{'display': 'flex', 'justifyContent': 'space-between', 'marginTop': '10px'}}>
-              <span style={{'fontSize': '11px', 'color': '#1a5e2e', 'fontWeight': '700'}}>● Paid: 70%</span>
-              <span style={{'fontSize': '11px', 'color': '#e2822a', 'fontWeight': '700'}}>● Remaining: 30%</span>
+              <span style={{'fontSize': '11px', 'color': '#1a5e2e', 'fontWeight': '700'}}>● Booking, lands, visits, and CRM are live</span>
+              <span style={{'fontSize': '11px', 'color': '#e2822a', 'fontWeight': '700'}}>● Payment collection is excluded from this release</span>
             </div>
             {/* Milestone markers */}
             <div style={{'marginTop': '14px', 'display': 'grid', 'gridTemplateColumns': 'repeat(4,1fr)', 'gap': '8px'}}>
@@ -720,14 +1069,14 @@ export default function AppDashboard() {
           {/* Next instalment: percentage-based */}
           <div style={{'marginTop': '14px', 'background': '#fff', 'borderRadius': '20px', 'padding': '18px', 'border': '1px solid #eef3ec', 'boxShadow': '0 12px 30px -24px rgba(18,53,29,.5)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
             <div>
-              <p style={{'margin': '0', 'fontSize': '12px', 'color': '#8a988c', 'fontWeight': '600'}}>Next Instalment</p>
+              <p style={{'margin': '0', 'fontSize': '12px', 'color': '#8a988c', 'fontWeight': '600'}}>Payment Status</p>
               <div style={{'display': 'flex', 'alignItems': 'baseline', 'gap': '6px', 'marginTop': '6px'}}>
-                <span style={{'fontSize': '26px', 'fontWeight': '800', 'color': '#16231a'}}>5%</span>
-                <span style={{'fontSize': '12px', 'color': '#9aa89c', 'fontWeight': '600'}}>of total value</span>
+                <span style={{'fontSize': '26px', 'fontWeight': '800', 'color': '#16231a'}}>Not Live</span>
+                <span style={{'fontSize': '12px', 'color': '#9aa89c', 'fontWeight': '600'}}>payments are disabled in this phase</span>
               </div>
-              <p style={{'margin': '5px 0 0', 'fontSize': '11.5px', 'color': '#e2822a', 'fontWeight': '700'}}>Due on 12 Jun 2025</p>
+              <p style={{'margin': '5px 0 0', 'fontSize': '11.5px', 'color': '#e2822a', 'fontWeight': '700'}}>Use live booking, visit scheduling, documents, and service requests for production testing</p>
             </div>
-            <button onClick={payNow} style={{'border': 'none', 'borderRadius': '14px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14px', 'fontWeight': '700', 'padding': '13px 22px', 'cursor': 'pointer', 'boxShadow': '0 12px 22px -10px rgba(18,68,35,.7)'}}>Pay Now</button>
+            <button onClick={payNow} style={{'border': 'none', 'borderRadius': '14px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14px', 'fontWeight': '700', 'padding': '13px 22px', 'cursor': 'pointer', 'boxShadow': '0 12px 22px -10px rgba(18,68,35,.7)'}}>Why Unavailable?</button>
           </div>
 
           <div style={{'marginTop': '14px', 'background': '#fff', 'borderRadius': '20px', 'border': '1px solid #eef3ec', 'overflow': 'hidden', 'boxShadow': '0 12px 30px -24px rgba(18,53,29,.5)'}}>
@@ -758,8 +1107,8 @@ export default function AppDashboard() {
             <div style={{'width': '62px', 'height': '62px', 'borderRadius': '20px', 'background': 'rgba(255,255,255,.16)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>{initials}</div>
             <div>
               <p style={{'margin': '0', 'fontSize': '17px', 'fontWeight': '800', 'color': '#fff'}}>{userName}</p>
-              <p style={{'margin': '4px 0 0', 'fontSize': '12.5px', 'color': '#bcd6bd', 'fontWeight': '500'}}>{user.phone ? '+91 ' + user.phone : 'N/A'}</p>
-              <p style={{'margin': '2px 0 0', 'fontSize': '12.5px', 'color': '#bcd6bd', 'fontWeight': '500'}}>{user.email || 'No email provided'}</p>
+              <p style={{'margin': '4px 0 0', 'fontSize': '12.5px', 'color': '#bcd6bd', 'fontWeight': '500'}}>{session?.user?.phone ? `+${String(session.user.phone).replace(/^\+/, '')}` : 'Phone not available'}</p>
+              <p style={{'margin': '2px 0 0', 'fontSize': '12.5px', 'color': '#bcd6bd', 'fontWeight': '500'}}>{profileForm.email || 'Email not added'}</p>
             </div>
           </div>
         </div>
@@ -785,7 +1134,8 @@ export default function AppDashboard() {
       {/* ===================== PROPERTY DETAILS ===================== */}
       {isPropDetail && (
       <div className="rv-screen">
-        <div style={{position: 'relative', height: '300px', backgroundImage: `linear-gradient(180deg,rgba(9,32,16,.28),transparent 30%,rgba(9,32,16,.5)), url("${property.heroImage}")`, backgroundSize: 'cover', backgroundPosition: 'center'}}>
+        <div style={{position: 'relative', height: '300px', background: selectedImage ? `center / cover no-repeat url(${selectedImage})` : sel.grad}}>
+          <div style={{'position': 'absolute', 'inset': '0', 'background': 'linear-gradient(180deg,rgba(9,32,16,.28),transparent 30%,rgba(9,32,16,.5))'}}></div>
           <div style={{'position': 'absolute', 'top': '52px', 'left': '20px', 'right': '20px', 'display': 'flex', 'justifyContent': 'space-between'}}>
             <button onClick={back} style={{'width': '40px', 'height': '40px', 'borderRadius': '13px', 'border': 'none', 'background': 'rgba(255,255,255,.9)', 'color': '#12351d', 'fontSize': '18px', 'cursor': 'pointer'}}>←</button>
             <button style={{'width': '40px', 'height': '40px', 'borderRadius': '13px', 'border': 'none', 'background': 'rgba(255,255,255,.9)', 'cursor': 'pointer', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}}>
@@ -793,7 +1143,7 @@ export default function AppDashboard() {
             </button>
           </div>
           <div style={{'position': 'absolute', 'bottom': '18px', 'left': '20px'}}>
-            <span style={{'background': '#e2822a', 'color': '#fff', 'fontSize': '11px', 'fontWeight': '700', 'padding': '5px 11px', 'borderRadius': '20px'}}>RERA Approved</span>
+            <span style={{'background': '#e2822a', 'color': '#fff', 'fontSize': '11px', 'fontWeight': '700', 'padding': '5px 11px', 'borderRadius': '20px'}}>{selectedProperty?.rera_number ? 'RERA Approved' : 'Live Property'}</span>
           </div>
         </div>
 
@@ -815,8 +1165,8 @@ export default function AppDashboard() {
             ))}
           </div>
 
-          <p style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d', 'margin': '22px 0 8px'}}>About this property</p>
-          <p style={{'margin': '0', 'fontSize': '13px', 'lineHeight': '1.65', 'color': '#5c6c5e'}}>Sirpuram Gardens is a plotted development in Madhurawada with clear plot demarcation, east and west facing options, internal roads, and ready customer references through the site map, features image and facing photos.</p>
+          <p style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d', 'margin': '22px 0 8px'}}>About this project</p>
+          <p style={{'margin': '0', 'fontSize': '13px', 'lineHeight': '1.65', 'color': '#5c6c5e'}}>A premium gated community of villa plots surrounded by landscaped greenery, wide internal roads and modern amenities — designed for families who value space, privacy and long-term appreciation.</p>
 
           <p style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d', 'margin': '22px 0 10px'}}>Amenities</p>
           <div style={{'display': 'flex', 'flexWrap': 'wrap', 'gap': '8px'}}>
@@ -824,18 +1174,12 @@ export default function AppDashboard() {
               <span style={{'fontSize': '12.5px', 'fontWeight': '600', 'color': '#3d4f40', 'background': '#fff', 'border': '1px solid #e6ede2', 'padding': '9px 14px', 'borderRadius': '12px'}}>{a}</span>
             ))}
           </div>
-          <p style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#12351d', 'margin': '22px 0 10px'}}>Property References</p>
-          <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '10px'}}>
-            {[property.featuresImage, property.mapImage, property.eastImage, property.westImage].map((img) => (
-              <div key={img} style={{height: '92px', borderRadius: '14px', backgroundImage: `url("${img}")`, backgroundSize: 'cover', backgroundPosition: 'center', border: '1px solid #eef3ec'}}></div>
-            ))}
-          </div>
           <div style={{'height': '20px'}}></div>
         </div>
 
         <div style={{'position': 'sticky', 'bottom': '0', 'background': '#fff', 'borderTop': '1px solid #eef3ec', 'padding': '14px 22px', 'display': 'flex', 'gap': '12px'}}>
           <button onClick={() => navigate('/visits')} style={{'flex': '1', 'height': '54px', 'borderRadius': '16px', 'border': '1.5px solid #1a5e2e', 'background': '#fff', 'color': '#1a5e2e', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Schedule Visit</button>
-          <button style={{'flex': '1.3', 'height': '54px', 'borderRadius': '16px', 'border': 'none', 'background': 'linear-gradient(180deg,#eb9236,#e2822a)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 12px 22px -10px rgba(226,130,42,.6)'}}>Book Now</button>
+          <button onClick={requestBooking} style={{'flex': '1.3', 'height': '54px', 'borderRadius': '16px', 'border': 'none', 'background': 'linear-gradient(180deg,#eb9236,#e2822a)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 12px 22px -10px rgba(226,130,42,.6)'}}>Book Now</button>
         </div>
       </div>
       )}
@@ -954,7 +1298,7 @@ export default function AppDashboard() {
           <p style={{'fontSize': '12px', 'fontWeight': '700', 'color': '#8a988c', 'textTransform': 'uppercase', 'letterSpacing': '.5px', 'margin': '22px 0 10px'}}>General</p>
           <div style={{'background': '#fff', 'borderRadius': '18px', 'border': '1px solid #eef3ec', 'overflow': 'hidden', 'boxShadow': '0 12px 30px -24px rgba(18,53,29,.5)'}}>
             { settingLinks.map((s, index) => (
-              <button style={{width: '100%', display: 'flex', alignItems: 'center', gap: '13px', padding: '15px 18px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', borderTop: s.border}}>
+              <button onClick={s.go} style={{width: '100%', display: 'flex', alignItems: 'center', gap: '13px', padding: '15px 18px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', borderTop: s.border}}>
                 <span style={{'width': '36px', 'height': '36px', 'borderRadius': '11px', 'background': '#eef6ea', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'flex': 'none'}}>
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d={s.icon}/></svg>
                 </span>
@@ -978,35 +1322,22 @@ export default function AppDashboard() {
         <div style={{'padding': '22px'}}>
           <div style={{'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'marginBottom': '8px'}}>
             <div style={{'width': '78px', 'height': '78px', 'borderRadius': '24px', 'background': 'linear-gradient(160deg,#1a5e2e,#124423)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'fontSize': '28px', 'fontWeight': '800', 'color': '#fff'}}>{initials}</div>
-            <button style={{'marginTop': '12px', 'border': '1px solid #e2e8e0', 'background': '#fff', 'borderRadius': '20px', 'padding': '7px 16px', 'fontFamily': 'inherit', 'fontSize': '12.5px', 'fontWeight': '700', 'color': '#1a5e2e', 'cursor': 'pointer'}}>Change Photo</button>
+            <button onClick={() => openNotice('Profile Photo', 'Profile photo upload is not connected to the backend yet, so this action stays disabled instead of pretending to save locally.')} style={{'marginTop': '12px', 'border': '1px solid #e2e8e0', 'background': '#fff', 'borderRadius': '20px', 'padding': '7px 16px', 'fontFamily': 'inherit', 'fontSize': '12.5px', 'fontWeight': '700', 'color': '#1a5e2e', 'cursor': 'pointer'}}>Change Photo</button>
           </div>
-          
-          <div style={{'marginTop': '15px'}}>
-            <label style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#3d4f40'}}>Full Name</label>
-            <div style={{'marginTop': '8px', 'display': 'flex', 'alignItems': 'center', 'height': '54px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '15px', 'padding': '0 15px', 'background': '#fbfdfa'}}>
-              <input name="name" value={profileForm.name} onChange={handleProfileChange} style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '600', 'color': '#16231a'}}/>
+          { personalFields.map((p, index) => (
+            <div style={{'marginTop': '15px'}}>
+              <label style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#3d4f40'}}>{p.label}</label>
+              <div style={{'marginTop': '8px', 'display': 'flex', 'alignItems': 'center', 'height': '54px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '15px', 'padding': '0 15px', 'background': '#fbfdfa'}}>
+                <input value={p.value} onChange={(e) => {
+                  if (p.label === 'Full Name') setProfileForm((state) => ({ ...state, name: e.target.value }));
+                  if (p.label === 'Email Address') setProfileForm((state) => ({ ...state, email: e.target.value }));
+                  if (p.label === 'City') setProfileForm((state) => ({ ...state, address: e.target.value }));
+                  if (p.label === 'Date of Birth') setProfileForm((state) => ({ ...state, date_of_birth: e.target.value }));
+                }} readOnly={p.label === 'Phone Number'} style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '600', 'color': '#16231a'}}/>
+              </div>
             </div>
-          </div>
-          <div style={{'marginTop': '15px'}}>
-            <label style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#3d4f40'}}>Phone Number (Read Only)</label>
-            <div style={{'marginTop': '8px', 'display': 'flex', 'alignItems': 'center', 'height': '54px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '15px', 'padding': '0 15px', 'background': '#f0f4ee'}}>
-              <input value={user.phone ? '+91 ' + user.phone : 'N/A'} readOnly style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '600', 'color': '#6d7d6f'}}/>
-            </div>
-          </div>
-          <div style={{'marginTop': '15px'}}>
-            <label style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#3d4f40'}}>Email Address</label>
-            <div style={{'marginTop': '8px', 'display': 'flex', 'alignItems': 'center', 'height': '54px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '15px', 'padding': '0 15px', 'background': '#fbfdfa'}}>
-              <input name="email" value={profileForm.email} onChange={handleProfileChange} type="email" style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '600', 'color': '#16231a'}}/>
-            </div>
-          </div>
-          <div style={{'marginTop': '15px'}}>
-            <label style={{'fontSize': '12.5px', 'fontWeight': '700', 'color': '#3d4f40'}}>Address / City</label>
-            <div style={{'marginTop': '8px', 'display': 'flex', 'alignItems': 'center', 'height': '54px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '15px', 'padding': '0 15px', 'background': '#fbfdfa'}}>
-              <input name="address" value={profileForm.address} onChange={handleProfileChange} style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '600', 'color': '#16231a'}}/>
-            </div>
-          </div>
-          
-          <button onClick={saveProfile} disabled={profileSaving} style={{'marginTop': '26px', 'width': '100%', 'height': '56px', 'border': 'none', 'borderRadius': '16px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)', 'opacity': profileSaving ? 0.7 : 1}}>{profileSaving ? 'Saving...' : 'Save Changes'}</button>
+          ))}
+          <button onClick={saveProfile} style={{'marginTop': '26px', 'width': '100%', 'height': '56px', 'border': 'none', 'borderRadius': '16px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>{savingProfile ? 'Saving...' : 'Save Changes'}</button>
         </div>
       </div>
       )}
@@ -1057,12 +1388,8 @@ export default function AppDashboard() {
             <p style={{'margin': '14px 0 4px', 'fontSize': '17px', 'fontWeight': '800', 'color': '#12351d'}}>Talk to Our Sales Team</p>
             <p style={{'margin': '0', 'fontSize': '12.5px', 'color': '#4a6b4a', 'fontWeight': '500'}}>Available Mon–Sat, 9 AM – 7 PM</p>
           </div>
-          {[
-            { icon: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.07 3.18 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72c.13 1.01.36 2 .71 2.96a2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.96.35 1.95.58 2.96.71A2 2 0 0 1 21 16z', label: 'Call Us', sub: '+91 99999 12345', color: '#1a5e2e', bg: '#eef6ea' },
-            { icon: 'M4 6h16v12H4zM4 7l8 6 8-6', label: 'Email Us', sub: 'sales@rivanreality.com', color: '#e2822a', bg: '#fdefe0' },
-            { icon: 'M4 5h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', label: 'WhatsApp Chat', sub: '+91 99999 12345', color: '#25D366', bg: '#edfbf1' },
-          ].map((c, i) => (
-            <div key={i} style={{'display': 'flex', 'alignItems': 'center', 'gap': '14px', 'background': '#fff', 'borderRadius': '18px', 'padding': '16px', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 26px -22px rgba(18,53,29,.5)', 'marginBottom': '12px', 'cursor': 'pointer'}}>
+          {contactActions.map((c, i) => (
+            <div key={i} onClick={c.action} style={{'display': 'flex', 'alignItems': 'center', 'gap': '14px', 'background': '#fff', 'borderRadius': '18px', 'padding': '16px', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 26px -22px rgba(18,53,29,.5)', 'marginBottom': '12px', 'cursor': 'pointer'}}>
               <span style={{'width': '48px', 'height': '48px', 'borderRadius': '14px', 'background': c.bg, 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'flexShrink': '0'}}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={c.color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={c.icon}/></svg>
               </span>
@@ -1075,8 +1402,8 @@ export default function AppDashboard() {
           ))}
           <div style={{'marginTop': '10px', 'background': '#f8fbf6', 'border': '1px solid #e6ede2', 'borderRadius': '18px', 'padding': '18px'}}>
             <p style={{'margin': '0 0 14px', 'fontSize': '14px', 'fontWeight': '800', 'color': '#12351d'}}>Send a Message</p>
-            <textarea placeholder="Tell us what you're looking for..." style={{'width': '100%', 'height': '100px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '14px', 'padding': '12px 14px', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'color': '#16231a', 'resize': 'none', 'background': '#fff', 'boxSizing': 'border-box'}}/>
-            <button style={{'marginTop': '12px', 'width': '100%', 'height': '52px', 'border': 'none', 'borderRadius': '15px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>Send Message</button>
+            <textarea value={contactMessage} onChange={(event) => setContactMessage(event.target.value)} placeholder="Tell us what you're looking for..." style={{'width': '100%', 'height': '100px', 'border': '1.5px solid #e2e8e0', 'borderRadius': '14px', 'padding': '12px 14px', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'color': '#16231a', 'resize': 'none', 'background': '#fff', 'boxSizing': 'border-box'}}/>
+            <button onClick={() => submitContactSales('contact_sales')} style={{'marginTop': '12px', 'width': '100%', 'height': '52px', 'border': 'none', 'borderRadius': '15px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>Send Message</button>
           </div>
         </div>
       </div>
@@ -1121,8 +1448,8 @@ export default function AppDashboard() {
         <div style={{'width': '84px', 'height': '84px', 'borderRadius': '28px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'margin': '0 auto'}}>
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>
         </div>
-        <p style={{'margin': '18px 0 6px', 'fontSize': '20px', 'fontWeight': '800', 'color': '#12351d'}}>Payment Successful</p>
-        <p style={{'margin': '0', 'fontSize': '13.5px', 'color': '#6d7d6f', 'lineHeight': '1.55'}}>₹2,00,000 has been paid towards<br/>Sirpuram Gardens • Plot SG-120</p>
+        <p style={{'margin': '18px 0 6px', 'fontSize': '20px', 'fontWeight': '800', 'color': '#12351d'}}>{modalTitle}</p>
+        <p style={{'margin': '0', 'fontSize': '13.5px', 'color': '#6d7d6f', 'lineHeight': '1.55'}}>{modalMessage}</p>
         <button onClick={closeModal} style={{'marginTop': '22px', 'width': '100%', 'height': '52px', 'border': 'none', 'borderRadius': '15px', 'background': 'linear-gradient(180deg,#eb9236,#e2822a)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer'}}>Done</button>
       </div>
     </div>

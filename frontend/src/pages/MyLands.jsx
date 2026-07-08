@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadSession } from '../lib/auth';
+import { getJson, loadSession, postJson } from '../lib/auth';
 
 const G = [
   'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)',
@@ -10,20 +10,32 @@ const G = [
 
 const LANDS_DATA = [
   {
-    id: 1, name: 'Sirpuram Gardens', code: 'Plot SG-120', spec: '267 Sq.Yd • East Facing',
-    reg: 'RERA/AP/PRJ/2024/001278', status: 'Active', typeShort: 'Plot', grad: G[0], image: 'Property Image 2.jpeg',
-    progress: '62%', progressW: 62, paid: '₹8,00,000', remaining: '₹4,94,950',
+    id: 1, name: 'Emerald Estate', code: 'Plot A-120', spec: '200 Sq.Yd • East Facing',
+    reg: 'RERA/AP/PRJ/2021/000023', status: 'Active', typeShort: 'Plot', grad: G[0],
+    progress: '60%', progressW: 60, paid: '₹10,80,000', remaining: '₹7,20,000',
     date: '15 Jan 2025', infoLabel: 'Plot Info',
     aboutRows: [
-      { k: 'Location', v: 'Madhurawada, Visakhapatnam' },
-      { k: 'Plot Size', v: '267 Sq.Yd' },
+      { k: 'Location', v: 'Visakhapatnam' },
+      { k: 'Plot Size', v: '200 Sq.Yd' },
       { k: 'Facing', v: 'East' },
-      { k: 'Total Value', v: '₹12,94,950' },
+      { k: 'Total Value', v: '₹18,00,000' },
+    ],
+  },
+  {
+    id: 2, name: 'Emerald Green City', code: 'Villa B-08', spec: '350 Sq.Yd • North Facing',
+    reg: 'RERA/AP/PRJ/2022/000045', status: 'Active', typeShort: 'Villa', grad: G[1],
+    progress: '35%', progressW: 35, paid: '₹8,75,000', remaining: '₹16,25,000',
+    date: '03 Mar 2025', infoLabel: 'Villa Info',
+    aboutRows: [
+      { k: 'Location', v: 'Anakapalle' },
+      { k: 'Plot Size', v: '350 Sq.Yd' },
+      { k: 'Facing', v: 'North' },
+      { k: 'Total Value', v: '₹25,00,000' },
     ],
   },
 ];
 
-const FILTER_CHIPS = ['All', 'Plots'];
+const FILTER_CHIPS = ['All', 'Plots', 'Villas', 'Apartments', 'Farmlands'];
 
 const SVC_PREVIEW_ICONS = [
   'M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z',
@@ -33,20 +45,20 @@ const SVC_PREVIEW_ICONS = [
 
 const SPEC_ROWS = [
   { k: 'Survey Number', v: '112/2A', color: '#16231a', arrow: '' },
-  { k: 'Plot Area', v: '267 Sq.Yd', color: '#16231a', arrow: '' },
+  { k: 'Plot Area', v: '200 Sq.Yd', color: '#16231a', arrow: '' },
   { k: 'Facing', v: 'East', color: '#16231a', arrow: '' },
   { k: 'Registration Date', v: '15 Jan 2025', color: '#16231a', arrow: '' },
-  { k: 'RERA Number', v: 'RERA/AP/PRJ/2024/001278', color: '#1a5e2e', arrow: '↗' },
-  { k: 'Guideline Value', v: '₹3,950/Sq.Yd', color: '#16231a', arrow: '' },
-  { k: 'Market Value', v: '₹4,850/Sq.Yd', color: '#e2822a', arrow: '↑' },
+  { k: 'RERA Number', v: 'RERA/AP/000023', color: '#1a5e2e', arrow: '↗' },
+  { k: 'Guideline Value', v: '₹3,200/Sq.Yd', color: '#16231a', arrow: '' },
+  { k: 'Market Value', v: '₹4,500/Sq.Yd', color: '#e2822a', arrow: '↑' },
 ];
 
 const MAP_PLOTS = [
-  { label: 'SG-118', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
-  { label: 'SG-119', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
-  { label: 'SG-120', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#1a5e2e', color: '#fff', border: '1px solid #1a5e2e' } },
-  { label: 'SG-121', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
-  { label: 'SG-122', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
+  { label: 'A-118', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
+  { label: 'A-119', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
+  { label: 'A-120', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#1a5e2e', color: '#fff', border: '1px solid #1a5e2e' } },
+  { label: 'A-121', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
+  { label: 'A-122', style: { fontSize: '9px', fontWeight: '700', padding: '5px 8px', borderRadius: '7px', background: '#cfe6c6', color: '#1a5e2e', border: '1px solid #b5d9a8' } },
 ];
 
 const CATEGORIES_PLOT = [
@@ -72,18 +84,15 @@ const QUICK_ACTIONS_DETAIL = [
 
 export default function MyLands() {
   const navigate = useNavigate();
-  const session = loadSession();
-
-  useEffect(() => {
-    if (!session?.access_token) {
-      navigate('/login', { replace: true });
-    }
-  }, [session, navigate]);
-
+  const [session] = useState(() => loadSession());
   const [stack, setStack] = useState(['lands']);
   const [filter, setFilter] = useState('All');
   const [sel, setSel] = useState(null);
   const [cat, setCat] = useState(null);
+  const [landRows, setLandRows] = useState([]);
+  const [documentRows, setDocumentRows] = useState([]);
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [notice, setNotice] = useState('');
 
   const cur = stack[stack.length - 1];
 
@@ -97,7 +106,51 @@ export default function MyLands() {
   const openAddons = () => { setStack(st => [...st, 'addons']); setTimeout(scrollTop, 10); };
   const openCat = (c) => { setCat(c); setStack(st => [...st, 'choose']); setTimeout(scrollTop, 10); };
 
-  const filteredLands = LANDS_DATA.filter(l =>
+  useEffect(() => {
+    if (!session?.access_token || session?.user?.role !== 'customer') {
+      navigate('/login', { replace: true });
+      return;
+    }
+    let active = true;
+    Promise.all([
+      getJson('/api/myland', session.access_token).catch(() => []),
+      getJson('/api/documents', session.access_token).catch(() => []),
+      getJson('/api/services/catalog', session.access_token).catch(() => []),
+    ]).then(([lands, documents, services]) => {
+      if (!active) return;
+      setLandRows(Array.isArray(lands) ? lands : []);
+      setDocumentRows(Array.isArray(documents) ? documents : []);
+      setServiceCatalog(Array.isArray(services) ? services : []);
+    });
+    return () => { active = false; };
+  }, [navigate, session?.access_token, session?.user?.role]);
+
+  const liveLands = landRows.map((land, index) => ({
+    id: land.id || `land-${index}`,
+    name: land.property?.name || land.property_name || 'Sirpuram Gardens',
+    code: land.plot_number ? `Plot ${land.plot_number}` : 'Allocated Plot',
+    spec: `${land.area || land.plot_area || '—'} • ${land.facing || '—'} Facing`,
+    reg: land.property?.rera_number || land.rera_number || 'RERA linked to backend records',
+    status: land.purchase_complete ? 'Completed' : 'Active',
+    typeShort: String(land.property?.property_type || '').toLowerCase().includes('villa') ? 'Villa' : 'Plot',
+    grad: G[index % G.length],
+    progress: `${Math.round((Number(land.payment_progress || 0)) * 100)}%`,
+    progressW: Math.round((Number(land.payment_progress || 0)) * 100),
+    paid: `₹${Math.round(Number(land.paid_amount || 0)).toLocaleString('en-IN')}`,
+    remaining: `₹${Math.round(Number(land.balance_amount || 0)).toLocaleString('en-IN')}`,
+    date: land.created_at ? new Date(land.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+    infoLabel: String(land.property?.property_type || '').toLowerCase().includes('villa') ? 'Villa Info' : 'Plot Info',
+    aboutRows: [
+      { k: 'Location', v: land.property?.location || land.location || 'Achutapuram, Visakhapatnam' },
+      { k: 'Plot Size', v: land.area || land.plot_area || '—' },
+      { k: 'Facing', v: land.facing || '—' },
+      { k: 'Total Value', v: `₹${Math.round(Number(land.total_amount || 0)).toLocaleString('en-IN')}` },
+    ],
+  }));
+
+  const sourceLands = liveLands;
+
+  const filteredLands = sourceLands.filter(l =>
     filter === 'All' ||
     (filter === 'Plots' && l.typeShort === 'Plot') ||
     (filter === 'Villas' && l.typeShort === 'Villa')
@@ -118,12 +171,43 @@ export default function MyLands() {
     ? { padding: '8px 17px', borderRadius: '20px', border: 'none', background: '#1a5e2e', color: '#fff', fontFamily: 'inherit', fontSize: '12.5px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }
     : { padding: '8px 17px', borderRadius: '20px', border: '1px solid #e0ebe4', background: '#fff', color: '#4a5c4d', fontFamily: 'inherit', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 };
 
-  const selD = sel || LANDS_DATA[0];
+  const selD = sel || sourceLands[0] || null;
+  const selectedLandRecord = landRows.find((item) => item.id === selD?.id) || landRows[0] || null;
+  const selectedDocument = documentRows.find((item) => item.property_id === selectedLandRecord?.property?.id) || documentRows[0] || null;
+
+  const showNotice = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(''), 3000);
+  };
+
+  const quickActionHandlers = {
+    'View Map': () => {
+      if (selectedDocument?.url) {
+        window.open(selectedDocument.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      showNotice('No live map file is attached to this property yet.');
+    },
+    Documents: () => {
+      if (selectedDocument?.url) {
+        window.open(selectedDocument.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      showNotice('No live document is available for this property yet.');
+    },
+    Payments: () => navigate('/app#payments'),
+    Contact: () => navigate('/app#contact'),
+  };
 
   return (
     <div className="rv-phone">
 
       <div className="ml-scroll rv-scroll with-nav" style={{ position: 'absolute', inset: '0', overflowY: 'auto' }}>
+        {notice && (
+          <div style={{ position: 'sticky', top: '12px', zIndex: 20, margin: '12px 22px 0', background: '#12351d', color: '#fff', borderRadius: '14px', padding: '12px 14px', fontSize: '12.5px', fontWeight: 600, boxShadow: '0 12px 24px -18px rgba(18,53,29,.75)' }}>
+            {notice}
+          </div>
+        )}
 
         {/* ===================== MY LANDS LIST ===================== */}
         {isLands && (
@@ -139,9 +223,9 @@ export default function MyLands() {
                 </button>
               </div>
               <div style={{ marginTop: '16px', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.16)', borderRadius: '18px', padding: '16px', display: 'flex' }}>
-                <div style={{ flex: '1' }}><p style={{ margin: '0', fontSize: '11.5px', color: '#bcd6bd', fontWeight: '600' }}>Total Lands</p><p style={{ margin: '7px 0 0', fontSize: '24px', fontWeight: '800', color: '#fff' }}>{LANDS_DATA.length}</p></div>
+                <div style={{ flex: '1' }}><p style={{ margin: '0', fontSize: '11.5px', color: '#bcd6bd', fontWeight: '600' }}>Total Lands</p><p style={{ margin: '7px 0 0', fontSize: '24px', fontWeight: '800', color: '#fff' }}>{sourceLands.length}</p></div>
                 <div style={{ width: '1px', background: 'rgba(255,255,255,.16)' }}></div>
-                <div style={{ flex: '1.4', paddingLeft: '16px' }}><p style={{ margin: '0', fontSize: '11.5px', color: '#bcd6bd', fontWeight: '600' }}>Total Investment</p><p style={{ margin: '7px 0 0', fontSize: '24px', fontWeight: '800', color: '#fff' }}>₹12,94,950</p></div>
+                <div style={{ flex: '1.4', paddingLeft: '16px' }}><p style={{ margin: '0', fontSize: '11.5px', color: '#bcd6bd', fontWeight: '600' }}>Total Investment</p><p style={{ margin: '7px 0 0', fontSize: '24px', fontWeight: '800', color: '#fff' }}>{`₹${Math.round(landRows.reduce((sum, item) => sum + Number(item.total_amount || 0), 0)).toLocaleString('en-IN')}`}</p></div>
               </div>
             </div>
 
@@ -172,7 +256,7 @@ export default function MyLands() {
                     <div key={p.id} style={{ background: '#fff', borderRadius: '20px', border: '1px solid #eef3ec', overflow: 'hidden', boxShadow: '0 12px 30px -22px rgba(18,53,29,.5)' }}>
                       <div onClick={() => openProp(p)} style={{ padding: '14px', cursor: 'pointer' }}>
                         <div style={{ display: 'flex', gap: '13px' }}>
-                          <div style={{ width: '78px', height: '78px', borderRadius: '14px', backgroundImage: `url("${p.image || 'Property Image 2.jpeg'}")`, backgroundSize: 'cover', backgroundPosition: 'center', flex: 'none', position: 'relative' }}>
+                          <div style={{ width: '78px', height: '78px', borderRadius: '14px', background: p.grad, flex: 'none', position: 'relative' }}>
                             <span style={{ position: 'absolute', bottom: '6px', left: '6px', background: 'rgba(9,32,16,.6)', color: '#fff', fontSize: '9px', fontWeight: '700', padding: '2px 7px', borderRadius: '20px' }}>{p.typeShort}</span>
                           </div>
                           <div style={{ flex: '1', minWidth: '0' }}>
@@ -193,7 +277,7 @@ export default function MyLands() {
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
                             </span>
                           ))}
-                          <span style={{ fontSize: '11px', fontWeight: '600', color: '#6d7d6f', alignSelf: 'center' }}>+5 services</span>
+                          <span style={{ fontSize: '11px', fontWeight: '600', color: '#6d7d6f', alignSelf: 'center' }}>{serviceCatalog.length ? `${serviceCatalog.length} live services` : 'Live services'}</span>
                         </div>
                         <button onClick={() => { setSel(p); openAddons(); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', border: '1px solid #cfe6c6', background: '#fff', color: '#1a5e2e', borderRadius: '11px', padding: '8px 13px', fontFamily: 'inherit', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>＋ Add Services</button>
                       </div>
@@ -246,10 +330,10 @@ export default function MyLands() {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '9px', marginTop: '16px' }}>
                 {QUICK_ACTIONS_DETAIL.map((q, i) => (
-                  <div key={i} style={{ background: '#fff', border: '1px solid #eef3ec', borderRadius: '15px', padding: '13px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                  <button key={i} onClick={() => quickActionHandlers[q.label]?.()} style={{ background: '#fff', border: '1px solid #eef3ec', borderRadius: '15px', padding: '13px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', fontFamily: 'inherit', cursor: 'pointer' }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={q.icon} /></svg>
                     <span style={{ fontSize: '10.5px', fontWeight: '600', color: '#4a5c4d', textAlign: 'center' }}>{q.label}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
 
@@ -372,7 +456,21 @@ export default function MyLands() {
 
             <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: '13px' }}>
               {cat.chips.map((sName, i) => (
-                <div key={i} style={{ display: 'flex', gap: '14px', background: '#fff', border: '1px solid #eef3ec', borderRadius: '18px', padding: '14px', boxShadow: '0 12px 30px -24px rgba(18,53,29,.5)', cursor: 'pointer' }}>
+                <div key={i} onClick={async () => {
+                  if (!session?.access_token || !selD?.id) return;
+                  try {
+                    await postJson('/api/services/request', {
+                      service_type: sName,
+                      property_id: selectedLandRecord?.property?.id || 'prop-1',
+                      preferred_date: new Date().toISOString().slice(0, 10),
+                      description: `${sName} requested from My Lands`,
+                      contact: session.user?.phone || '',
+                    }, session.access_token);
+                    showNotice(`${sName} request submitted to the live backend.`);
+                  } catch (error) {
+                    showNotice(error?.message || 'Unable to submit the service request right now.');
+                  }
+                }} style={{ display: 'flex', gap: '14px', background: '#fff', border: '1px solid #eef3ec', borderRadius: '18px', padding: '14px', boxShadow: '0 12px 30px -24px rgba(18,53,29,.5)', cursor: 'pointer' }}>
                   <div style={{ width: '76px', height: '76px', borderRadius: '14px', background: G[i % G.length], flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d={cat.icon} /></svg>
                   </div>

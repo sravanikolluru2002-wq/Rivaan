@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clearSession, getJson, getWebSocketUrl, loadSession, postJson, putJson, saveSession } from '../lib/auth';
+import { ApiError, clearSession, getJson, getWebSocketUrl, loadSession, postJson, putJson, requestJson, saveSession } from '../lib/auth';
 
 const cardStyle = {
   background: '#fff',
@@ -87,6 +87,7 @@ export default function AdminDashboard() {
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [liveStatus, setLiveStatus] = useState('connecting');
 
   useEffect(() => {
     if (!session?.access_token || session?.user?.role !== 'admin') {
@@ -99,6 +100,44 @@ export default function AdminDashboard() {
     () => notifications.filter((item) => !item.read).length,
     [notifications],
   );
+
+  const defaultSettings = {
+    permissions: {},
+    notification_preferences: {},
+    role_label: 'Admin',
+  };
+
+  const getOptional = async (path, fallback) => {
+    try {
+      return await getJson(path, session.access_token);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        return fallback;
+      }
+      throw err;
+    }
+  };
+
+  const loadSupportTickets = async () => {
+    try {
+      return await getJson('/api/admin/support-tickets', session.access_token);
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 404) {
+        throw err;
+      }
+
+      const requests = await getJson('/api/admin/service-requests', session.access_token).catch(() => []);
+      return requests.map((item, index) => ({
+        id: item.id || `sr-${index}`,
+        ticket_number: item.ticket_number || item.id || `SR-${index + 1}`,
+        customer_name: item.customer_name || item.user_name || 'Customer',
+        subject: item.subject || item.title || item.request_type || 'Service Request',
+        priority: item.priority || 'medium',
+        status: item.status || 'open',
+        created_at: item.created_at,
+      }));
+    }
+  };
 
   const refreshAll = async (showLoader = true) => {
     if (!session?.access_token) return;
@@ -122,11 +161,11 @@ export default function AdminDashboard() {
         getJson('/api/admin/agents', session.access_token).catch(() => []),
         getJson('/api/admin/properties', session.access_token).catch(() => []),
         getJson('/api/admin/bookings', session.access_token).catch(() => []),
-        getJson('/api/admin/visits', session.access_token).catch(() => []),
-        getJson('/api/admin/support-tickets', session.access_token).catch(() => []),
+        getOptional('/api/admin/visits', []),
+        loadSupportTickets(),
         getJson('/api/admin/audit-logs', session.access_token).catch(() => []),
         getJson('/api/notifications', session.access_token).catch(() => []),
-        getJson('/api/admin/settings', session.access_token).catch(() => ({ permissions: {}, notification_preferences: {}, role_label: 'Admin' })),
+        getOptional('/api/admin/settings', defaultSettings),
       ]);
 
       setStats(nextStats);
@@ -157,7 +196,14 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!session?.access_token) return undefined;
+    let closed = false;
+    let poller = null;
     const ws = new WebSocket(getWebSocketUrl(session.access_token));
+
+    ws.onopen = () => {
+      if (closed) return;
+      setLiveStatus('connected');
+    };
 
     ws.onmessage = (event) => {
       try {
@@ -181,7 +227,31 @@ export default function AdminDashboard() {
       } catch {}
     };
 
-    return () => ws.close();
+    ws.onerror = () => {
+      if (closed) return;
+      setLiveStatus('polling');
+      if (!poller) {
+        poller = window.setInterval(() => {
+          refreshAll(false);
+        }, 15000);
+      }
+    };
+
+    ws.onclose = () => {
+      if (closed) return;
+      setLiveStatus((current) => (current === 'connected' ? 'disconnected' : 'polling'));
+      if (!poller) {
+        poller = window.setInterval(() => {
+          refreshAll(false);
+        }, 15000);
+      }
+    };
+
+    return () => {
+      closed = true;
+      if (poller) window.clearInterval(poller);
+      ws.close();
+    };
   }, [session?.access_token]);
 
   const pendingAgents = agents.filter((item) => item.approval_status === 'pending');
@@ -207,11 +277,22 @@ export default function AdminDashboard() {
 
   const updateAgentStatus = async (agentId, approvalStatus) => {
     try {
-      await putJson(
-        `/api/admin/agents/${agentId}/status`,
-        { approval_status: approvalStatus, review_notes: '' },
-        session.access_token,
-      );
+      try {
+        await requestJson(
+          `/api/admin/agents/${agentId}/status`,
+          { method: 'POST', body: { approval_status: approvalStatus, review_notes: '' } },
+          session.access_token,
+        );
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 405) {
+          throw err;
+        }
+        await putJson(
+          `/api/admin/agents/${agentId}/status`,
+          { approval_status: approvalStatus, review_notes: '' },
+          session.access_token,
+        );
+      }
       refreshAll(false);
     } catch (err) {
       setError(err?.message || 'Failed to update agent status');
@@ -224,6 +305,10 @@ export default function AdminDashboard() {
       const response = await putJson('/api/admin/settings', settings, session.access_token);
       setSettings(response.settings || settings);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setError('Settings endpoint is not live on the current backend deployment yet.');
+        return;
+      }
       setError(err?.message || 'Failed to save admin settings');
     } finally {
       setSavingSettings(false);
@@ -335,6 +420,9 @@ export default function AdminDashboard() {
             <h1 style={{ margin: 0, fontSize: '32px', color: '#12351d' }}>
               {page === 'dashboard' ? 'Admin Dashboard' : navItems.find(([id]) => id === page)?.[1] || 'Admin'}
             </h1>
+            <p style={{ margin: '6px 0 0', color: '#8a9a8c', fontSize: '12px' }}>
+              Live updates: {liveStatus}
+            </p>
             <p style={{ margin: '6px 0 0', color: '#6d7d6f', fontSize: '14px' }}>
               Signed in as {user.name || 'Admin'} • {settings.role_label || 'Admin'}
             </p>
@@ -493,7 +581,7 @@ export default function AdminDashboard() {
 
         {!loading && page === 'support' && (
           <section style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Support Tickets</h3>
+            <h3 style={{ marginTop: 0 }}>Service Request Queue</h3>
             {renderTable(
               ['Ticket #', 'Customer', 'Subject', 'Priority', 'Status', 'Date'],
               latestTickets.length
@@ -555,7 +643,7 @@ export default function AdminDashboard() {
         {!loading && page === 'settings' && (
           <div style={{ display: 'grid', gap: '18px' }}>
             <section style={cardStyle}>
-              <h3 style={{ marginTop: 0 }}>Access & Permissions</h3>
+              <h3 style={{ marginTop: 0 }}>Live Role Settings</h3>
               <p style={{ marginTop: 0, color: '#6d7d6f', fontSize: '13px' }}>
                 Active backend-supported role: <strong>{settings.role_label || 'Admin'}</strong>
               </p>

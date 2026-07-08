@@ -1072,11 +1072,11 @@ LOCAL_FALLBACK_PROPERTIES: List[Dict[str, Any]] = [
         "location": "Achutapuram, Visakhapatnam",
         "starting_price": 1600000,
         "size": "840 sq.ft",
-        "image": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+        "image": "/Property Image 1.jpeg",
         "images": [
-            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
-            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_2_mjznar.jpg",
-            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+            "/Property Image 1.jpeg",
+            "/Property Image 2.jpeg",
+            "/Map.jpeg",
         ],
         "description": "A compact independent-house offering anchored in the Siripuram Gardens layout at Achutapuram with live availability, east-face and west-face plans, and project approval details.",
         "survey_number": "Layout approved development",
@@ -1544,6 +1544,14 @@ class ServiceReq(BaseModel):
     description: str
     contact: str
 
+class ContactSalesReq(BaseModel):
+    property_id: Optional[str] = None
+    subject: Optional[str] = None
+    message: str = Field(min_length=4, max_length=2000)
+    contact: Optional[str] = None
+    preferred_date: Optional[str] = None
+    request_channel: Optional[str] = "contact_sales"
+
 class VisitBookingReq(BaseModel):
     centre_id: str
     visit_date: str
@@ -1556,6 +1564,12 @@ class SiteVisitReq(BaseModel):
     visit_date: str
     name: str
     mobile: str
+
+
+class CustomerVisitUpdateReq(BaseModel):
+    status: Optional[str] = None
+    visit_date: Optional[str] = None
+    visit_time: Optional[str] = None
 
 
 class CustomerRelationshipResp(BaseModel):
@@ -3167,6 +3181,23 @@ async def ensure_property_media_defaults() -> None:
         {"id": "prop-2", "videoUrl": {"$exists": False}},
         {"$set": {"videoUrl": VILLA_VIDEO_URL, "updated_at": now_utc().isoformat()}},
     )
+    await db.properties.update_one(
+        {"id": "prop-1"},
+        {
+            "$set": {
+                "image": "/Property Image 1.jpeg",
+                "images": [
+                    "/Property Image 1.jpeg",
+                    "/Property Image 2.jpeg",
+                    "/East Face.jpeg",
+                    "/West Face.jpeg",
+                    "/Features.jpeg",
+                    "/Map.jpeg",
+                ],
+                "updated_at": now_utc().isoformat(),
+            }
+        },
+    )
 
 
 def legacy_auth_disabled(endpoint_name: str) -> None:
@@ -3185,10 +3216,14 @@ def build_sirpuram_property_seed() -> Dict[str, Any]:
         "location": "Achutapuram, Visakhapatnam",
         "starting_price": 1600000,
         "size": "200-360 sq yards",
-        "image": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+        "image": "/Property Image 1.jpeg",
         "images": [
-            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
-            "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_2_mjznar.jpg",
+            "/Property Image 1.jpeg",
+            "/Property Image 2.jpeg",
+            "/East Face.jpeg",
+            "/West Face.jpeg",
+            "/Features.jpeg",
+            "/Map.jpeg",
         ],
         "description": "Sirpuram Gardens is the live source-of-truth property for the current phase, with plot inventory, documents, approvals, and backend-ready references.",
         "survey_number": "SY-No 234/3",
@@ -3292,14 +3327,14 @@ async def ensure_sirpuram_dataset() -> None:
             "property_id": "prop-1",
             "name": "Sirpuram Gardens Layout Plan",
             "type": "layout",
-            "url": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+            "url": "/Map.jpeg",
         },
         {
             "id": "sirpuram-doc-approval",
             "property_id": "prop-1",
             "name": "Sirpuram Gardens Approval Summary",
             "type": "approval",
-            "url": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_2_mjznar.jpg",
+            "url": "/Features.jpeg",
         },
     ]
     for document in default_documents:
@@ -4574,7 +4609,7 @@ async def my_land(user: Dict[str, Any] = Depends(get_current_user)):
         ]
         enriched.append({
             **plot,
-            "property": prop,
+            "property": normalize_live_property_record(prop) if prop else None,
             "payment_progress": progress,
             "total_amount": total_amt,
             "paid_amount": paid_amt,
@@ -4732,6 +4767,60 @@ async def request_service(req: ServiceReq, user: Dict[str, Any] = Depends(get_cu
     )
     await publish_dashboard_metrics_update(user_ids=[user["id"]], roles=["admin"])
     return {"success": True, "request": sr}
+
+
+@api_router.post("/contact-sales")
+async def contact_sales(req: ContactSalesReq, user: Dict[str, Any] = Depends(get_current_user)):
+    property_id = canonical_live_property_id(req.property_id) or str(req.property_id or "").strip() or None
+    property_name = live_property_name(property_id, "Siripuram Property") if property_id else "Rivan property"
+    request_channel = str(req.request_channel or "contact_sales").strip().lower() or "contact_sales"
+    request_type = {
+        "callback": "Callback Request",
+        "booking_interest": "Booking Interest",
+        "whatsapp": "WhatsApp Request",
+        "email": "Email Request",
+        "contact_sales": "Sales Inquiry",
+    }.get(request_channel, "Sales Inquiry")
+    sales_request = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "service_type": request_type,
+        "property_id": property_id,
+        "preferred_date": req.preferred_date or now_utc().date().isoformat(),
+        "description": req.message,
+        "contact": normalize_phone(req.contact or user.get("phone")) if (req.contact or user.get("phone")) else "",
+        "status": "pending",
+        "subject": (req.subject or request_type).strip() or request_type,
+        "request_channel": request_channel,
+        "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
+    }
+    if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Contact service is unavailable")
+        local_upsert_collection_item("service_requests", sales_request)
+    else:
+        await db.service_requests.insert_one(sales_request.copy())
+
+    await create_notification(
+        user["id"],
+        "Sales request submitted",
+        f"Your {request_type.lower()} for {property_name} has been recorded. Our team will follow up shortly.",
+        "service",
+    )
+    await crm_sync_service_request(
+        service_request=sales_request,
+        customer=user,
+        actor_user_id=user["id"],
+    )
+    await publish_live_update(
+        "service_request.updated",
+        {"request": sales_request, "scope": "contact_sales"},
+        user_ids=[user["id"]],
+        roles=["admin"],
+    )
+    await publish_dashboard_metrics_update(user_ids=[user["id"]], roles=["admin"])
+    return {"success": True, "request": sales_request}
 
 
 @api_router.get("/services/mine")
@@ -4938,6 +5027,67 @@ async def my_visits(user: Dict[str, Any] = Depends(get_current_user)):
     return [normalize_live_visit_record(item) for item in items]
 
 
+@api_router.put("/visits/{visit_id}")
+async def update_customer_visit(
+    visit_id: str,
+    req: CustomerVisitUpdateReq,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    updates: Dict[str, Any] = {"updated_at": now_utc().isoformat()}
+    if req.visit_date is not None:
+        updates["visit_date"] = req.visit_date
+    if req.visit_time is not None:
+        updates["visit_time"] = req.visit_time
+    if req.status is not None:
+        allowed_statuses = {"rescheduled", "cancelled"}
+        normalized_status = normalize_visit_status_value(req.status)
+        if normalized_status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Customers can only reschedule or cancel their visits.")
+        updates["status"] = normalized_status
+        if normalized_status == "rescheduled":
+            updates["approval_status"] = "pending"
+        if normalized_status == "cancelled":
+            updates["approval_status"] = "rejected"
+
+    if len(updates) == 1:
+        raise HTTPException(status_code=400, detail="No visit changes were provided.")
+
+    existing = await db.visits.find_one({"id": visit_id, "user_id": user["id"]}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Visit not found")
+
+    await db.visits.update_one({"id": visit_id, "user_id": user["id"]}, {"$set": updates})
+    updated = await db.visits.find_one({"id": visit_id, "user_id": user["id"]}, {"_id": 0})
+    if not updated:
+        raise HTTPException(status_code=404, detail="Visit not found")
+
+    property_name = updated.get("property_name") or existing.get("property_name") or "your property"
+    if updates.get("status") == "cancelled":
+        title = "Visit Cancelled"
+        body = f"Your site visit for {property_name} was cancelled."
+    else:
+        title = "Visit Rescheduled"
+        body = f"Your site visit for {property_name} was updated to {updated.get('visit_date') or 'the selected date'}."
+
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "title": title,
+        "body": body,
+        "type": "visit",
+        "read": False,
+        "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
+    })
+    await publish_live_update(
+        "visit.updated",
+        {"visit": normalize_live_visit_record(updated), "scope": "customer_visit_update"},
+        user_ids=[user["id"], *( [updated.get("assigned_agent_id")] if updated.get("assigned_agent_id") else [])],
+        roles=["admin"],
+    )
+    return {"success": True, "visit": normalize_live_visit_record(updated)}
+
+
 # ---------- Wishlist ----------
 @api_router.post("/wishlist/toggle")
 async def toggle_wishlist(req: WishlistReq, user: Dict[str, Any] = Depends(get_current_user)):
@@ -4972,11 +5122,11 @@ async def list_notifications(user: Dict[str, Any] = Depends(get_current_user)):
         items = [item for item in local_list_collection("notifications") if item.get("user_id") == user["id"]]
         items = filter_live_customer_items(items)
         items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        return [normalize_live_visit_record(item) for item in items]
+        return items
     items = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     items = filter_live_customer_items(items)
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    return [normalize_live_visit_record(item) for item in items]
+    return items
 
 
 @api_router.get("/notifications/unread-count")
@@ -6356,11 +6506,11 @@ async def seed_data():
             "location": "Achutapuram, Visakhapatnam",
             "starting_price": 1600000,
             "size": "840 sq.ft",
-            "image": "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+            "image": "/Property Image 1.jpeg",
             "images": [
-                "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
-                "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_2_mjznar.jpg",
-                "https://res.cloudinary.com/dzisksq78/image/upload/v1781939094/Property_Image_1_wbetmo.jpg",
+                "/Property Image 1.jpeg",
+                "/Property Image 2.jpeg",
+                "/Map.jpeg",
             ],
             "description": "A compact independent-house offering anchored in the Siripuram Gardens layout at Achutapuram with live availability, east-face and west-face plans, and project approval details.",
             "survey_number": "Layout approved development",

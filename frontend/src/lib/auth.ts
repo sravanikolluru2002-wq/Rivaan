@@ -42,15 +42,25 @@ function handle401(response) {
   return false;
 }
 
-export async function postJson(path, body, token) {
+export class ApiError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
+export async function requestJson(path, options = {}, token) {
+  const { method = "GET", body } = options;
   const response = await fetch(`${getBackendUrl()}${path}`, {
-    method: "POST",
+    method,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     credentials: "include",
-    body: JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
   if (handle401(response)) {
@@ -59,44 +69,23 @@ export async function postJson(path, body, token) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.detail?.message || data.detail || "Request failed");
+    throw new ApiError(
+      data.detail?.message || data.detail || "Request failed",
+      response.status,
+      data,
+    );
   }
   return data;
+}
+
+export async function postJson(path, body, token) {
+  return requestJson(path, { method: "POST", body }, token);
 }
 
 export async function getJson(path, token) {
-  const response = await fetch(`${getBackendUrl()}${path}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: "include",
-  });
-  if (handle401(response)) {
-    throw new Error("Session expired");
-  }
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail?.message || data.detail || "Request failed");
-  return data;
+  return requestJson(path, { method: "GET" }, token);
 }
 
 export async function putJson(path, body, token) {
-  const response = await fetch(`${getBackendUrl()}${path}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  if (handle401(response)) {
-    throw new Error("Session expired");
-  }
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail?.message || data.detail || "Request failed");
-  return data;
+  return requestJson(path, { method: "PUT", body }, token);
 }

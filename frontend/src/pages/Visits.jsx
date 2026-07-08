@@ -1,16 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadSession } from '../lib/auth';
+import { getJson, loadSession, requestJson } from '../lib/auth';
 
 export default function Visits() {
   const navigate = useNavigate();
-  const session = loadSession();
-
-  useEffect(() => {
-    if (!session?.access_token) {
-      navigate('/login', { replace: true });
-    }
-  }, [session, navigate]);
+  const [session] = useState(() => loadSession());
 
   const [stack, setStack] = useState(['visits']);
   const [tab, setTab] = useState('Upcoming');
@@ -19,6 +13,9 @@ export default function Visits() {
   const [pickDate, setPickDate] = useState(22);
   const [pickTime, setPickTime] = useState('11:00 AM');
   const [showCancel, setShowCancel] = useState(false);
+  const [visitRows, setVisitRows] = useState([]);
+  const [propertyRows, setPropertyRows] = useState([]);
+  const [notice, setNotice] = useState('');
 
   const cur = stack[stack.length - 1];
 
@@ -38,6 +35,27 @@ export default function Visits() {
     const el = document.querySelector('.rv-scroll');
     if (el) el.scrollTop = 0;
   };
+  const showNotice = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(''), 3000);
+  };
+
+  useEffect(() => {
+    if (!session?.access_token || session?.user?.role !== 'customer') {
+      navigate('/login', { replace: true });
+      return;
+    }
+    let active = true;
+    Promise.all([
+      getJson('/api/visits/mine', session.access_token).catch(() => []),
+      getJson('/api/properties', session.access_token).catch(() => []),
+    ]).then(([visits, properties]) => {
+      if (!active) return;
+      setVisitRows(Array.isArray(visits) ? visits : []);
+      setPropertyRows(Array.isArray(properties) ? properties : []);
+    });
+    return () => { active = false; };
+  }, [navigate, session?.access_token, session?.user?.role]);
 
   const I = {
     eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 12a2.5 2.5 0 1 0 0 .01',
@@ -82,9 +100,19 @@ export default function Visits() {
     setStack((st) => [...st, 'detail']);
     setTimeout(top, 10);
   };
-  const call = () => { try { window.open('tel:+919000012345'); } catch (e) {} };
+  const call = () => {
+    const phone = sel?.assignedAgentPhone || selData?.assignedAgentPhone || session?.user?.phone || '';
+    if (!phone) {
+      showNotice('A live callback number is not attached to this visit yet.');
+      return;
+    }
+    try { window.open(`tel:${phone}`); } catch (e) {}
+  };
   const share = () => { try { if (navigator.share) navigator.share({ title: 'Rivan Site Visit', text: 'My site visit details' }); } catch (e) {} };
-  const dir = () => { try { window.open('https://maps.google.com/?q=Sirpuram+Gardens+Madhurawada+Visakhapatnam', '_blank'); } catch (e) {} };
+  const dir = () => {
+    const query = encodeURIComponent(sel?.location || selData?.location || 'Achutapuram Visakhapatnam');
+    try { window.open(`https://maps.google.com/?q=${query}`, '_blank'); } catch (e) {}
+  };
 
   const G = [
     'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)',
@@ -94,11 +122,53 @@ export default function Visits() {
   ];
 
   const upcoming = [
-    { id: 'u1', name: 'Sirpuram Gardens', project: 'Sirpuram Gardens', plot: 'Plot SG-120', type: 'Plot / Land', location: 'Madhurawada, Visakhapatnam', date: '22 May 2025', time: '11:00 AM', bookingId: 'VIS-250522-011', status: 'Confirmed', countdown: 'Your visit is in 2 days', grad: G[0], phase: 'upcoming', specs: [['Plot', 'SG-120'], ['Size', '267 Sq.Yd'], ['Facing', 'East'], ['Price', '₹12,94,950']] },
+    { id: 'u1', name: 'Emerald Estate', project: 'Emerald Estate', plot: 'Plot A-120', type: 'Plot / Land', location: 'Visakhapatnam', date: '22 May 2025', time: '11:00 AM', bookingId: 'VIS-250522-011', status: 'Confirmed', countdown: 'Your visit is in 2 days', grad: G[0], phase: 'upcoming', specs: [['Plot', 'A-120'], ['Size', '200 Sq.Yd'], ['Facing', 'East'], ['Price', '₹45,00,000']] },
+    { id: 'u2', name: 'Palm Grove Villa', project: 'Palm Grove', plot: 'Villa V-08', type: 'Villa', location: 'Yendada', date: '21 May 2025', time: '11:00 AM', bookingId: 'VIS-250521-008', status: 'Upcoming', countdown: 'Tomorrow at 11:00 AM', grad: G[3], phase: 'upcoming', specs: [['Villa', 'V-08'], ['Built-up', '3200 Sq.ft'], ['Facing', 'North-East'], ['Price', '₹64,00,000']] },
+    { id: 'u3', name: 'Green Valley Farms', project: 'Green Valley', plot: 'Farm F-12', type: 'Farm Land', location: 'Anakapalle', date: '26 May 2025', time: '4:00 PM', bookingId: 'VIS-250526-014', status: 'Rescheduled', countdown: 'Your visit is in 6 days', grad: G[2], phase: 'upcoming', specs: [['Extent', '2 Acre'], ['Soil', 'Red Loam'], ['Facing', '—'], ['Price', '₹12,00,000']] },
   ];
   const completed = [
-    { id: 'c1', name: 'Sirpuram Gardens', project: 'Sirpuram Gardens', plot: 'Plot SG-120', type: 'Plot / Land', location: 'Madhurawada, Visakhapatnam', date: '02 May 2025', time: '10:00 AM', bookingId: 'VIS-250502-004', status: 'Completed', grad: G[0], phase: 'completed', notes: 'Reviewed the plot marking, internal road access, east facing orientation and feature references for the site.', specs: [['Plot', 'SG-120'], ['Size', '267 Sq.Yd'], ['Facing', 'East'], ['Price', '₹12,94,950']] },
+    { id: 'c1', name: 'Sunrise Valley', project: 'Sunrise Valley', plot: 'Plot C-45', type: 'Plot / Land', location: 'Bhemunipatnam', date: '02 May 2025', time: '10:00 AM', bookingId: 'VIS-250502-004', status: 'Completed', grad: G[0], phase: 'completed', notes: 'Liked the corner plot & wide roads. Discussed pricing and possession timeline with executive.', specs: [['Plot', 'C-45'], ['Size', '300 Sq.Yd'], ['Facing', 'North'], ['Price', '₹42,00,000']] },
+    { id: 'c2', name: 'Emerald Heights', project: 'Emerald Heights', plot: 'Flat B-402', type: 'Apartment', location: 'Vizag', date: '18 Apr 2025', time: '3:00 PM', bookingId: 'VIS-250418-002', status: 'Completed', grad: G[1], phase: 'completed', notes: '', specs: [['Flat', 'B-402'], ['Carpet', '1650 Sq.ft'], ['Facing', 'East'], ['Price', '₹50,00,000']] },
   ];
+
+  upcoming.splice(0, upcoming.length);
+  completed.splice(0, completed.length);
+
+  if (visitRows.length) {
+    const propertyLookup = Object.fromEntries(propertyRows.map((item) => [item.id, item]));
+    const mappedVisits = visitRows.map((visit, index) => {
+      const property = propertyLookup[visit.property_id] || {};
+      const status = String(visit.status || '').toLowerCase();
+      const visitAt = new Date(visit.visit_date || visit.updated_at || Date.now()).getTime();
+      const isDone = ['completed', 'confirmed', 'approved'].includes(status) && visitAt < Date.now();
+      return {
+        id: visit.id || `visit-${index}`,
+        name: visit.property_name || property.name || 'Sirpuram Gardens',
+        project: visit.property_name || property.name || 'Sirpuram Gardens',
+        plot: visit.plot_number || visit.plot_id || 'Site Visit',
+        type: String(property.property_type || 'Plot / Land'),
+        location: property.location || property.address || 'Achutapuram, Visakhapatnam',
+        date: visit.visit_date ? new Date(visit.visit_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+        time: visit.visit_time || '11:00 AM',
+        bookingId: visit.id || 'Visit',
+        status: isDone ? 'Completed' : (status === 'cancelled' ? 'Cancelled' : status === 'rescheduled' ? 'Rescheduled' : status === 'pending_agent_approval' ? 'Upcoming' : 'Confirmed'),
+        countdown: 'Visit status synced live',
+        grad: G[index % G.length],
+        phase: isDone ? 'completed' : 'upcoming',
+        assignedAgentName: visit.assigned_agent_name || 'Assigned after approval',
+        assignedAgentPhone: visit.assigned_agent_phone || '',
+        specs: [
+          ['Property', visit.property_name || property.name || 'Sirpuram Gardens'],
+          ['Date', visit.visit_date ? new Date(visit.visit_date).toLocaleDateString('en-IN') : '—'],
+          ['Time', visit.visit_time || '11:00 AM'],
+          ['Status', String(visit.status || 'pending')],
+        ],
+        notes: visit.review_notes || '',
+      };
+    });
+    upcoming.splice(0, upcoming.length, ...mappedVisits.filter((item) => item.phase === 'upcoming'));
+    completed.splice(0, completed.length, ...mappedVisits.filter((item) => item.phase === 'completed'));
+  }
 
   const getTab = (l) => ({
     label: l,
@@ -130,7 +200,31 @@ export default function Visits() {
     };
   };
   const list = (tab === 'Upcoming' ? upcoming : completed).map(decorate);
-  const selData = sel ? decorate(sel) : (list[0] || decorate(upcoming[0]));
+  const emptyVisit = {
+    id: 'empty-visit',
+    name: 'Siripuram Property Visit',
+    project: 'Siripuram Gardens',
+    plot: 'Visit will be assigned after scheduling',
+    type: 'Plot / Land',
+    location: 'Achutapuram, Visakhapatnam',
+    date: '—',
+    time: '11:00 AM',
+    bookingId: 'Visit',
+    status: 'Upcoming',
+    countdown: 'Schedule a live visit to continue.',
+    grad: G[0],
+    phase: tab === 'Completed' ? 'completed' : 'upcoming',
+    assignedAgentName: 'Assigned after approval',
+    assignedAgentPhone: '',
+    specs: [
+      ['Property', 'Siripuram Gardens'],
+      ['Date', '—'],
+      ['Time', '11:00 AM'],
+      ['Status', 'pending'],
+    ],
+    notes: '',
+  };
+  const selData = sel ? decorate(sel) : (list[0] || decorate(emptyVisit));
 
   const propSpecs = (selData.specs || []).map(([k, v], idx) => ({ k, v, color: idx === 3 ? '#1a5e2e' : '#16231a' }));
   const visitInfo = [
@@ -202,7 +296,57 @@ export default function Visits() {
   const askCancel = () => setShowCancel(true);
   const dismiss = () => setShowCancel(false);
   const goBook = () => { setMode('book'); setStack((st) => [...st, 'book']); setTimeout(top, 10); };
-  const confirmBook = () => { setStack((st) => [...st, 'success']); setTimeout(top, 10); };
+  const confirmBook = async () => {
+    if (!session?.access_token) return;
+    const selectedProperty = propertyRows.find((item) => item.name === (sel?.name || selData?.name)) || propertyRows[0];
+    if (!selectedProperty) {
+      setStack((st) => [...st, 'success']);
+      return;
+    }
+    await requestJson('/api/visits/site', {
+      method: 'POST',
+      body: {
+        property_id: selectedProperty.id,
+        visit_date: new Date(2026, 4, Number(pickedDate || 1)).toISOString().slice(0, 10),
+        visit_time: pickedTime,
+        name: session.user?.name || 'Customer',
+        mobile: session.user?.phone || '',
+      },
+    }, session.access_token).catch(() => null);
+    const latest = await getJson('/api/visits/mine', session.access_token).catch(() => []);
+    setVisitRows(Array.isArray(latest) ? latest : []);
+    setStack((st) => [...st, 'success']);
+    setTimeout(top, 10);
+  };
+  const requestBookingFromVisit = async () => {
+    if (!session?.access_token) return;
+    const selectedProperty = propertyRows.find((item) => item.name === (sel?.name || selData?.name)) || propertyRows[0];
+    if (!selectedProperty?.id) {
+      showNotice('No live property is attached to this visit yet.');
+      return;
+    }
+    try {
+      const plots = await getJson(`/api/properties/${selectedProperty.id}/plots`, session.access_token).catch(() => []);
+      const plot = Array.isArray(plots) ? plots.find((item) => ['available', 'reserved'].includes(String(item.status || '').toLowerCase())) : null;
+      if (!plot?.id) {
+        showNotice('No live plot is available for booking on this property right now.');
+        return;
+      }
+      await requestJson('/api/bookings', {
+        method: 'POST',
+        body: {
+          plot_id: plot.id,
+          name: session.user?.name || 'Customer',
+          mobile: session.user?.phone || '',
+          whatsapp: session.user?.phone || '',
+          message: `Booking request created from visit ${selData?.bookingId || ''}`.trim(),
+        },
+      }, session.access_token);
+      showNotice('Live booking request submitted successfully.');
+    } catch (error) {
+      showNotice(error?.message || 'Unable to create the booking request right now.');
+    }
+  };
   const goVisits = () => reset('visits');
 
   const bookTitle = mode === 'reschedule' ? 'Reschedule Visit' : 'Book Site Visit';
@@ -215,8 +359,15 @@ export default function Visits() {
     label,
     go: () => {
       if (id === 'visits') reset('visits');
-      else if (id === 'detailU') openVisit(decorate(upcoming[0]));
-      else if (id === 'detailC') { setTab('Completed'); openVisit(decorate(completed[0])); }
+      else if (id === 'detailU') {
+        if (upcoming[0]) openVisit(decorate(upcoming[0]));
+        else showNotice('No upcoming live visits are available yet.');
+      }
+      else if (id === 'detailC') {
+        setTab('Completed');
+        if (completed[0]) openVisit(decorate(completed[0]));
+        else showNotice('No completed live visits are available yet.');
+      }
       else if (id === 'book') { setSel(selData); setMode('book'); setStack((st) => [...st, 'book']); setTimeout(top, 10); }
       else { setStack((st) => [...st, 'success']); setTimeout(top, 10); }
     },
@@ -236,6 +387,11 @@ export default function Visits() {
   <div className="rv-phone">
 
     <div className="rv-scroll with-nav" style={{'position': 'absolute', 'inset': '0', 'overflowY': 'auto'}}>
+      {notice && (
+        <div style={{ position: 'sticky', top: '12px', zIndex: 20, margin: '12px 22px 0', background: '#12351d', color: '#fff', borderRadius: '14px', padding: '12px 14px', fontSize: '12.5px', fontWeight: 600, boxShadow: '0 12px 24px -18px rgba(18,53,29,.75)' }}>
+          {notice}
+        </div>
+      )}
 
       {/* ===================== VISITS HOME ===================== */}
       {isVisits && (
@@ -267,7 +423,7 @@ export default function Visits() {
             </div>
             <p style={{'margin': '20px 0 6px', 'fontSize': '16px', 'fontWeight': '800', 'color': '#12351d'}}>{emptyTitle}</p>
             <p style={{'margin': '0 0 22px', 'fontSize': '13px', 'color': '#8a988c', 'maxWidth': '230px', 'lineHeight': '1.5'}}>{emptyText}</p>
-            <button style={{'height': '50px', 'padding': '0 28px', 'border': 'none', 'borderRadius': '15px', 'background': 'linear-gradient(180deg,#eb9236,#e2822a)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 12px 24px -10px rgba(226,130,42,.6)'}}>Book a Site Visit</button>
+            <button onClick={goBook} style={{'height': '50px', 'padding': '0 28px', 'border': 'none', 'borderRadius': '15px', 'background': 'linear-gradient(180deg,#eb9236,#e2822a)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 12px 24px -10px rgba(226,130,42,.6)'}}>Book a Site Visit</button>
           </div>
           )}
 
@@ -329,7 +485,7 @@ export default function Visits() {
       {/* ===================== VISIT DETAILS ===================== */}
       {isDetail && (
       <div className="rv-screen">
-        <div style={{position: 'relative', height: '230px', background: sel.grad}}>
+          <div style={{position: 'relative', height: '230px', background: selData.grad}}>
           <div style={{'position': 'absolute', 'inset': '0', 'background': 'linear-gradient(180deg,rgba(9,32,16,.3),transparent 40%,rgba(9,32,16,.5))'}}></div>
           <div style={{'position': 'absolute', 'top': '52px', 'left': '20px', 'right': '20px', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
             <button onClick={back} style={{'width': '40px', 'height': '40px', 'borderRadius': '13px', 'border': 'none', 'background': 'rgba(255,255,255,.92)', 'color': '#12351d', 'fontSize': '18px', 'cursor': 'pointer'}}>←</button>
@@ -339,7 +495,7 @@ export default function Visits() {
             </button>
           </div>
           <div style={{'position': 'absolute', 'bottom': '16px', 'left': '20px', 'display': 'flex', 'gap': '8px'}}>
-            <span style={sel.statusStyleLg}>{sel.status}</span>
+            <span style={selData.statusStyleLg}>{selData.status}</span>
           </div>
           <div style={{'position': 'absolute', 'bottom': '16px', 'right': '20px', 'display': 'flex', 'gap': '5px'}}>
             <span style={{'width': '20px', 'height': '5px', 'borderRadius': '3px', 'background': '#fff'}}></span>
@@ -350,20 +506,20 @@ export default function Visits() {
 
         <div style={{'padding': '20px 22px 0', 'marginTop': '-24px', 'background': '#f8fbf6', 'borderRadius': '24px 24px 0 0', 'position': 'relative'}}>
           {/* countdown */}
-          {sel.showCountdown && (
-          <div style={{display: 'flex', alignItems: 'center', gap: '9px', background: sel.cdBg, borderRadius: '14px', padding: '12px 14px', marginBottom: '16px'}}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={sel.cdColor} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 7v5l3 2"/></svg>
-            <span style={{fontSize: '13px', fontWeight: '700', color: sel.cdColor}}>{sel.countdown}</span>
+          {selData.showCountdown && (
+          <div style={{display: 'flex', alignItems: 'center', gap: '9px', background: selData.cdBg, borderRadius: '14px', padding: '12px 14px', marginBottom: '16px'}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={selData.cdColor} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 7v5l3 2"/></svg>
+            <span style={{fontSize: '13px', fontWeight: '700', color: selData.cdColor}}>{selData.countdown}</span>
           </div>
           )}
 
           {/* property info */}
           <p style={{'margin': '0 0 10px', 'fontSize': '12px', 'fontWeight': '800', 'color': '#8a988c', 'letterSpacing': '.5px', 'textTransform': 'uppercase'}}>Property Information</p>
-          <p style={{'margin': '0', 'fontSize': '21px', 'fontWeight': '800', 'color': '#12351d'}}>{sel.name}</p>
-          <p style={{'margin': '5px 0 0', 'fontSize': '13px', 'color': '#6d7d6f', 'fontWeight': '500'}}>{sel.project}</p>
+          <p style={{'margin': '0', 'fontSize': '21px', 'fontWeight': '800', 'color': '#12351d'}}>{selData.name}</p>
+          <p style={{'margin': '5px 0 0', 'fontSize': '13px', 'color': '#6d7d6f', 'fontWeight': '500'}}>{selData.project}</p>
           <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '6px', 'marginTop': '8px'}}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a988c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg>
-            <span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>{sel.location}</span>
+            <span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>{selData.location}</span>
           </div>
           <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '11px', 'marginTop': '16px'}}>
             { propSpecs.map((p, index) => (
@@ -388,8 +544,8 @@ export default function Visits() {
 
           {/* sales executive */}
           <div style={{'marginTop': '14px', 'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '18px', 'padding': '16px', 'display': 'flex', 'alignItems': 'center', 'gap': '13px', 'boxShadow': '0 12px 30px -24px rgba(18,53,29,.5)'}}>
-            <div style={{'width': '50px', 'height': '50px', 'borderRadius': '15px', 'background': 'linear-gradient(160deg,#1a5e2e,#124423)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'fontSize': '17px', 'fontWeight': '800', 'color': '#fff'}}>RK</div>
-            <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '11px', 'color': '#8a988c', 'fontWeight': '600'}}>Sales Executive</p><p style={{'margin': '4px 0 0', 'fontSize': '14.5px', 'fontWeight': '800', 'color': '#16231a'}}>Rahul Kumar</p><p style={{'margin': '2px 0 0', 'fontSize': '11.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>+91 90000 12345</p></div>
+            <div style={{'width': '50px', 'height': '50px', 'borderRadius': '15px', 'background': 'linear-gradient(160deg,#1a5e2e,#124423)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'fontSize': '17px', 'fontWeight': '800', 'color': '#fff'}}>{String(selData.assignedAgentName || 'AG').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || 'AG'}</div>
+            <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '11px', 'color': '#8a988c', 'fontWeight': '600'}}>Assigned Agent</p><p style={{'margin': '4px 0 0', 'fontSize': '14.5px', 'fontWeight': '800', 'color': '#16231a'}}>{selData.assignedAgentName || 'Assigned after approval'}</p><p style={{'margin': '2px 0 0', 'fontSize': '11.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>{selData.assignedAgentPhone || 'Live number will appear after assignment'}</p></div>
             <button onClick={call} style={{'width': '44px', 'height': '44px', 'borderRadius': '13px', 'border': 'none', 'background': '#eef6ea', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'cursor': 'pointer'}}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-3 2a12 12 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
             </button>
@@ -421,24 +577,24 @@ export default function Visits() {
           </div>
 
           {/* primary actions */}
-          {sel.isUpcoming && (
+          {selData.isUpcoming && (
           <div style={{'display': 'flex', 'gap': '12px', 'margin': '20px 0'}}>
             <button onClick={goReschedule} style={{'flex': '1', 'height': '54px', 'borderRadius': '16px', 'border': '1.5px solid #1a5e2e', 'background': '#fff', 'color': '#1a5e2e', 'fontFamily': 'inherit', 'fontSize': '14px', 'fontWeight': '700', 'cursor': 'pointer'}}>Reschedule</button>
             <button onClick={askCancel} style={{'flex': '1', 'height': '54px', 'borderRadius': '16px', 'border': '1.5px solid #f3d3d0', 'background': '#fff', 'color': '#c0392b', 'fontFamily': 'inherit', 'fontSize': '14px', 'fontWeight': '700', 'cursor': 'pointer'}}>Cancel Visit</button>
           </div>
           )}
-          {sel.isCompleted && (
+          {selData.isCompleted && (
           <div style={{'margin': '20px 0'}}>
-            {sel.hasNotes && (
+            {selData.hasNotes && (
             <div style={{'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '16px', 'padding': '15px', 'marginBottom': '14px'}}>
               <p style={{'margin': '0 0 6px', 'fontSize': '12px', 'fontWeight': '800', 'color': '#8a988c', 'textTransform': 'uppercase', 'letterSpacing': '.5px'}}>Visit Notes</p>
-              <p style={{'margin': '0', 'fontSize': '13px', 'color': '#4a5c4d', 'lineHeight': '1.55'}}>{sel.notes}</p>
+              <p style={{'margin': '0', 'fontSize': '13px', 'color': '#4a5c4d', 'lineHeight': '1.55'}}>{selData.notes}</p>
             </div>
             )}
             <button onClick={goBook} style={{'width': '100%', 'height': '54px', 'borderRadius': '16px', 'border': 'none', 'background': 'linear-gradient(180deg,#eb9236,#e2822a)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 12px 24px -12px rgba(226,130,42,.55)', 'marginBottom': '12px'}}>Book Another Visit</button>
             <div style={{'display': 'flex', 'gap': '12px'}}>
-              <button style={{'flex': '1', 'height': '50px', 'borderRadius': '15px', 'border': '1.5px solid #cfe6c6', 'background': '#fff', 'color': '#1a5e2e', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>♡ Mark Interested</button>
-              <button style={{'flex': '1', 'height': '50px', 'borderRadius': '15px', 'border': '1.5px solid #cfe6c6', 'background': '#fff', 'color': '#1a5e2e', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Request Callback</button>
+              <button onClick={requestBookingFromVisit} style={{'flex': '1', 'height': '50px', 'borderRadius': '15px', 'border': '1.5px solid #cfe6c6', 'background': '#fff', 'color': '#1a5e2e', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>♡ Mark Interested</button>
+              <button onClick={call} style={{'flex': '1', 'height': '50px', 'borderRadius': '15px', 'border': '1.5px solid #cfe6c6', 'background': '#fff', 'color': '#1a5e2e', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Request Callback</button>
             </div>
           </div>
           )}
@@ -456,8 +612,8 @@ export default function Visits() {
 
         <div style={{'padding': '18px 22px 0'}}>
           <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '12px', 'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '16px', 'padding': '12px', 'boxShadow': '0 12px 30px -24px rgba(18,53,29,.5)'}}>
-            <div style={{width: '52px', height: '52px', borderRadius: '13px', background: sel.grad, flex: 'none'}}></div>
-            <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '14.5px', 'fontWeight': '800', 'color': '#16231a'}}>{sel.name}</p><p style={{'margin': '3px 0 0', 'fontSize': '11.5px', 'color': '#8a988c', 'fontWeight': '500'}}>{sel.plot} · {sel.location}</p></div>
+            <div style={{width: '52px', height: '52px', borderRadius: '13px', background: selData.grad, flex: 'none'}}></div>
+            <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '14.5px', 'fontWeight': '800', 'color': '#16231a'}}>{selData.name}</p><p style={{'margin': '3px 0 0', 'fontSize': '11.5px', 'color': '#8a988c', 'fontWeight': '500'}}>{selData.plot} · {selData.location}</p></div>
           </div>
 
           <p style={{'margin': '22px 0 12px', 'fontSize': '14px', 'fontWeight': '800', 'color': '#12351d'}}>Select Date · May 2025</p>
@@ -477,8 +633,8 @@ export default function Visits() {
 
           <div style={{'marginTop': '20px', 'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '16px', 'padding': '16px', 'boxShadow': '0 12px 30px -24px rgba(18,53,29,.5)'}}>
             <p style={{'margin': '0 0 10px', 'fontSize': '12px', 'fontWeight': '800', 'color': '#8a988c', 'textTransform': 'uppercase', 'letterSpacing': '.5px'}}>Your Details</p>
-            <div style={{'display': 'flex', 'justifyContent': 'space-between', 'padding': '6px 0'}}><span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>Name</span><span style={{'fontSize': '13px', 'color': '#16231a', 'fontWeight': '700'}}>Ananya Sharma</span></div>
-            <div style={{'display': 'flex', 'justifyContent': 'space-between', 'padding': '6px 0'}}><span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>Mobile</span><span style={{'fontSize': '13px', 'color': '#16231a', 'fontWeight': '700'}}>+91 98765 43210</span></div>
+            <div style={{'display': 'flex', 'justifyContent': 'space-between', 'padding': '6px 0'}}><span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>Name</span><span style={{'fontSize': '13px', 'color': '#16231a', 'fontWeight': '700'}}>{session?.user?.name || 'Customer'}</span></div>
+            <div style={{'display': 'flex', 'justifyContent': 'space-between', 'padding': '6px 0'}}><span style={{'fontSize': '12.5px', 'color': '#6d7d6f', 'fontWeight': '500'}}>Mobile</span><span style={{'fontSize': '13px', 'color': '#16231a', 'fontWeight': '700'}}>{session?.user?.phone ? `+${String(session.user.phone).replace(/^\+/, '')}` : '—'}</span></div>
           </div>
 
           <button onClick={confirmBook} style={{'margin': '20px 0', 'width': '100%', 'height': '56px', 'border': 'none', 'borderRadius': '16px', 'background': 'linear-gradient(180deg,#1a5e2e,#124423)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>{confirmLabel} · {pickedDate} May, {pickedTime}</button>
@@ -543,10 +699,18 @@ export default function Visits() {
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#c0392b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16h.01M10.3 3.8 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0z"/></svg>
         </div>
         <p style={{'margin': '16px 0 6px', 'fontSize': '18px', 'fontWeight': '800', 'color': '#12351d', 'textAlign': 'center'}}>Cancel this visit?</p>
-        <p style={{'margin': '0', 'fontSize': '13px', 'color': '#6d7d6f', 'textAlign': 'center', 'lineHeight': '1.55'}}>This will cancel your visit to {sel.name} on {sel.date}. You can rebook anytime.</p>
+        <p style={{'margin': '0', 'fontSize': '13px', 'color': '#6d7d6f', 'textAlign': 'center', 'lineHeight': '1.55'}}>This will cancel your visit to {selData.name} on {selData.date}. You can rebook anytime.</p>
         <div style={{'display': 'flex', 'gap': '12px', 'marginTop': '22px'}}>
           <button onClick={dismiss} style={{'flex': '1', 'height': '52px', 'borderRadius': '15px', 'border': '1.5px solid #e2e8e0', 'background': '#fff', 'color': '#3d4f40', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Keep Visit</button>
-          <button onClick={dismiss} style={{'flex': '1', 'height': '52px', 'borderRadius': '15px', 'border': 'none', 'background': '#c0392b', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Cancel Visit</button>
+          <button onClick={async () => {
+            if (sel?.id && session?.access_token) {
+              await requestJson(`/api/visits/${sel.id}`, { method: 'PUT', body: { status: 'cancelled' } }, session.access_token).catch(() => null);
+              const latest = await getJson('/api/visits/mine', session.access_token).catch(() => []);
+              setVisitRows(Array.isArray(latest) ? latest : []);
+            }
+            dismiss();
+            reset('visits');
+          }} style={{'flex': '1', 'height': '52px', 'borderRadius': '15px', 'border': 'none', 'background': '#c0392b', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '14.5px', 'fontWeight': '700', 'cursor': 'pointer'}}>Cancel Visit</button>
         </div>
       </div>
     </div>
