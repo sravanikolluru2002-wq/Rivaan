@@ -76,37 +76,163 @@ function ensureRuntime() {
   return runtimePromise;
 }
 
-function personalizeRenderedPage(host: HTMLDivElement, title: string) {
+function formatPhoneForUi(rawPhone: unknown) {
+  const digits = String(rawPhone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("91") && digits.length === 12) {
+    return `+91 ${digits.slice(2)}`;
+  }
+  if (digits.length === 10) {
+    return `+91 ${digits}`;
+  }
+  return String(rawPhone || "").trim();
+}
+
+function replaceExactText(host: HTMLDivElement, matcher: (value: string) => boolean, nextValue: string) {
+  if (!nextValue && nextValue !== "") return;
+  host.querySelectorAll("*").forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    const text = node.textContent?.trim() || "";
+    if (!text || !matcher(text)) return;
+    node.textContent = nextValue;
+  });
+}
+
+function replaceInputValue(host: HTMLDivElement, predicate: (value: string) => boolean, nextValue: string) {
+  host.querySelectorAll("input, textarea").forEach((node) => {
+    if (!(node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)) return;
+    const currentValue = String(node.value || "").trim();
+    if (!predicate(currentValue)) return;
+    node.value = nextValue;
+    node.setAttribute("value", nextValue);
+  });
+}
+
+function formatUiDate(value?: string | Date | null) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatUiDayLabel(value?: string | Date | null) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  return `Today, ${new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date)}`;
+}
+
+function replaceContainsText(host: HTMLDivElement, matcher: (value: string) => boolean, nextValue: string) {
+  host.querySelectorAll("*").forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    const text = node.textContent?.trim() || "";
+    if (!text || !matcher(text)) return;
+    node.textContent = nextValue;
+  });
+}
+
+function applyDashboardShellTweaks(host: HTMLDivElement, title: string) {
+  const styleId = "dc-page-runtime-style";
+  document.getElementById(styleId)?.remove();
+  const style = document.createElement("style");
+  style.id = styleId;
+  style.textContent = `
+    .dc-react-page, .dc-react-host { min-height: 100vh; background: #eef2ec; }
+    @media (max-width: 860px) {
+      .dc-react-host main, .dc-react-host > div, .dc-react-host > section { min-width: 0 !important; }
+    }
+    @media (max-width: 640px) {
+      .dc-react-host header { padding-left: 14px !important; padding-right: 14px !important; }
+      .dc-react-host [class*="crm-side"], .dc-react-host [class*="ad-side"] { width: 260px !important; }
+      .dc-react-host button, .dc-react-host a { -webkit-tap-highlight-color: transparent; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  if (title.includes("Agent")) {
+    replaceContainsText(
+      host,
+      (text) => text.includes("Track leads & follow-ups in one glance."),
+      "Manage customer enquiries, visits, bookings, and follow-ups in one place.",
+    );
+  }
+
+  if (title.includes("Admin")) {
+    replaceContainsText(
+      host,
+      (text) => text.includes("System Settings"),
+      "Settings",
+    );
+  }
+}
+
+function personalizeRenderedPage(host: HTMLDivElement, title: string, liveMe?: Record<string, any> | null) {
   const session = loadSession();
-  const user = session?.user || {};
+  const user = liveMe || session?.user || {};
   const userName =
     String(user.name || user.full_name || user.display_name || "").trim() ||
     "Rivan User";
   const userRole = String(user.role || "").trim().toLowerCase();
+  const userEmail = String(user.email || "").trim();
+  const userLocation = String(user.location || user.city || user.address || "").trim();
+  const userPhone = formatPhoneForUi(user.phone || user.phone_number || user.mobile);
   const initials = userName
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part: string) => part[0]?.toUpperCase() || "")
     .join("") || "RU";
+  const todayLabel = formatUiDayLabel(user.updated_at || new Date());
+  const shortDate = formatUiDate(new Date());
+
+  applyDashboardShellTweaks(host, title);
 
   if (title.includes("Agent")) {
-    host.querySelectorAll("*").forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      const text = node.textContent?.trim();
-      if (text === "Ananya Sharma") node.textContent = userName;
-      if (text === "Super Agent") node.textContent = "Agent";
-      if (text === "SK") node.textContent = initials;
-    });
+    replaceExactText(host, (text) => ["Ananya Sharma", "Arjun Reddy"].includes(text), userName);
+    replaceExactText(host, (text) => text === "Super Agent", "Agent");
+    replaceExactText(host, (text) => ["SK", "AR", "AS"].includes(text), initials);
+    replaceExactText(host, (text) => text === "Today, 22 May 2025", todayLabel);
+    replaceExactText(host, (text) => text === "Refreshing automatically", "Syncing live updates");
+    replaceExactText(host, (text) => text === "Welcome, Arjun Reddy", `Welcome, ${userName}`);
+    replaceContainsText(host, (text) => text.includes("Incoming enquiries awaiting first contact"), "Live customer enquiries and conversions");
+    if (userPhone) {
+      replaceExactText(host, (text) => text === "+91 9052644345" || text === "+91 90000 12345", userPhone);
+      replaceInputValue(host, (value) => value === "+91 9052644345" || value === "+91 90000 12345", userPhone);
+    }
+    if (userEmail) {
+      replaceExactText(host, (text) => text === "agent@rivaan.com", userEmail);
+      replaceInputValue(host, (value) => value === "agent@rivaan.com", userEmail);
+    }
+    if (userLocation) {
+      replaceExactText(host, (text) => text === "Visakhapatnam", userLocation);
+      replaceInputValue(host, (value) => value === "Visakhapatnam", userLocation);
+    }
   }
 
   if (title.includes("Admin")) {
-    host.querySelectorAll("*").forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      const text = node.textContent?.trim();
-      if (text === "Admin User") node.textContent = userName;
-      if (text === "Super Admin") node.textContent = userRole === "admin" ? "Admin" : text;
-    });
+    replaceExactText(host, (text) => ["Admin User", "Kollu Sravani", "Sravani Kollu"].includes(text), userName);
+    replaceExactText(host, (text) => text === "Super Admin", userRole === "admin" ? "Admin" : text);
+    replaceExactText(host, (text) => ["SK", "KS"].includes(text), initials);
+    replaceExactText(host, (text) => text === "22 May 2025", shortDate);
+    replaceContainsText(host, (text) => text.includes("Role:") && text.includes("full platform control"), "Role: Admin");
+    if (userPhone) {
+      replaceExactText(host, (text) => text === "+91 90000 12345" || text === "+91+919491348973" || text === "+91 9491348973", userPhone);
+      replaceInputValue(host, (value) => value === "+91 90000 12345" || value === "+91+919491348973" || value === "+91 9491348973", userPhone);
+    }
+    if (userEmail) {
+      replaceExactText(host, (text) => text === "admin@rivanrealty.com", userEmail);
+      replaceInputValue(host, (value) => value === "admin@rivanrealty.com", userEmail);
+    }
+    if (userLocation) {
+      replaceExactText(host, (text) => text === "Head Office, Vizag" || text === "Rivan HQ", userLocation);
+      replaceInputValue(host, (value) => value === "Head Office, Vizag" || value === "Rivan HQ", userLocation);
+    }
   }
 }
 
@@ -120,13 +246,20 @@ export function DcPage({ sourcePath, title }: DcPageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const managedHeadRef = useRef<HTMLElement[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
   
   useEffect(() => {
     const session = loadSession();
-    if (!session?.access_token || session.user.role !== 'agent') {
-      navigate('/login', { replace: true });
+    const requiredRole = title.includes("Admin") ? "admin" : title.includes("Agent") ? "agent" : null;
+    if (!session?.access_token || (requiredRole && session.user.role !== requiredRole)) {
+      navigate("/login", { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, title]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setTick((value) => value + 1), 30000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,18 +287,22 @@ export function DcPage({ sourcePath, title }: DcPageProps) {
 
       
       let agentDataStr = "";
+      let liveMe: Record<string, any> | null = null;
       if (title.includes("Agent")) {
         try {
           const session = loadSession();
           if (session?.access_token) {
-            const [dashboard, leads, bookings, visits] = await Promise.all([
+            const [me, dashboard, leads, bookings, visits] = await Promise.all([
+              getJson("/api/auth/me", session.access_token).catch(() => null),
               getJson('/api/agent/dashboard', session.access_token).catch(()=>null),
               getJson('/api/crm/leads', session.access_token).catch(()=>[]),
               getJson('/api/agent/bookings', session.access_token).catch(()=>[]),
               getJson('/api/agent/site-visits', session.access_token).catch(()=>[]),
             ]);
+            liveMe = me;
             agentDataStr = `<script>
               window.__AGENT_DATA = {
+                me: ${JSON.stringify(me)},
                 dashboard: ${JSON.stringify(dashboard)},
                 leads: ${JSON.stringify(leads)},
                 bookings: ${JSON.stringify(bookings)},
@@ -174,6 +311,13 @@ export function DcPage({ sourcePath, title }: DcPageProps) {
             </script>`;
           }
         } catch (e) { console.error("Agent fetch err", e); }
+      } else if (title.includes("Admin")) {
+        try {
+          const session = loadSession();
+          if (session?.access_token) {
+            liveMe = await getJson("/api/auth/me", session.access_token).catch(() => null);
+          }
+        } catch (e) { console.error("Admin fetch err", e); }
       }
 
       const sourceDoc = new DOMParser().parseFromString(html, "text/html");
@@ -182,7 +326,7 @@ export function DcPage({ sourcePath, title }: DcPageProps) {
 
       host.innerHTML = agentDataStr + bodyMarkup;
       window.__dcBoot?.();
-      personalizeRenderedPage(host, title);
+      personalizeRenderedPage(host, title, liveMe);
 
       requestAnimationFrame(() => {
         if (cancelled) return;
@@ -205,7 +349,7 @@ export function DcPage({ sourcePath, title }: DcPageProps) {
         hostRef.current.innerHTML = "";
       }
     };
-  }, [sourcePath, title]);
+  }, [sourcePath, tick, title]);
 
   if (error) {
     return (
