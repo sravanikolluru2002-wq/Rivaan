@@ -93,6 +93,7 @@ export default function MyLands() {
   const [documentRows, setDocumentRows] = useState([]);
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [notice, setNotice] = useState('');
+  const [search, setSearch] = useState('');
 
   const cur = stack[stack.length - 1];
 
@@ -150,11 +151,22 @@ export default function MyLands() {
 
   const sourceLands = liveLands;
 
-  const filteredLands = sourceLands.filter(l =>
-    filter === 'All' ||
-    (filter === 'Plots' && l.typeShort === 'Plot') ||
-    (filter === 'Villas' && l.typeShort === 'Villa')
-  );
+  const query = String(search || '').toLowerCase().trim();
+  const filteredLands = sourceLands.filter((l) => {
+    const matchesType =
+      filter === 'All' ||
+      (filter === 'Plots' && l.typeShort === 'Plot') ||
+      (filter === 'Villas' && l.typeShort === 'Villa');
+    const matchesText = !query || [
+      l.name,
+      l.code,
+      l.spec,
+      l.reg,
+      l.status,
+      ...(Array.isArray(l.aboutRows) ? l.aboutRows.flatMap((row) => [row.k, row.v]) : []),
+    ].some((value) => String(value || '').toLowerCase().includes(query));
+    return matchesType && matchesText;
+  });
 
   const isLands = cur === 'lands';
   const isDetail = cur === 'detail';
@@ -232,7 +244,7 @@ export default function MyLands() {
             <div style={{ padding: '18px 22px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', height: '48px', border: '1px solid #e6ede2', borderRadius: '15px', padding: '0 14px', background: '#fbfdfa' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c8c7e" strokeWidth="1.8" strokeLinecap="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-3.5-3.5" /></svg>
-                <input placeholder="Search by project, plot no. or location" style={{ flex: '1', border: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: '13px', fontWeight: '500', color: '#16231a' }} />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by project, plot no. or location" style={{ flex: '1', border: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: '13px', fontWeight: '500', color: '#16231a' }} />
               </div>
 
               <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginTop: '14px' }} className="rv-scroll">

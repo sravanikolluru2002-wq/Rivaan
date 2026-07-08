@@ -125,6 +125,8 @@ export default function AppDashboard() {
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [contactMessage, setContactMessage] = useState('');
+  const [homeSearch, setHomeSearch] = useState('');
+  const [exploreSearch, setExploreSearch] = useState('');
 
   const cur = stack[stack.length - 1];
 
@@ -300,6 +302,27 @@ export default function AppDashboard() {
     return '₹' + Math.round(n).toLocaleString('en-IN');
   };
 
+  const normalizeSearch = (value) => String(value || '').toLowerCase().trim();
+  const matchesSearch = (value, query) => String(value || '').toLowerCase().includes(query);
+  const propertyMatches = (item, query) => {
+    if (!query) return true;
+    return [
+      item?.name,
+      item?.loc,
+      item?.tag,
+      item?.price,
+      item?.type,
+      item?.property?.name,
+      item?.property?.location,
+      item?.property?.address,
+      item?.property?.property_type,
+      item?.property?.category,
+      item?.property?.plot_number,
+      item?.plot,
+      item?.spec,
+    ].some((value) => matchesSearch(value, query));
+  };
+
   const featured = [
     { name: 'Emerald Estate', loc: 'Visakhapatnam', tag: 'Vizag', price: '₹4,500', grad: G[0] },
     { name: 'Emerald Green City', loc: 'Anakapalle', tag: 'Anakapalle', price: '₹3,200', grad: G[1] },
@@ -310,21 +333,8 @@ export default function AppDashboard() {
     { name: 'Emerald Green City', loc: 'Anakapalle', price: '₹3,200', type: 'Plots', grad: G[1] },
     { name: 'Emerald Springs', loc: 'Yendada', price: '₹5,200', type: 'Apartments', grad: G[2] },
   ];
-  const nearby = nearbyAll
-    .filter((n) => chip === 'All' || n.type === chip)
-    .map((n) => {
-      const isLiked = !!liked[n.name];
-      return {
-        ...n,
-        open: () => openProject(n),
-        like: (e) => {
-          e.stopPropagation();
-          setLiked((st) => ({ ...st, [n.name]: !st[n.name] }));
-        },
-        heartFill: isLiked ? '#e2822a' : 'none',
-        heartStroke: isLiked ? '#e2822a' : '#c2cdc0',
-      };
-    });
+  const homeQuery = normalizeSearch(homeSearch);
+  const exploreQuery = normalizeSearch(exploreSearch);
 
   featured.splice(0, featured.length, {
     name: 'Sirpuram Gardens',
@@ -359,11 +369,11 @@ export default function AppDashboard() {
   const chips = ['All', 'Plots', 'Villas', 'Apartments'].map(getChip);
 
   const filterIcons = [
-    { label: 'Filter', icon: 'M4 6h16M7 12h10M10 18h4' },
-    { label: 'Location', icon: 'M12 22s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5' },
-    { label: 'Budget', icon: 'M12 3v18M8 7h6a2.5 2.5 0 0 1 0 5H9a2.5 2.5 0 0 0 0 5h7' },
-    { label: 'Size', icon: 'M4 20L20 4M4 9V4h5M20 15v5h-5' },
-    { label: 'More', icon: 'M5 12h.01M12 12h.01M19 12h.01' },
+    { label: 'Filter', icon: 'M4 6h16M7 12h10M10 18h4', go: () => openNotice('Filter by search', 'Use the search box to filter live properties by project, location, or plot.') },
+    { label: 'Location', icon: 'M12 22s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5', go: () => setExploreSearch('Achutapuram') },
+    { label: 'Budget', icon: 'M12 3v18M8 7h6a2.5 2.5 0 0 1 0 5H9a2.5 2.5 0 0 0 0 5h7', go: () => openNotice('Budget filter', 'Budget filtering will be available after more live properties are added.') },
+    { label: 'Size', icon: 'M4 20L20 4M4 9V4h5M20 15v5h-5', go: () => openNotice('Plot size filter', 'Plot size filtering will be available after more live plots are added.') },
+    { label: 'More', icon: 'M5 12h.01M12 12h.01M19 12h.01', go: () => openNotice('More filters', 'More filters will appear here as new property options go live.') },
   ];
 
   const getMyTab = (l) => ({
@@ -438,6 +448,24 @@ export default function AppDashboard() {
     })));
   }
 
+  const filteredFeatured = featured.filter((item) => propertyMatches(item, homeQuery));
+  const nearby = nearbyAll
+    .filter((n) => chip === 'All' || n.type === chip)
+    .filter((n) => propertyMatches(n, exploreQuery || homeQuery))
+    .map((n) => {
+      const isLiked = !!liked[n.name];
+      return {
+        ...n,
+        open: () => openProject(n),
+        like: (e) => {
+          e.stopPropagation();
+          setLiked((st) => ({ ...st, [n.name]: !st[n.name] }));
+        },
+        heartFill: isLiked ? '#e2822a' : 'none',
+        heartStroke: isLiked ? '#e2822a' : '#c2cdc0',
+      };
+    });
+
   const iconBg = '#eef6ea';
   const pm = (icon, label, goName, extra = {}) => ({
     icon,
@@ -476,7 +504,7 @@ export default function AppDashboard() {
     { icon: 'M6 3h12v18H6zM9 7h6M8 11h.01M12 11h.01M16 11v6M8 15h.01M12 15h.01', label: 'EMI Calculator', go: () => payNow() },
   ].map((p, idx) => ({ ...p, border: idx === 0 ? 'none' : '1px solid #f0f4ee' }));
 
-  const selData = sel || { name: 'Emerald Estate', loc: 'Visakhapatnam', price: '₹4,500', grad: G[0] };
+  const selData = sel || { name: 'Sirpuram Gardens', loc: 'Achutapuram, Visakhapatnam', price: formatCurrency(0), grad: G[0] };
   const specGrid = [
     { k: 'Plot Size', v: '200 Sq.Yd' },
     { k: 'Facing', v: 'East' },
@@ -854,7 +882,7 @@ export default function AppDashboard() {
           </div>
           <div style={{'marginTop': '18px', 'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'height': '50px', 'background': '#fff', 'borderRadius': '15px', 'padding': '0 14px'}}>
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7c8c7e" stroke-width="1.8" stroke-linecap="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-3.5-3.5"/></svg>
-            <input placeholder="Search by location, project or plot no." style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '500', 'color': '#16231a'}}/>
+            <input value={homeSearch} onChange={(event) => setHomeSearch(event.target.value)} placeholder="Search by location, project or plot no." style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '500', 'color': '#16231a'}}/>
             <div style={{'width': '34px', 'height': '34px', 'borderRadius': '10px', 'background': '#eef6ea', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
             </div>
@@ -880,7 +908,7 @@ export default function AppDashboard() {
             <a onClick={goExplore} style={{'fontSize': '13px', 'fontWeight': '700', 'color': '#e2822a', 'cursor': 'pointer'}}>View All</a>
           </div>
           <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '13px'}}>
-            { featured.map((f, index) => (
+            { filteredFeatured.map((f, index) => (
               <div onClick={f.open} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
                 <div style={{height: '96px', background: f.property?.image ? `center / cover no-repeat url(${f.property.image})` : f.grad, position: 'relative'}}>
                   <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>📍 {f.tag}</span>
@@ -893,6 +921,9 @@ export default function AppDashboard() {
               </div>
             ))}
           </div>
+          {!filteredFeatured.length && (
+            <div style={{'marginTop': '12px', 'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '16px', 'padding': '18px', 'fontSize': '13px', 'fontWeight': '600', 'color': '#6d7d6f'}}>No properties match your search right now.</div>
+          )}
 
           {/* quick actions */}
           <p style={{'fontSize': '16px', 'fontWeight': '800', 'color': '#12351d', 'margin': '24px 0 13px'}}>Quick Actions</p>
@@ -920,7 +951,7 @@ export default function AppDashboard() {
           </div>
           <div style={{'marginTop': '16px', 'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'height': '48px', 'background': '#fff', 'borderRadius': '15px', 'padding': '0 14px'}}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c8c7e" stroke-width="1.8" stroke-linecap="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-3.5-3.5"/></svg>
-            <input placeholder="Search location or project" style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '500', 'color': '#16231a'}}/>
+            <input value={exploreSearch} onChange={(event) => setExploreSearch(event.target.value)} placeholder="Search location or project" style={{'flex': '1', 'border': 'none', 'background': 'transparent', 'fontFamily': 'inherit', 'fontSize': '13.5px', 'fontWeight': '500', 'color': '#16231a'}}/>
           </div>
         </div>
 
@@ -933,12 +964,12 @@ export default function AppDashboard() {
 
           <div style={{'display': 'flex', 'justifyContent': 'space-between', 'margin': '18px 2px 6px'}}>
             { filterIcons.map((fi, index) => (
-              <div style={{'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'gap': '6px'}}>
+              <button onClick={fi.go} style={{'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'gap': '6px', 'border': 'none', 'background': 'transparent', 'padding': '0', 'cursor': 'pointer', 'fontFamily': 'inherit'}}>
                 <span style={{'width': '44px', 'height': '44px', 'borderRadius': '14px', 'border': '1px solid #e6ede2', 'background': '#fff', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}}>
                   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d={fi.icon}/></svg>
                 </span>
                 <span style={{'fontSize': '10.5px', 'fontWeight': '600', 'color': '#6d7d6f'}}>{fi.label}</span>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -979,6 +1010,9 @@ export default function AppDashboard() {
                 </button>
               </div>
             ))}
+            {!nearby.length && (
+              <div style={{'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '16px', 'padding': '18px', 'fontSize': '13px', 'fontWeight': '600', 'color': '#6d7d6f'}}>No live properties matched this search.</div>
+            )}
           </div>
           )}
         </div>
@@ -1102,7 +1136,7 @@ export default function AppDashboard() {
               <div style={{'height': '100%', 'width': '100%', 'background': 'linear-gradient(90deg,#1a5e2e,#2f8544)', 'borderRadius': '6px'}}></div>
             </div>
             <div style={{'display': 'flex', 'justifyContent': 'space-between', 'marginTop': '10px'}}>
-              <span style={{'fontSize': '11px', 'color': '#1a5e2e', 'fontWeight': '700'}}>● Booking, lands, visits, and CRM are live</span>
+              <span style={{'fontSize': '11px', 'color': '#1a5e2e', 'fontWeight': '700'}}>● Bookings, visits, and updates sync automatically</span>
               <span style={{'fontSize': '11px', 'color': '#e2822a', 'fontWeight': '700'}}>● Payment collection is excluded from this release</span>
             </div>
             {/* Milestone markers */}

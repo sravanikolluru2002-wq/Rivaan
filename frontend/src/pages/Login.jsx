@@ -527,7 +527,7 @@ export default function Login() {
                 Customer Onboarding
               </h1>
               <p style={{ margin: "0", fontSize: "14.5px", color: "#6d7d6f", lineHeight: "1.55" }}>
-                Start with your details first, then continue with phone OTP login for your customer account.
+                Share your basic details first, then continue with secure phone OTP login.
               </p>
 
               <div style={{ marginTop: "24px", display: "grid", gap: "14px" }}>
@@ -688,7 +688,7 @@ export default function Login() {
 
               {role === "agent" && (
                 <p style={{ margin: "14px 0 0", fontSize: "13px", color: "#6d7d6f" }}>
-                  Use your approved mobile number to continue with OTP. New agents can submit their details from here.
+                  Continue with your registered mobile number. If you are new, you can submit your application here.
                 </p>
               )}
 
@@ -762,7 +762,7 @@ export default function Login() {
                 Agent Application
               </h1>
               <p style={{ margin: 0, fontSize: "14px", color: "#6d7d6f", lineHeight: "1.55" }}>
-                This number is not approved yet. Submit your details and the admin can approve you in real time.
+                This number is not active for agent access yet. Submit your details and we will review your application.
               </p>
 
               <div style={{ display: "grid", gap: "14px", marginTop: "24px" }}>

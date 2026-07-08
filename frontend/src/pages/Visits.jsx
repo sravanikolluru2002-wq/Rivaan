@@ -135,18 +135,8 @@ export default function Visits() {
     'linear-gradient(150deg,#356b52 0%,#5a9a7a 55%,#b6d7bf 100%)',
   ];
 
-  const upcoming = [
-    { id: 'u1', name: 'Emerald Estate', project: 'Emerald Estate', plot: 'Plot A-120', type: 'Plot / Land', location: 'Visakhapatnam', date: '22 May 2025', time: '11:00 AM', bookingId: 'VIS-250522-011', status: 'Confirmed', countdown: 'Your visit is in 2 days', grad: G[0], phase: 'upcoming', specs: [['Plot', 'A-120'], ['Size', '200 Sq.Yd'], ['Facing', 'East'], ['Price', '₹45,00,000']] },
-    { id: 'u2', name: 'Palm Grove Villa', project: 'Palm Grove', plot: 'Villa V-08', type: 'Villa', location: 'Yendada', date: '21 May 2025', time: '11:00 AM', bookingId: 'VIS-250521-008', status: 'Upcoming', countdown: 'Tomorrow at 11:00 AM', grad: G[3], phase: 'upcoming', specs: [['Villa', 'V-08'], ['Built-up', '3200 Sq.ft'], ['Facing', 'North-East'], ['Price', '₹64,00,000']] },
-    { id: 'u3', name: 'Green Valley Farms', project: 'Green Valley', plot: 'Farm F-12', type: 'Farm Land', location: 'Anakapalle', date: '26 May 2025', time: '4:00 PM', bookingId: 'VIS-250526-014', status: 'Rescheduled', countdown: 'Your visit is in 6 days', grad: G[2], phase: 'upcoming', specs: [['Extent', '2 Acre'], ['Soil', 'Red Loam'], ['Facing', '—'], ['Price', '₹12,00,000']] },
-  ];
-  const completed = [
-    { id: 'c1', name: 'Sunrise Valley', project: 'Sunrise Valley', plot: 'Plot C-45', type: 'Plot / Land', location: 'Bhemunipatnam', date: '02 May 2025', time: '10:00 AM', bookingId: 'VIS-250502-004', status: 'Completed', grad: G[0], phase: 'completed', notes: 'Liked the corner plot & wide roads. Discussed pricing and possession timeline with executive.', specs: [['Plot', 'C-45'], ['Size', '300 Sq.Yd'], ['Facing', 'North'], ['Price', '₹42,00,000']] },
-    { id: 'c2', name: 'Emerald Heights', project: 'Emerald Heights', plot: 'Flat B-402', type: 'Apartment', location: 'Vizag', date: '18 Apr 2025', time: '3:00 PM', bookingId: 'VIS-250418-002', status: 'Completed', grad: G[1], phase: 'completed', notes: '', specs: [['Flat', 'B-402'], ['Carpet', '1650 Sq.ft'], ['Facing', 'East'], ['Price', '₹50,00,000']] },
-  ];
-
-  upcoming.splice(0, upcoming.length);
-  completed.splice(0, completed.length);
+  const upcoming = [];
+  const completed = [];
 
   if (visitRows.length) {
     const propertyLookup = Object.fromEntries(propertyRows.map((item) => [item.id, item]));
