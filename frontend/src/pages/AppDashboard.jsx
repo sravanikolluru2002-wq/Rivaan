@@ -501,7 +501,7 @@ export default function AppDashboard() {
     { icon: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h4', label: 'Payment History', go: () => payNow() },
     { icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', label: 'Upcoming Payments', go: () => payNow() },
     { icon: 'M12 3v12M8 11l4 4 4-4M5 21h14', label: 'Download Receipts', go: () => payNow() },
-    { icon: 'M6 3h12v18H6zM9 7h6M8 11h.01M12 11h.01M16 11v6M8 15h.01M12 15h.01', label: 'EMI Calculator', go: () => payNow() },
+    { icon: 'M6 3h12v18H6zM9 7h6M8 11h.01M12 11h.01M16 11v6M8 15h.01M12 15h.01', label: 'EMI Calculator', go: () => go('emi') },
   ].map((p, idx) => ({ ...p, border: idx === 0 ? 'none' : '1px solid #f0f4ee' }));
 
   const selData = sel || { name: 'Sirpuram Gardens', loc: 'Achutapuram, Visakhapatnam', price: formatCurrency(0), grad: G[0] };
@@ -715,7 +715,7 @@ export default function AppDashboard() {
     { icon: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-3.5-3.5', label: 'Explore', go: () => tab('explore') },
     { icon: 'M4 20L20 4M4 9V4h5M20 15v5h-5', label: 'Interactive Layout', go: () => openFirstProject() },
     { icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', label: 'Schedule Visit', go: () => navigate('/visits') },
-    { icon: 'M6 3h12v18H6zM9 7h6M8 11h.01M12 11h.01M16 11v6M8 15h.01M12 15h.01', label: 'EMI Calculator', go: () => payNow() },
+    { icon: 'M6 3h12v18H6zM9 7h6M8 11h.01M12 11h.01M16 11v6M8 15h.01M12 15h.01', label: 'EMI Calculator', go: () => go('emi') },
     { icon: 'M6 4h12v16l-6-3-6 3z', label: 'Contact Sales', go: () => go('contact') },
   ];
 
@@ -741,7 +741,7 @@ export default function AppDashboard() {
   const goHome = () => tab('home');
   const goExplore = () => tab('explore');
   const goProps = () => navigate('/my-lands');
-  const goPayments = () => payNow();
+  const goPayments = () => go('payments');
   const goProfile = () => tab('profile');
   const goNotif = () => go('notif');
   const goVisitsPage = () => navigate('/visits');
