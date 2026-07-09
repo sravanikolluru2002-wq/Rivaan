@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  clearSession,
   getJson,
   getWebSocketUrl,
   loadSession,
+  logoutSession,
   postJson,
   putJson,
   saveSession,
@@ -334,8 +334,8 @@ export default function AgentDashboard() {
     </div>
   );
 
-  const logout = () => {
-    clearSession();
+  const logout = async () => {
+    await logoutSession();
     navigate('/login', { replace: true });
   };
 

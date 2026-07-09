@@ -3,6 +3,7 @@ const BACKEND_URL =
   "https://rivan.onrender.com";
 
 const SESSION_KEY = "rivan_session";
+let refreshPromise = null;
 
 export function getBackendUrl() {
   return BACKEND_URL.replace(/\/$/, "");
@@ -47,16 +48,84 @@ export function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-function handle401(response) {
-  if (response.status === 401) {
-    clearSession();
-    // Only redirect if we're not already on the login page to avoid loops
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      window.location.href = '/login';
-    }
-    return true;
+function redirectToLogin() {
+  if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
+    window.location.href = "/login";
   }
-  return false;
+}
+
+function invalidateSession() {
+  clearSession();
+  redirectToLogin();
+}
+
+export async function logoutSession() {
+  const session = loadSession();
+  const refreshToken = session?.refresh_token;
+  try {
+    if (refreshToken) {
+      await fetch(`${getBackendUrl()}/api/auth/logout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    }
+  } catch {
+    // Best-effort logout; clear local session even if the network is unavailable.
+  } finally {
+    clearSession();
+  }
+}
+
+export async function refreshStoredSession() {
+  const current = loadSession();
+  const refreshToken = current?.refresh_token;
+  if (!refreshToken) {
+    invalidateSession();
+    throw new Error("Missing refresh token");
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${getBackendUrl()}/api/auth/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.access_token) {
+          throw new ApiError(
+            data.detail?.message || data.detail || "Unable to restore session",
+            response.status,
+            data,
+          );
+        }
+        saveSession(data);
+        return data;
+      })
+      .catch((error) => {
+        invalidateSession();
+        throw error;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
+export async function restoreSession() {
+  const session = loadSession();
+  if (!session?.refresh_token) return null;
+  if (session?.access_token) return session;
+  return refreshStoredSession();
 }
 
 export class ApiError extends Error {
@@ -68,7 +137,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function requestJson(path, options = {}, token) {
+async function performJsonRequest(path, options = {}, token) {
   const { method = "GET", body } = options;
   const response = await fetch(`${getBackendUrl()}${path}`, {
     method,
@@ -79,12 +148,28 @@ export async function requestJson(path, options = {}, token) {
     credentials: "include",
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
 
-  if (handle401(response)) {
+export async function requestJson(path, options = {}, token) {
+  let activeToken = token;
+  let { response, data } = await performJsonRequest(path, options, activeToken);
+
+  if (response.status === 401) {
+    const storedSession = loadSession();
+    if (storedSession?.refresh_token) {
+      const refreshedSession = await refreshStoredSession();
+      activeToken = refreshedSession?.access_token || activeToken;
+      ({ response, data } = await performJsonRequest(path, options, activeToken));
+    }
+  }
+
+  if (response.status === 401) {
+    invalidateSession();
     throw new Error("Session expired");
   }
 
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new ApiError(
       data.detail?.message || data.detail || "Request failed",

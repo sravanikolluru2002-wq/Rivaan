@@ -88,8 +88,12 @@ DEMO_AUTH_USER_IDS = (
 )
 ADMIN_DISPLAY_NAME = "Kollu Sravani"
 PRIMARY_ADMIN_PHONE = normalize_phone("9491348973")
+SECONDARY_ADMIN_PHONE = normalize_phone("9848129637")
+ADMIN_LOGIN_PHONES = (PRIMARY_ADMIN_PHONE, SECONDARY_ADMIN_PHONE)
 PRIMARY_ADMIN_EMAIL = "admin@rivanreality.com"
 PRIMARY_ADMIN_USER_ID = "admin-user-001"
+SECONDARY_ADMIN_EMAIL = "admin.secondary@rivanreality.com"
+SECONDARY_ADMIN_USER_ID = "admin-user-002"
 PRIMARY_AGENT_PHONE = normalize_phone("9052644345")
 PRIMARY_AGENT_EMAIL = ""
 PRIMARY_AGENT_USER_ID = "agent-main-001"
@@ -1351,6 +1355,11 @@ async def is_database_available(
     return available
 
 
+async def require_database(detail: str = "Database unavailable") -> None:
+    if not await is_database_available():
+        raise HTTPException(status_code=503, detail=detail)
+
+
 async def get_current_user(request: Request, token: Optional[str] = Depends(oauth2_scheme)) -> Dict[str, Any]:
     if not token:
         token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
@@ -1401,7 +1410,7 @@ def has_admin_access(user: Dict[str, Any]) -> bool:
 def is_primary_admin_login_user(user: Dict[str, Any]) -> bool:
     role = str(user.get("role") or "").strip().lower()
     phone = str(user.get("phone") or "").strip()
-    return role == ROLE_ADMIN and phone in phone_identity_variants(PRIMARY_ADMIN_PHONE)
+    return role == ROLE_ADMIN and any(phone in phone_identity_variants(admin_phone) for admin_phone in ADMIN_LOGIN_PHONES)
 
 
 def admin_access_is_active(user: Dict[str, Any]) -> bool:
@@ -3285,6 +3294,10 @@ async def ensure_primary_admin_seed() -> None:
         {"phone": {"$in": ["9000000000", "94991348973", "9491348973"]}},
         {"$set": {"phone": PRIMARY_ADMIN_PHONE, "updated_at": timestamp}},
     )
+    await db.users.update_many(
+        {"phone": {"$in": ["9848129637", "+919848129637"]}},
+        {"$set": {"phone": SECONDARY_ADMIN_PHONE, "updated_at": timestamp}},
+    )
     await db.users.update_one(
         {"phone": PRIMARY_ADMIN_PHONE},
         {
@@ -3347,6 +3360,33 @@ async def ensure_primary_agent_seed() -> None:
                 "manager_id": None,
                 "sub_agent_ids": [],
                 "approved_by_manager": ADMIN_DISPLAY_NAME,
+                "created_at": timestamp,
+                "last_login_at": None,
+            },
+        },
+        upsert=True,
+    )
+    await db.users.update_one(
+        {"phone": SECONDARY_ADMIN_PHONE},
+        {
+            "$set": {
+                "name": ADMIN_DISPLAY_NAME,
+                "phone": SECONDARY_ADMIN_PHONE,
+                "email": SECONDARY_ADMIN_EMAIL,
+                "role": ROLE_ADMIN,
+                "approval_status": APPROVAL_NOT_REQUIRED,
+                "status": STATUS_ACTIVE,
+                "is_admin": True,
+                "is_primary_admin": True,
+                "phone_verified": True,
+                "email_verified": True,
+                "auth_methods": ["phone"],
+                "kyc_status": "verified",
+                "updated_at": timestamp,
+            },
+            "$setOnInsert": {
+                "id": SECONDARY_ADMIN_USER_ID,
+                "address": "Rivan HQ",
                 "created_at": timestamp,
                 "last_login_at": None,
             },
@@ -3528,7 +3568,7 @@ async def admin_access_status(req: AgentAccessStatusReq, request: Request):
             {"phone": {"$in": phone_identity_variants(phone)}},
             {"_id": 0},
         )
-        if not user and phone in phone_identity_variants(PRIMARY_ADMIN_PHONE):
+        if not user and any(phone in phone_identity_variants(admin_phone) for admin_phone in ADMIN_LOGIN_PHONES):
             await ensure_primary_admin_seed()
             user = await db.users.find_one(
                 {"phone": {"$in": phone_identity_variants(phone)}},
@@ -3903,11 +3943,11 @@ async def admin_firebase_auth(req: AdminFirebaseAuthReq, request: Request, respo
     if token_phone != phone:
         logger.warning("Admin Firebase auth rejected a phone/token mismatch")
         raise HTTPException(status_code=401, detail="Firebase phone token does not match requested phone")
-    if phone not in phone_identity_variants(PRIMARY_ADMIN_PHONE):
+    if not any(phone in phone_identity_variants(admin_phone) for admin_phone in ADMIN_LOGIN_PHONES):
         raise HTTPException(status_code=403, detail="This mobile number is not authorized for admin access")
     if await is_database_available():
         user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
-        if not user and phone in phone_identity_variants(PRIMARY_ADMIN_PHONE):
+        if not user and any(phone in phone_identity_variants(admin_phone) for admin_phone in ADMIN_LOGIN_PHONES):
             await ensure_primary_admin_seed()
             user = await db.users.find_one({"phone": {"$in": phone_identity_variants(phone)}})
     else:
@@ -4517,7 +4557,15 @@ async def health_check():
             "live_updates_enabled": True,
             "live_updates_path": "/ws/live",
         }
-    raise HTTPException(status_code=503, detail="Database unavailable")
+    return {
+        "ok": False,
+        "database": "unavailable",
+        "mode": "production-db-required",
+        "firebase_project_id_configured": bool(get_firebase_project_id()),
+        "live_updates_enabled": False,
+        "live_updates_path": "/ws/live",
+        "detail": "Database unavailable",
+    }
 
 
 @api_router.get("/ready")
@@ -4739,6 +4787,7 @@ async def my_bookings(user: Dict[str, Any] = Depends(get_current_user)):
 @api_router.get("/myland")
 async def my_land(user: Dict[str, Any] = Depends(get_current_user)):
     """Return units owned/booked by this user with purchase progress"""
+    await require_database("My land data is unavailable")
     plots = await db.plots.find(
         {"owner_id": user["id"]}, {"_id": 0}
     ).to_list(100)
@@ -4787,6 +4836,7 @@ async def my_land(user: Dict[str, Any] = Depends(get_current_user)):
 @api_router.get("/myland/can-request-services")
 async def can_request_services(user: Dict[str, Any] = Depends(get_current_user)):
     """Returns whether user is eligible to request property services (owns at least one plot with sufficient progress)"""
+    await require_database("Property eligibility data is unavailable")
     plots = await db.plots.find({"owner_id": user["id"]}, {"_id": 0}).to_list(100)
     if not plots:
         return {"eligible": False, "reason": "No properties purchased yet", "owned_plots": []}
@@ -4857,6 +4907,7 @@ async def pay_installment(req: PayInstallmentReq, user: Dict[str, Any] = Depends
 # ---------- Documents ----------
 @api_router.get("/documents")
 async def list_documents(property_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Document database is unavailable")
     query: Dict[str, Any] = {"$or": [{"user_id": user["id"]}, {"property_id": {"$exists": True}}]}
     if property_id:
         query["property_id"] = property_id
@@ -4888,6 +4939,7 @@ async def services_catalog():
 
 @api_router.post("/services/request")
 async def request_service(req: ServiceReq, user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Service request database is unavailable")
     # Gate: only owners (have at least one booked/sold plot) can request services
     owned = await db.plots.count_documents({"owner_id": user["id"]})
     if owned == 0:
@@ -4988,6 +5040,7 @@ async def contact_sales(req: ContactSalesReq, user: Dict[str, Any] = Depends(get
 
 @api_router.get("/services/mine")
 async def my_services(user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Service request database is unavailable")
     items = await db.service_requests.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items
@@ -4996,12 +5049,14 @@ async def my_services(user: Dict[str, Any] = Depends(get_current_user)):
 # ---------- Experience Centres & Visits ----------
 @api_router.get("/centres")
 async def list_centres():
+    await require_database("Centre data is unavailable")
     items = await db.centres.find({}, {"_id": 0}).to_list(50)
     return items
 
 
 @api_router.get("/centres/{centre_id}")
 async def get_centre(centre_id: str):
+    await require_database("Centre data is unavailable")
     c = await db.centres.find_one({"id": centre_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Centre not found")
@@ -5010,6 +5065,7 @@ async def get_centre(centre_id: str):
 
 @api_router.post("/visits/centre")
 async def book_centre_visit(req: VisitBookingReq, user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Visit database is unavailable")
     centre = await db.centres.find_one({"id": req.centre_id}, {"_id": 0})
     if not centre:
         raise HTTPException(status_code=404, detail="Centre not found")
@@ -5196,6 +5252,7 @@ async def update_customer_visit(
     req: CustomerVisitUpdateReq,
     user: Dict[str, Any] = Depends(get_current_user),
 ):
+    await require_database("Visit database is unavailable")
     updates: Dict[str, Any] = {"updated_at": now_utc().isoformat()}
     if req.visit_date is not None:
         updates["visit_date"] = req.visit_date
@@ -5254,6 +5311,7 @@ async def update_customer_visit(
 # ---------- Wishlist ----------
 @api_router.post("/wishlist/toggle")
 async def toggle_wishlist(req: WishlistReq, user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Wishlist database is unavailable")
     existing = await db.wishlist.find_one({"user_id": user["id"], "property_id": req.property_id})
     if existing:
         await db.wishlist.delete_one({"user_id": user["id"], "property_id": req.property_id})
@@ -5269,6 +5327,7 @@ async def toggle_wishlist(req: WishlistReq, user: Dict[str, Any] = Depends(get_c
 
 @api_router.get("/wishlist")
 async def get_wishlist(user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Wishlist database is unavailable")
     items = await db.wishlist.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     items = filter_live_customer_items(items)
     pids = [i["property_id"] for i in items]
@@ -5294,12 +5353,14 @@ async def list_notifications(user: Dict[str, Any] = Depends(get_current_user)):
 
 @api_router.get("/notifications/unread-count")
 async def unread_notification_count(user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Notification database is unavailable")
     count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
     return {"unread_count": count}
 
 
 @api_router.post("/notifications/{notif_id}/read")
 async def read_notification(notif_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Notification database is unavailable")
     await db.notifications.update_one(
         {"id": notif_id, "user_id": user["id"]},
         {"$set": {"read": True, "updated_at": now_utc().isoformat()}}
@@ -5314,6 +5375,7 @@ async def read_notification(notif_id: str, user: Dict[str, Any] = Depends(get_cu
 
 @api_router.post("/notifications/read-all")
 async def read_all_notifications(user: Dict[str, Any] = Depends(get_current_user)):
+    await require_database("Notification database is unavailable")
     await db.notifications.update_many(
         {"user_id": user["id"], "read": False},
         {"$set": {"read": True, "updated_at": now_utc().isoformat()}}
@@ -5484,12 +5546,14 @@ async def admin_bookings(user: Dict[str, Any] = Depends(get_admin_user)):
 
 @api_router.get("/admin/properties")
 async def admin_properties(user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Property database is unavailable")
     items = await db.properties.find({}, {"_id": 0}).to_list(500)
     return [normalize_live_property_record(item) for item in items if not should_hide_demo_item(item)]
 
 
 @api_router.get("/admin/plots")
 async def admin_plots(property_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Plot database is unavailable")
     query: Dict[str, Any] = {}
     if property_id:
         query["property_id"] = property_id
@@ -5499,6 +5563,7 @@ async def admin_plots(property_id: Optional[str] = None, user: Dict[str, Any] = 
 
 @api_router.get("/admin/audit-logs")
 async def admin_audit_logs(limit: int = Query(100, ge=1, le=500), user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Audit log database is unavailable")
     items = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return items
 
@@ -5574,6 +5639,8 @@ async def admin_settings(user: Dict[str, Any] = Depends(get_admin_user)):
         },
     }
     if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Admin settings are unavailable")
         return defaults
 
     existing = await db.admin_settings.find_one({"key": "primary_admin_settings"}, {"_id": 0})
@@ -6067,6 +6134,8 @@ async def admin_services(user: Dict[str, Any] = Depends(get_admin_user)):
 @api_router.get("/agent/dashboard")
 async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
     if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Agent dashboard data is unavailable")
         return build_local_agent_dashboard(user)
 
     accessible_agent_ids = [user["id"]]
@@ -6342,6 +6411,8 @@ async def agent_assign_properties(agent_id: str, req: AgentAssignReq, user: Dict
 @api_router.get("/agent/site-visits")
 async def agent_site_visits(user: Dict[str, Any] = Depends(get_agent_user)):
     if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Visit database is unavailable")
         visits = [visit for visit in local_list_visits() if visit.get("assigned_agent_id") in agent_accessible_ids(user)]
         return [normalize_live_visit_record(item) for item in filter_live_customer_items(visits)]
     visits = await db.visits.find({"assigned_agent_id": {"$in": agent_accessible_ids(user)}}, {"_id": 0}).to_list(300)
@@ -6373,6 +6444,8 @@ async def agent_create_site_visit(req: AgentVisitReq, user: Dict[str, Any] = Dep
         "updated_at": now_utc().isoformat(),
     }
     if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Visit database is unavailable")
         local_save_visit(visit)
         await crm_sync_site_visit(
             visit=visit,
@@ -6422,6 +6495,8 @@ async def agent_update_site_visit(visit_id: str, req: AgentVisitUpdateReq, user:
         raise HTTPException(status_code=403, detail="You cannot assign this visit to that agent")
     updates["updated_at"] = now_utc().isoformat()
     if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Visit database is unavailable")
         visit = next((item for item in local_list_visits() if item.get("id") == visit_id), None)
         if not visit:
             raise HTTPException(status_code=404, detail="Visit not found")
@@ -6496,6 +6571,8 @@ async def agent_update_site_visit(visit_id: str, req: AgentVisitUpdateReq, user:
 @api_router.post("/agent/bookings/{booking_id}/close")
 async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(get_agent_user)):
     if not await is_database_available():
+        if not ALLOW_LOCAL_AUTH_FALLBACK:
+            raise HTTPException(status_code=503, detail="Booking database is unavailable")
         booking = next((item for item in local_list_bookings() if item.get("id") == booking_id), None)
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")

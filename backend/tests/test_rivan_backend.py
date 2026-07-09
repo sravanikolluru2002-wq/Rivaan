@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
 os.environ.setdefault("JWT_SECRET", "test-only-jwt-secret")
 os.environ.setdefault("ALLOW_LOCAL_AUTH_FALLBACK", "false")
 
-from server import app  # noqa: E402
+from server import app, health_check  # noqa: E402
 
 
 client = TestClient(app)
@@ -52,3 +53,11 @@ def test_admin_route_family_is_registered():
 def test_websocket_route_is_registered():
     route_paths = {route.path for route in app.routes}
     assert "/ws/live" in route_paths
+
+
+def test_health_check_reports_degraded_state_when_database_is_unavailable():
+    result = asyncio.run(health_check())
+    assert "live_updates_enabled" in result
+    if result["ok"] is False:
+        assert result["database"] == "unavailable"
+        assert result["live_updates_enabled"] is False

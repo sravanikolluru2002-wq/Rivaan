@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, clearSession, getJson, getWebSocketUrl, loadSession, postJson, putJson, requestJson, saveSession, supportsLiveUpdates } from '../lib/auth';
+import { ApiError, getJson, getWebSocketUrl, loadSession, logoutSession, postJson, putJson, requestJson, saveSession, supportsLiveUpdates } from '../lib/auth';
 
 const cardStyle = {
   background: '#fff',
@@ -351,8 +351,8 @@ export default function AdminDashboard() {
     }
   };
 
-  const logout = () => {
-    clearSession();
+  const logout = async () => {
+    await logoutSession();
     navigate('/login', { replace: true });
   };
 

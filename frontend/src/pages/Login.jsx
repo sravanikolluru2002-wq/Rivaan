@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
-import { clearSession, loadSession, postJson, saveSession } from "../lib/auth";
+import { clearSession, loadSession, postJson, restoreSession, saveSession } from "../lib/auth";
 
 const RESEND_SECONDS = 30;
 const PRIMARY_AGENT_PHONE = "9052644345";
@@ -67,11 +67,26 @@ export default function Login() {
   const [status, setStatus] = useState("");
 
   useEffect(() => {
-    const session = loadSession();
-    if (!session?.user?.role) return;
-    if (session.user.role === "admin") navigate("/admin", { replace: true });
-    else if (session.user.role === "agent") navigate("/agent", { replace: true });
-    else navigate("/app", { replace: true });
+    let mounted = true;
+    const existing = loadSession();
+    if (!existing?.refresh_token) return undefined;
+
+    const resumeSession = async () => {
+      try {
+        const session = await restoreSession();
+        if (!mounted || !session?.user?.role) return;
+        if (session.user.role === "admin") navigate("/admin", { replace: true });
+        else if (session.user.role === "agent") navigate("/agent", { replace: true });
+        else navigate("/app", { replace: true });
+      } catch {
+        // If restore fails we keep the user on login and let OTP continue normally.
+      }
+    };
+
+    resumeSession();
+    return () => {
+      mounted = false;
+    };
   }, [navigate]);
 
   useEffect(() => {
@@ -118,7 +133,7 @@ export default function Login() {
     setRole(nextRole);
     setPhone("");
     resetFlowState();
-    setScreen(nextRole === "customer" ? "customer-onboarding" : "login");
+    setScreen("login");
   };
 
   const backToSplash = () => {
@@ -216,11 +231,6 @@ export default function Login() {
     resetMessages();
     setLoading(true);
     try {
-      if (roleRef.current === "customer" && !customerOnboarding.name.trim()) {
-        setScreen("customer-onboarding");
-        setError("Complete onboarding details before requesting OTP.");
-        return;
-      }
       const precheck = await runAccessPrecheck(normalizedPhone);
       if (!precheck.allowed) {
         if (precheck.statusMessage) setStatus(precheck.statusMessage);
@@ -241,12 +251,6 @@ export default function Login() {
       setScreen("otp");
     } catch (err) {
       setError(err?.message || "Failed to send OTP. Check Firebase phone auth setup.");
-      try {
-        recaptchaRef.current?.clear();
-      } catch {}
-      recaptchaRef.current = new RecaptchaVerifier(firebaseAuth, "rivan-login-recaptcha", {
-        size: "invisible",
-      });
     } finally {
       setLoading(false);
     }

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  clearSession,
   getJson,
   getWebSocketUrl,
   loadSession,
+  logoutSession,
   postJson,
   putJson,
   saveSession,
@@ -490,8 +490,8 @@ export default function AppDashboard() {
   ];
   const profileMenu = profileMenuRaw.map((i, idx) => ({ ...i, border: idx === 0 ? 'none' : '1px solid #f0f4ee' }));
   if (profileMenu.length) {
-    profileMenu[profileMenu.length - 1].go = () => {
-      clearSession();
+    profileMenu[profileMenu.length - 1].go = async () => {
+      await logoutSession();
       localStorage.removeItem('rivan_guest_session');
       navigate('/login', { replace: true });
     };
