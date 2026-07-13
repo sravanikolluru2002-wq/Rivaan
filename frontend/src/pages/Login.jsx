@@ -103,20 +103,27 @@ export default function Login() {
   }, [countdown]);
 
   useEffect(() => {
-    if (recaptchaRef.current) return undefined;
-    const verifier = new RecaptchaVerifier(firebaseAuth, "rivan-login-recaptcha", {
-      size: "invisible",
-    });
-    recaptchaRef.current = verifier;
-    verifier
-      .render()
-      .then(() => setRecaptchaReady(true))
-      .catch(() => setRecaptchaReady(false));
-    return () => {
-      verifier.clear();
-      recaptchaRef.current = null;
-      setRecaptchaReady(false);
-    };
+    if (!window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "rivan-login-recaptcha", {
+          size: "invisible",
+          callback: () => {},
+          "expired-callback": () => setRecaptchaReady(false),
+        });
+        window.recaptchaVerifier
+          .render()
+          .then(() => setRecaptchaReady(true))
+          .catch((err) => {
+            console.error("Recaptcha render error:", err);
+            setRecaptchaReady(false);
+          });
+      } catch (err) {
+        console.error("Recaptcha init error:", err);
+      }
+    } else {
+      setRecaptchaReady(true);
+    }
+    recaptchaRef.current = window.recaptchaVerifier;
   }, []);
 
   const resetMessages = () => {
