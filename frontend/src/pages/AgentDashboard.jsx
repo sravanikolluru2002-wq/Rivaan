@@ -626,7 +626,11 @@ export default function AgentDashboard() {
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
-            <button onClick={() => setPage('notifications')} aria-label="Notifications" style={{ position: 'relative', width: '52px', height: '52px', borderRadius: '16px', border: '1px solid #e7ede3', background: "#fff url('/assets/logo-mark.png') center / 24px 24px no-repeat", color: 'transparent', cursor: 'pointer' }}>
+            <button onClick={() => setPage('notifications')} aria-label="Notifications" style={{ position: 'relative', width: '52px', height: '52px', borderRadius: '16px', border: '1px solid #e7ede3', background: '#fff', color: '#1f5a31', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" />
+                <path d="M10 20a2 2 0 0 0 4 0" />
+              </svg>
               {unreadNotifications > 0 && (
                 <span style={{ position: 'absolute', top: '-6px', right: '-6px', minWidth: '22px', height: '22px', borderRadius: '999px', background: '#e2822a', color: '#fff', fontSize: '11px', fontWeight: 800, display: 'grid', placeItems: 'center', padding: '0 6px' }}>
                   {unreadNotifications}

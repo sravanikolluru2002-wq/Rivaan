@@ -992,7 +992,10 @@ export default function AppDashboard() {
             </div>
             <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '10px'}}>
               <button onClick={goNotif} aria-label="Notifications" style={{'position': 'relative', 'width': '42px', 'height': '42px', 'borderRadius': '14px', 'border': '1px solid rgba(255,255,255,.2)', 'background': 'rgba(255,255,255,.14)', 'display': 'grid', 'placeItems': 'center', 'cursor': 'pointer'}}>
-                <img src="assets/logo-mark-white.png" alt="" aria-hidden="true" style={{'height': '22px', 'width': 'auto', 'opacity': '.98'}} />
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" />
+                  <path d="M10 20a2 2 0 0 0 4 0" />
+                </svg>
                 {unreadCustomerNotifications > 0 && (
                   <span style={{'position': 'absolute', 'top': '-6px', 'right': '-6px', 'minWidth': '20px', 'height': '20px', 'borderRadius': '999px', 'background': '#e2822a', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '900', 'display': 'grid', 'placeItems': 'center', 'padding': '0 5px'}}>
                     {unreadCustomerNotifications}
