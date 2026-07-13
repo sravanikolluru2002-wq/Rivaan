@@ -1382,10 +1382,18 @@ def agent_accessible_ids(user: Dict[str, Any]) -> List[str]:
     return [user["id"], *sub_agent_ids]
 
 
+def is_primary_agent_user(user: Dict[str, Any]) -> bool:
+    phone_values = phone_identity_variants(user.get("phone"))
+    return user.get("id") == PRIMARY_AGENT_USER_ID or PRIMARY_AGENT_PHONE in phone_values
+
+
 def agent_can_access_plot(user: Dict[str, Any], plot: Optional[Dict[str, Any]]) -> bool:
     if not plot:
         return False
-    return plot.get("agent_id") in agent_accessible_ids(user)
+    owner_candidates = [plot.get("agent_id"), plot.get("assigned_agent_id")]
+    if any(owner in agent_accessible_ids(user) for owner in owner_candidates if owner):
+        return True
+    return is_primary_agent_user(user) and not any(owner_candidates)
 
 
 def agent_can_access_booking(user: Dict[str, Any], booking: Dict[str, Any], plot: Optional[Dict[str, Any]] = None) -> bool:
@@ -1396,6 +1404,8 @@ def agent_can_access_booking(user: Dict[str, Any], booking: Dict[str, Any], plot
         booking.get("created_by_agent_id"),
     }
     if any(candidate in accessible_ids for candidate in owner_candidates if candidate):
+        return True
+    if not any(owner_candidates) and is_primary_agent_user(user):
         return True
     return agent_can_access_plot(user, plot)
 
@@ -1408,6 +1418,8 @@ def agent_can_access_visit(user: Dict[str, Any], visit: Dict[str, Any], plot: Op
         visit.get("agent_id"),
     }
     if any(candidate in accessible_ids for candidate in owner_candidates if candidate):
+        return True
+    if not any(owner_candidates) and is_primary_agent_user(user):
         return True
     return agent_can_access_plot(user, plot)
 
@@ -2892,7 +2904,7 @@ def build_local_agent_dashboard(user: Dict[str, Any]) -> Dict[str, Any]:
     property_map = {item["id"]: item for item in local_get_properties()}
     assets = []
     for plot in local_get_plots():
-        if plot["agent_id"] not in accessible_agent_ids:
+        if not agent_can_access_plot(user, plot):
             continue
         property_doc = property_map.get(plot["property_id"], {})
         agent_doc = local_find_user(user_id=plot.get("agent_id")) or {}
@@ -2949,7 +2961,7 @@ def build_local_agent_dashboard(user: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "profile": clean_user(user),
         "sub_agents": [sub for sub in sub_agents if sub],
-        "assets": [asset for asset in assets if asset["agent_id"] in accessible_agent_ids],
+        "assets": assets,
         "bookings": bookings,
         "visits": visits,
         "leads": crm_dashboard["leads"],
@@ -3504,21 +3516,21 @@ async def ensure_primary_agent_seed() -> None:
         {"id": PRIMARY_AGENT_USER_ID},
         {
             "$set": {
-                "name": "Agent",
                 "phone": PRIMARY_AGENT_PHONE,
-                "email": PRIMARY_AGENT_EMAIL,
                 "role": ROLE_AGENT,
                 "approval_status": APPROVAL_APPROVED,
                 "status": STATUS_ACTIVE,
                 "phone_verified": True,
-                "email_verified": False,
                 "auth_methods": ["phone", "agent_application"],
                 "kyc_status": "verified",
-                "agent_brand_name": "Rivan Realty",
                 "updated_at": timestamp,
             },
             "$setOnInsert": {
                 "id": PRIMARY_AGENT_USER_ID,
+                "name": "Agent",
+                "email": PRIMARY_AGENT_EMAIL,
+                "email_verified": False,
+                "agent_brand_name": "Rivan Realty",
                 "address": "",
                 "age": None,
                 "aadhaar_number": "",
@@ -6371,7 +6383,18 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
         accessible_agent_ids = set(agent_accessible_ids(user))
         logger.info("Agent dashboard loading for user_id=%s, phone=%s", user.get("id"), user.get("phone"))
 
-        plots = await db.plots.find({"agent_id": {"$in": list(accessible_agent_ids)}}, {"_id": 0}).to_list(500)
+        plot_filters = [
+            {"agent_id": {"$in": list(accessible_agent_ids)}},
+            {"assigned_agent_id": {"$in": list(accessible_agent_ids)}},
+        ]
+        if is_primary_agent_user(user):
+            plot_filters.extend([
+                {"agent_id": {"$exists": False}},
+                {"agent_id": None},
+                {"agent_id": ""},
+            ])
+        plots = await db.plots.find({"$or": plot_filters}, {"_id": 0}).to_list(500)
+        plots = [plot for plot in plots if agent_can_access_plot(user, plot)]
         logger.info("Agent dashboard: found %d plots", len(plots))
         property_ids = sorted({plot["property_id"] for plot in plots if plot.get("property_id")})
         properties = await db.properties.find({"id": {"$in": property_ids}}, {"_id": 0}).to_list(200)
@@ -6434,6 +6457,15 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
                     {"created_by_agent_id": {"$in": list(accessible_agent_ids)}},
                     {"agent_id": {"$in": list(accessible_agent_ids)}},
                     {"plot_id": {"$in": list(asset_plot_ids)}},
+                    *(
+                        [
+                            {"assigned_agent_id": {"$exists": False}},
+                            {"assigned_agent_id": None},
+                            {"assigned_agent_id": ""},
+                        ]
+                        if is_primary_agent_user(user)
+                        else []
+                    ),
                 ]
             },
             {"_id": 0},
@@ -6743,7 +6775,18 @@ async def agent_site_visits(user: Dict[str, Any] = Depends(get_agent_user)):
         ]
         return [normalize_live_visit_record(item) for item in filter_live_customer_items(visits)]
     accessible_agent_ids = agent_accessible_ids(user)
-    assigned_plots = await db.plots.find({"agent_id": {"$in": accessible_agent_ids}}, {"_id": 0}).to_list(500)
+    plot_filters = [
+        {"agent_id": {"$in": accessible_agent_ids}},
+        {"assigned_agent_id": {"$in": accessible_agent_ids}},
+    ]
+    if is_primary_agent_user(user):
+        plot_filters.extend([
+            {"agent_id": {"$exists": False}},
+            {"agent_id": None},
+            {"agent_id": ""},
+        ])
+    assigned_plots = await db.plots.find({"$or": plot_filters}, {"_id": 0}).to_list(500)
+    assigned_plots = [plot for plot in assigned_plots if agent_can_access_plot(user, plot)]
     asset_map = {plot.get("id"): plot for plot in assigned_plots if plot.get("id")}
     visits = await db.visits.find(
         {
@@ -6752,6 +6795,15 @@ async def agent_site_visits(user: Dict[str, Any] = Depends(get_agent_user)):
                 {"created_by_agent_id": {"$in": accessible_agent_ids}},
                 {"agent_id": {"$in": accessible_agent_ids}},
                 {"plot_id": {"$in": list(asset_map)}},
+                *(
+                    [
+                        {"assigned_agent_id": {"$exists": False}},
+                        {"assigned_agent_id": None},
+                        {"assigned_agent_id": ""},
+                    ]
+                    if is_primary_agent_user(user)
+                    else []
+                ),
             ]
         },
         {"_id": 0},
