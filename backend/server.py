@@ -1281,6 +1281,16 @@ async def resolve_assigned_agent_id(*, property_id: Optional[str] = None, plot_i
     return await crm_find_agent_for_property(property_id=property_id, plot_id=plot_id)
 
 
+async def resolve_visit_agent_id(*, canonical_property_id: Optional[str], requested_property_id: Optional[str], plot_id: Optional[str] = None) -> Optional[str]:
+    assigned_agent_id = await resolve_assigned_agent_id(property_id=canonical_property_id, plot_id=plot_id)
+    if not assigned_agent_id and requested_property_id and requested_property_id != canonical_property_id:
+        assigned_agent_id = await resolve_assigned_agent_id(property_id=requested_property_id, plot_id=plot_id)
+    if not assigned_agent_id:
+        primary_agent = await resolve_primary_agent_user()
+        assigned_agent_id = primary_agent.get("id") if primary_agent else None
+    return assigned_agent_id
+
+
 def local_list_bookings() -> List[Dict[str, Any]]:
     return load_local_store().setdefault("bookings", [])
 
@@ -5297,7 +5307,10 @@ async def book_site_visit(req: SiteVisitReq, user: Dict[str, Any] = Depends(get_
             requested_property_id,
         ) or requested_property_id
         property_name = live_property_name(canonical_property_id, prop.get("name"))
-        assigned_agent_id = await resolve_assigned_agent_id(property_id=canonical_property_id)
+        assigned_agent_id = await resolve_visit_agent_id(
+            canonical_property_id=canonical_property_id,
+            requested_property_id=requested_property_id,
+        )
         visit = {
             "id": str(uuid.uuid4()),
             "user_id": user["id"],
@@ -5352,7 +5365,10 @@ async def book_site_visit(req: SiteVisitReq, user: Dict[str, Any] = Depends(get_
         requested_property_id,
     ) or requested_property_id
     property_name = live_property_name(canonical_property_id, prop.get("name"))
-    assigned_agent_id = await resolve_assigned_agent_id(property_id=canonical_property_id)
+    assigned_agent_id = await resolve_visit_agent_id(
+        canonical_property_id=canonical_property_id,
+        requested_property_id=requested_property_id,
+    )
     visit = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],

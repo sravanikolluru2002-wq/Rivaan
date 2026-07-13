@@ -119,7 +119,6 @@ export default function AgentDashboard() {
     occupation: session?.user?.occupation || '',
     age: session?.user?.age || '',
     aadhaar_number: session?.user?.aadhaar_number || '',
-    bank_details: session?.user?.bank_details || '',
     agent_brand_name: session?.user?.agent_brand_name || '',
   });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -232,7 +231,6 @@ export default function AgentDashboard() {
         occupation: profileSource.occupation || user.occupation || '',
         age: profileSource.age || user.age || '',
         aadhaar_number: profileSource.aadhaar_number || user.aadhaar_number || '',
-        bank_details: profileSource.bank_details || user.bank_details || '',
         agent_brand_name: profileSource.agent_brand_name || user.agent_brand_name || '',
       });
 
@@ -321,6 +319,7 @@ export default function AgentDashboard() {
     };
   }, [session?.access_token]);
 
+  const displayedUser = { ...user, ...(agentData.profile || {}) };
   const assets = agentData.assets || [];
   const bookings = agentData.bookings || [];
   const leads = (crmData.leads?.length ? crmData.leads : agentData.leads) || [];
@@ -502,6 +501,7 @@ export default function AgentDashboard() {
     setNotice('');
     try {
       const payload = { ...profileForm };
+      delete payload.bank_details;
       Object.keys(payload).forEach(k => {
         if (payload[k] === '') payload[k] = null;
       });
@@ -567,7 +567,7 @@ export default function AgentDashboard() {
               {liveStatusLabel(liveStatus)}
             </p>
             <p style={{ margin: '6px 0 0', color: '#6d7d6f', fontSize: '14px' }}>
-              Welcome, {user.name || 'Agent'}
+              Welcome, {displayedUser.name || 'Agent'}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -581,11 +581,11 @@ export default function AgentDashboard() {
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 14px', borderRadius: '18px', border: '1px solid #e7ede3', background: '#fff' }}>
               <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: 'linear-gradient(160deg,#2b6d3d,#3f8a54)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 }}>
-                {initialsOf(user.name)}
+                {initialsOf(displayedUser.name)}
               </div>
               <div>
-                <div style={{ fontWeight: 800 }}>{user.name || 'Agent'}</div>
-                <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{formatPhoneDisplay(user.phone) || 'Agent'}</div>
+                <div style={{ fontWeight: 800 }}>{displayedUser.name || 'Agent'}</div>
+                <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{formatPhoneDisplay(displayedUser.phone) || 'Agent'}</div>
               </div>
             </div>
           </div>
@@ -834,12 +834,11 @@ export default function AgentDashboard() {
             <div style={{ display: 'grid', gap: '14px' }}>
               <input value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
-              <input value={formatPhoneDisplay(user.phone)} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
+              <input value={formatPhoneDisplay(displayedUser.phone)} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
               <input value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={profileForm.occupation} onChange={(event) => setProfileForm((current) => ({ ...current, occupation: event.target.value }))} placeholder="Occupation" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={profileForm.age} type="number" onChange={(event) => setProfileForm((current) => ({ ...current, age: event.target.value }))} placeholder="Age" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={profileForm.aadhaar_number} onChange={(event) => setProfileForm((current) => ({ ...current, aadhaar_number: event.target.value }))} placeholder="Aadhaar Number" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
-              <input value={profileForm.bank_details} onChange={(event) => setProfileForm((current) => ({ ...current, bank_details: event.target.value }))} placeholder="Bank Details" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={profileForm.agent_brand_name} onChange={(event) => setProfileForm((current) => ({ ...current, agent_brand_name: event.target.value }))} placeholder="Agent Brand Name" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <button onClick={saveProfile} disabled={savingProfile} style={{ height: '46px', border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: savingProfile ? 0.7 : 1 }}>
                 {savingProfile ? 'Saving...' : 'Save Profile'}
