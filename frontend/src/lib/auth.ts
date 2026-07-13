@@ -17,18 +17,7 @@ export function getWebSocketUrl(token) {
 let liveUpdatesCapabilityPromise = null;
 
 export async function supportsLiveUpdates() {
-  if (!liveUpdatesCapabilityPromise) {
-    liveUpdatesCapabilityPromise = fetch(`${getBackendUrl()}/api/health`, {
-      credentials: "include",
-    })
-      .then(async (response) => {
-        if (!response.ok) return false;
-        const data = await response.json().catch(() => ({}));
-        return data?.live_updates_enabled === true;
-      })
-      .catch(() => false);
-  }
-  return liveUpdatesCapabilityPromise;
+  return false;
 }
 
 export function saveSession(session) {

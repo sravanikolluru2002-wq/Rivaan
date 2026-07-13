@@ -61,7 +61,9 @@ self.addEventListener('fetch', (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+          if (req.url.startsWith('http')) {
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
           return res;
         })
         .catch(() =>
@@ -78,7 +80,9 @@ self.addEventListener('fetch', (event) => {
       caches.match(req, { ignoreSearch: true }).then((cached) =>
         cached || fetch(req).then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+          if (req.url.startsWith('http')) {
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
           return res;
         })
       )
