@@ -550,7 +550,7 @@ export default function AdminDashboard() {
                       <div>
                         <div style={{ fontWeight: 800 }}>{agent.name}</div>
                         <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{agent.id}</div>
-                        <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{agent.phone ? `+91 ${agent.phone}` : 'No phone'}</div>
+                        <div style={{ fontSize: '12px', color: '#8a9a8c' }}>{agent.phone ? formatPhoneDisplay(agent.phone) : 'No phone'}</div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { setSelectedApprovalId(agent.id); setPage('approvals'); }} style={{ border: '1px solid #d7e4d4', borderRadius: '10px', background: '#fff', color: '#2b6d3d', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>Review</button>
@@ -567,29 +567,64 @@ export default function AdminDashboard() {
 
         {!loading && page === 'approvals' && (
           <section style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Agent Applications</h3>
-            {renderTable(
-              ['Name', 'Phone', 'Email', 'Status', 'Applied'],
-              agents.map((agent) => [
-                agent.name || 'Agent',
-                agent.phone ? `+91 ${agent.phone}` : '—',
-                agent.email || '—',
-                <span style={tone(agent.approval_status || agent.status)}>{agent.approval_status || agent.status || 'pending'}</span>,
-                formatDateTime(agent.agent_application_submitted_at || agent.created_at),
-              ]),
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Agent Applications</h3>
+              {selectedApprovalId && <button onClick={() => setSelectedApprovalId(null)} style={{ border: '1px solid #d7e4d4', borderRadius: '10px', background: '#fff', padding: '6px 12px', cursor: 'pointer' }}>Back to List</button>}
+            </div>
+            {selectedApprovalId && selectedApproval ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#fcfdfb', padding: '16px', borderRadius: '12px', border: '1px solid #e7ede3' }}>
+                <h4 style={{ margin: '0 0 8px' }}>Application Details</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px' }}>
+                  <div><strong>Name:</strong> {selectedApproval.name}</div>
+                  <div><strong>Phone:</strong> {selectedApproval.phone ? formatPhoneDisplay(selectedApproval.phone) : '—'}</div>
+                  <div><strong>Email:</strong> {selectedApproval.email || '—'}</div>
+                  <div><strong>Age:</strong> {selectedApproval.age || '—'}</div>
+                  <div><strong>Occupation:</strong> {selectedApproval.occupation || '—'}</div>
+                  <div><strong>Aadhaar:</strong> {selectedApproval.aadhaar_number || '—'}</div>
+                  <div><strong>Bank Details:</strong> {selectedApproval.bank_details || '—'}</div>
+                  <div><strong>Brand Name:</strong> {selectedApproval.agent_brand_name || '—'}</div>
+                  <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedApproval.address || '—'}</div>
+                  <div style={{ gridColumn: '1 / -1' }}><strong>Notes:</strong> {selectedApproval.application_notes || '—'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                  <button onClick={() => { updateAgentStatus(selectedApproval.id, 'approved'); setSelectedApprovalId(null); }} style={{ border: 'none', borderRadius: '10px', background: '#2b6d3d', color: '#fff', padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}>Approve Agent</button>
+                  <button onClick={() => { updateAgentStatus(selectedApproval.id, 'rejected'); setSelectedApprovalId(null); }} style={{ border: '1px solid #f0c8c8', borderRadius: '10px', background: '#fff', color: '#c93b3b', padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}>Reject Agent</button>
+                </div>
+              </div>
+            ) : (
+              renderTable(
+                ['Name', 'Phone', 'Email', 'Status', 'Applied', 'Action'],
+                agents.map((agent) => [
+                  agent.name || 'Agent',
+                  agent.phone ? formatPhoneDisplay(agent.phone) : '—',
+                  agent.email || '—',
+                  <span style={tone(agent.approval_status || agent.status)}>{agent.approval_status || agent.status || 'pending'}</span>,
+                  formatDateTime(agent.agent_application_submitted_at || agent.created_at),
+                  <button onClick={() => setSelectedApprovalId(agent.id)} style={{ border: '1px solid #d7e4d4', borderRadius: '8px', background: '#fff', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>Review</button>
+                ]),
+              )
             )}
           </section>
         )}
 
         {!loading && page === 'users' && (
           <section style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Users</h3>
+            <h3 style={{ marginTop: 0 }}>Customer Logins</h3>
             {renderTable(
-              ['Name', 'Role', 'Phone', 'Status', 'Joined'],
-              users.map((item) => [
-                item.name || 'User',
-                item.role || '—',
-                item.phone ? `+91 ${item.phone}` : '—',
+              ['Name', 'Phone', 'Joined'],
+              users.filter(u => u.role === 'customer').map((item) => [
+                item.name || 'Customer',
+                item.phone ? formatPhoneDisplay(item.phone) : '—',
+                formatShortDate(item.created_at),
+              ]),
+            )}
+            <h3 style={{ marginTop: '32px' }}>Agent Profiles</h3>
+            {renderTable(
+              ['Name', 'Phone', 'Brand', 'Status', 'Joined'],
+              users.filter(u => u.role === 'agent' || u.role === 'admin').map((item) => [
+                item.name || 'Agent',
+                item.phone ? formatPhoneDisplay(item.phone) : '—',
+                item.agent_brand_name || '—',
                 <span style={tone(item.status || item.approval_status)}>{item.status || item.approval_status || '—'}</span>,
                 formatShortDate(item.created_at),
               ]),

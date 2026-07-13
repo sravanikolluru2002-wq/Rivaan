@@ -415,10 +415,9 @@ def property_code_for_record(item: Dict[str, Any]) -> str:
     existing = str(item.get("property_code") or "").strip().upper()
     if existing:
         return existing
-    identifier = item.get("id") or item.get("property_id")
-    city_code = property_city_code(item.get("location"), item.get("address"), item.get("name"))
-    locality_code = property_locality_code(item.get("location"), item.get("address"), item.get("name"))
-    return f"{city_code}{locality_code}-{property_sequence_code(identifier)}"
+    identifier = str(item.get("id") or item.get("property_id") or uuid.uuid4())
+    hash_str = hashlib.md5(identifier.encode()).hexdigest().upper()
+    return f"PR-{hash_str[:5]}"
 
 
 def normalize_live_property_record(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -1601,6 +1600,8 @@ class UpdateProfileReq(BaseModel):
     age: Optional[int] = None
     aadhaar_number: Optional[str] = None
     bank_details: Optional[str] = None
+    occupation: Optional[str] = None
+    agent_brand_name: Optional[str] = None
     notification_preferences: Optional[Dict[str, bool]] = None
     communication_preferences: Optional[Dict[str, bool]] = None
     biometric_login_enabled: Optional[bool] = None

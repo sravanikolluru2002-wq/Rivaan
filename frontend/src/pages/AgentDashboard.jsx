@@ -115,6 +115,11 @@ export default function AgentDashboard() {
     name: session?.user?.name || '',
     email: session?.user?.email || '',
     address: session?.user?.address || '',
+    occupation: session?.user?.occupation || '',
+    age: session?.user?.age || '',
+    aadhaar_number: session?.user?.aadhaar_number || '',
+    bank_details: session?.user?.bank_details || '',
+    agent_brand_name: session?.user?.agent_brand_name || '',
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [visitForm, setVisitForm] = useState({
@@ -184,6 +189,11 @@ export default function AgentDashboard() {
         name: user.name || '',
         email: user.email || '',
         address: user.address || '',
+        occupation: user.occupation || '',
+        age: user.age || '',
+        aadhaar_number: user.aadhaar_number || '',
+        bank_details: user.bank_details || '',
+        agent_brand_name: user.agent_brand_name || '',
       });
     } catch (err) {
       setError(err?.message || 'Failed to load agent dashboard');
@@ -745,6 +755,11 @@ export default function AgentDashboard() {
               <input value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <input value={formatPhoneDisplay(user.phone)} readOnly style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit', background: '#f6faf4' }} />
               <input value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} placeholder="Address" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
+              <input value={profileForm.occupation} onChange={(event) => setProfileForm((current) => ({ ...current, occupation: event.target.value }))} placeholder="Occupation" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
+              <input value={profileForm.age} type="number" onChange={(event) => setProfileForm((current) => ({ ...current, age: event.target.value }))} placeholder="Age" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
+              <input value={profileForm.aadhaar_number} onChange={(event) => setProfileForm((current) => ({ ...current, aadhaar_number: event.target.value }))} placeholder="Aadhaar Number" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
+              <input value={profileForm.bank_details} onChange={(event) => setProfileForm((current) => ({ ...current, bank_details: event.target.value }))} placeholder="Bank Details" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
+              <input value={profileForm.agent_brand_name} onChange={(event) => setProfileForm((current) => ({ ...current, agent_brand_name: event.target.value }))} placeholder="Agent Brand Name" style={{ height: '48px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 14px', fontFamily: 'inherit' }} />
               <button onClick={saveProfile} disabled={savingProfile} style={{ height: '46px', border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: savingProfile ? 0.7 : 1 }}>
                 {savingProfile ? 'Saving...' : 'Save Profile'}
               </button>
