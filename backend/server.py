@@ -1372,6 +1372,36 @@ def agent_accessible_ids(user: Dict[str, Any]) -> List[str]:
     return [user["id"], *sub_agent_ids]
 
 
+def agent_can_access_plot(user: Dict[str, Any], plot: Optional[Dict[str, Any]]) -> bool:
+    if not plot:
+        return False
+    return plot.get("agent_id") in agent_accessible_ids(user)
+
+
+def agent_can_access_booking(user: Dict[str, Any], booking: Dict[str, Any], plot: Optional[Dict[str, Any]] = None) -> bool:
+    accessible_ids = set(agent_accessible_ids(user))
+    owner_candidates = {
+        booking.get("agent_id"),
+        booking.get("assigned_agent_id"),
+        booking.get("created_by_agent_id"),
+    }
+    if any(candidate in accessible_ids for candidate in owner_candidates if candidate):
+        return True
+    return agent_can_access_plot(user, plot)
+
+
+def agent_can_access_visit(user: Dict[str, Any], visit: Dict[str, Any], plot: Optional[Dict[str, Any]] = None) -> bool:
+    accessible_ids = set(agent_accessible_ids(user))
+    owner_candidates = {
+        visit.get("assigned_agent_id"),
+        visit.get("created_by_agent_id"),
+        visit.get("agent_id"),
+    }
+    if any(candidate in accessible_ids for candidate in owner_candidates if candidate):
+        return True
+    return agent_can_access_plot(user, plot)
+
+
 async def is_database_available(
     timeout_seconds: Optional[float] = None,
     force_refresh: bool = False,
@@ -1883,7 +1913,7 @@ def crm_is_record_visible_to_user(user: Dict[str, Any], record: Dict[str, Any]) 
         record.get("agent_id"),
     ]
     if not any(owner_candidates):
-        return True
+        return False
     return any(owner in accessible_ids for owner in owner_candidates if owner)
 
 
@@ -2866,24 +2896,72 @@ def build_local_agent_dashboard(user: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     bookings = []
+    closed_sales = 0
+    commission_total = 0.0
     for booking in local_list_bookings():
-        if booking.get("agent_id") not in accessible_agent_ids:
-            continue
         plot = local_get_plot(booking["plot_id"]) or {}
+        if not agent_can_access_booking(user, booking, plot):
+            continue
         property_doc = property_map.get(booking["property_id"], {})
         customer = local_find_user(user_id=booking.get("user_id")) or {}
-        bookings.append({
+        normalized_booking = normalize_booking_record({
             **booking,
             "plot_number": plot.get("plot_number"),
             "property_name": property_doc.get("name", booking["property_id"]),
+            "property_code": property_code_for_record(property_doc or plot),
             "customer": clean_user(customer) if customer else None,
         })
+        bookings.append(normalized_booking)
+        if normalized_booking.get("status") == "completed":
+            closed_sales += 1
+            commission_total += float(normalized_booking.get("commission_amount") or 0)
+
+    visits = [
+        normalize_live_visit_record(visit)
+        for visit in filter_live_customer_items(local_list_visits())
+        if agent_can_access_visit(user, visit, local_get_plot(visit.get("plot_id")) if visit.get("plot_id") else None)
+    ]
+    crm_dashboard = {
+        "leads": [item for item in local_list_collection("leads") if crm_is_record_visible_to_user(user, item)],
+        "opportunities": [item for item in local_list_collection("opportunities") if crm_is_record_visible_to_user(user, item)],
+        "tasks": [item for item in local_list_collection("tasks") if crm_is_record_visible_to_user(user, item)],
+        "activities": [item for item in local_list_collection("activities") if crm_is_record_visible_to_user(user, item)],
+    }
+    stage_counts = {stage: 0 for stage in CRM_STAGES}
+    for opportunity in crm_dashboard["opportunities"]:
+        stage = opportunity.get("stage", "new")
+        stage_counts[stage] = stage_counts.get(stage, 0) + 1
+    unread_notifications = len([
+        item for item in local_list_collection("notifications")
+        if item.get("user_id") == user["id"] and not item.get("read")
+    ])
 
     return {
         "profile": clean_user(user),
         "sub_agents": [sub for sub in sub_agents if sub],
         "assets": [asset for asset in assets if asset["agent_id"] in accessible_agent_ids],
-        "bookings": [booking for booking in bookings if booking["agent_id"] in accessible_agent_ids],
+        "bookings": bookings,
+        "visits": visits,
+        "leads": crm_dashboard["leads"],
+        "opportunities": crm_dashboard["opportunities"],
+        "tasks": crm_dashboard["tasks"],
+        "activities": crm_dashboard["activities"][:50],
+        "stage_counts": stage_counts,
+        "metrics": {
+            "lead_count": len(crm_dashboard["leads"]),
+            "active_deals": len([item for item in crm_dashboard["opportunities"] if item.get("stage") not in CRM_CLOSED_STAGES]),
+        },
+        "kpis": {
+            "assets": len(assets),
+            "bookings": len(bookings),
+            "visits": len(visits),
+            "leads": len(crm_dashboard["leads"]),
+            "active_deals": len([item for item in crm_dashboard["opportunities"] if item.get("stage") not in CRM_CLOSED_STAGES]),
+            "closed_sales": closed_sales,
+            "commission_earned": round(commission_total, 2),
+            "unread_notifications": unread_notifications,
+        },
+        "last_synced_at": now_utc().isoformat(),
     }
 
 
@@ -6274,12 +6352,12 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
         return build_local_agent_dashboard(user)
 
     try:
-        accessible_agent_ids = [user["id"]]
+        accessible_agent_ids = set(agent_accessible_ids(user))
         logger.info("Agent dashboard loading for user_id=%s, phone=%s", user.get("id"), user.get("phone"))
 
-        plots = await db.plots.find({}, {"_id": 0}).to_list(500)
+        plots = await db.plots.find({"agent_id": {"$in": list(accessible_agent_ids)}}, {"_id": 0}).to_list(500)
         logger.info("Agent dashboard: found %d plots", len(plots))
-        property_ids = sorted({plot["property_id"] for plot in plots})
+        property_ids = sorted({plot["property_id"] for plot in plots if plot.get("property_id")})
         properties = await db.properties.find({"id": {"$in": property_ids}}, {"_id": 0}).to_list(200)
         property_map = {prop["id"]: prop for prop in properties}
 
@@ -6292,19 +6370,32 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
                 "property_code": property_code_for_record(property_doc or plot),
             })
 
-        bookings_raw = await db.bookings.find({}, {"_id": 0}).to_list(300)
+        asset_map = {asset["id"]: asset for asset in assets}
+        asset_plot_ids = set(asset_map)
+        bookings_raw = await db.bookings.find(
+            {
+                "$or": [
+                    {"agent_id": {"$in": list(accessible_agent_ids)}},
+                    {"assigned_agent_id": {"$in": list(accessible_agent_ids)}},
+                    {"created_by_agent_id": {"$in": list(accessible_agent_ids)}},
+                    {"plot_id": {"$in": list(asset_plot_ids)}},
+                ]
+            },
+            {"_id": 0},
+        ).to_list(300)
         logger.info("Agent dashboard: found %d total bookings in DB", len(bookings_raw))
         user_ids = sorted({booking["user_id"] for booking in bookings_raw if booking.get("user_id")})
         customer_docs = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0}).to_list(300)
         customer_map = {customer["id"]: customer for customer in customer_docs}
-        asset_map = {asset["id"]: asset for asset in assets}
 
         bookings = []
         closed_sales = 0
         commission_total = 0.0
         for booking in bookings_raw:
-            customer = clean_user(customer_map.get(booking.get("user_id"), {})) if customer_map.get(booking.get("user_id")) else None
             asset = asset_map.get(booking.get("plot_id", ""), {})
+            if not agent_can_access_booking(user, booking, asset):
+                continue
+            customer = clean_user(customer_map.get(booking.get("user_id"), {})) if customer_map.get(booking.get("user_id")) else None
             normalized_booking = normalize_booking_record({
                 **booking,
                 "plot_number": asset.get("plot_number"),
@@ -6319,10 +6410,34 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
 
         bookings.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         assets.sort(key=lambda x: (x.get("status") != "available", x.get("plot_number", "")))
+        crm_dashboard = await crm_build_agent_dashboard(user)
+        visits_raw = await db.visits.find(
+            {
+                "$or": [
+                    {"assigned_agent_id": {"$in": list(accessible_agent_ids)}},
+                    {"created_by_agent_id": {"$in": list(accessible_agent_ids)}},
+                    {"agent_id": {"$in": list(accessible_agent_ids)}},
+                    {"plot_id": {"$in": list(asset_plot_ids)}},
+                ]
+            },
+            {"_id": 0},
+        ).to_list(300)
+        visits = []
+        for visit in filter_live_customer_items(visits_raw):
+            asset = asset_map.get(visit.get("plot_id") or "")
+            if not agent_can_access_visit(user, visit, asset):
+                continue
+            property_doc = property_map.get(visit.get("property_id"), {})
+            visits.append(normalize_live_visit_record({
+                **visit,
+                "property_name": live_property_name(visit.get("property_id"), visit.get("property_name") or property_doc.get("name")),
+                "property_code": property_code_for_record(property_doc or asset or visit),
+                "assigned_agent_name": visit.get("assigned_agent_name") or user.get("name"),
+            }))
+        visits.sort(key=lambda x: ((x.get("visit_date") or ""), (x.get("visit_time") or ""), x.get("created_at", "")), reverse=True)
         notifications_count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
-        visits_count = await db.visits.count_documents({})
-        leads_count = await db.leads.count_documents({})
-        logger.info("Agent dashboard: assets=%d bookings=%d visits=%d leads=%d", len(assets), len(bookings), visits_count, leads_count)
+        active_deals = len([item for item in crm_dashboard.get("opportunities", []) if item.get("stage") not in CRM_CLOSED_STAGES])
+        logger.info("Agent dashboard: assets=%d bookings=%d visits=%d leads=%d", len(assets), len(bookings), len(visits), len(crm_dashboard.get("leads", [])))
 
         return {
             "profile": clean_user(user),
@@ -6330,8 +6445,9 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
             "kpis": {
                 "assets": len(assets),
                 "bookings": len(bookings),
-                "visits": visits_count,
-                "leads": leads_count,
+                "visits": len(visits),
+                "leads": len(crm_dashboard.get("leads", [])),
+                "active_deals": active_deals,
                 "closed_sales": closed_sales,
                 "commission_earned": round(commission_total, 2),
                 "unread_notifications": notifications_count,
@@ -6339,6 +6455,17 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
             "last_synced_at": now_utc().isoformat(),
             "assets": assets,
             "bookings": bookings,
+            "visits": visits,
+            "leads": crm_dashboard.get("leads", []),
+            "opportunities": crm_dashboard.get("opportunities", []),
+            "tasks": crm_dashboard.get("tasks", []),
+            "activities": crm_dashboard.get("activities", []),
+            "metrics": {
+                **(crm_dashboard.get("metrics") or {}),
+                "lead_count": len(crm_dashboard.get("leads", [])),
+                "active_deals": active_deals,
+            },
+            "stage_counts": crm_dashboard.get("stage_counts", {}),
         }
     except HTTPException:
         raise
@@ -6375,6 +6502,8 @@ async def agent_create_booking(req: AgentBookingCreateReq, user: Dict[str, Any] 
         plot = local_get_plot(req.plot_id)
         if not plot:
             raise HTTPException(status_code=404, detail="Plot not found")
+        if not agent_can_access_plot(user, plot):
+            raise HTTPException(status_code=403, detail="You do not have access to this asset")
         if plot.get("status") not in allowed_statuses:
             raise HTTPException(status_code=400, detail="Asset is not available for booking")
         customer = await upsert_user_identity(
@@ -6428,6 +6557,8 @@ async def agent_create_booking(req: AgentBookingCreateReq, user: Dict[str, Any] 
     plot = await db.plots.find_one({"id": req.plot_id}, {"_id": 0})
     if not plot:
         raise HTTPException(status_code=404, detail="Plot not found")
+    if not agent_can_access_plot(user, plot):
+        raise HTTPException(status_code=403, detail="You do not have access to this asset")
     if plot.get("status") not in allowed_statuses:
         raise HTTPException(status_code=400, detail="Asset is not available for booking")
     customer = await upsert_user_identity(
@@ -6499,7 +6630,8 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
         booking = next((item for item in local_list_bookings() if item.get("id") == booking_id), None)
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")
-        if booking.get("agent_id") is not None and booking.get("agent_id") not in agent_accessible_ids(user):
+        plot = local_get_plot(booking.get("plot_id")) if booking.get("plot_id") else None
+        if not agent_can_access_booking(user, booking, plot):
             raise HTTPException(status_code=403, detail="You do not have access to this booking")
         updated_booking = local_update_booking(booking_id, updates)
         if status_value in {"completed", "closed"}:
@@ -6534,7 +6666,8 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    if booking.get("agent_id") is not None and booking.get("agent_id") not in agent_accessible_ids(user):
+    plot = await db.plots.find_one({"id": booking.get("plot_id")}, {"_id": 0}) if booking.get("plot_id") else None
+    if not agent_can_access_booking(user, booking, plot):
         raise HTTPException(status_code=403, detail="You do not have access to this booking")
     await db.bookings.update_one({"id": booking_id}, {"$set": updates})
     if status_value in {"completed", "closed"}:
@@ -6588,16 +6721,49 @@ async def agent_site_visits(user: Dict[str, Any] = Depends(get_agent_user)):
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
             raise HTTPException(status_code=503, detail="Visit database is unavailable")
-        visits = [visit for visit in local_list_visits() if visit.get("assigned_agent_id") in agent_accessible_ids(user) or not visit.get("assigned_agent_id")]
+        visits = [
+            visit for visit in local_list_visits()
+            if agent_can_access_visit(user, visit, local_get_plot(visit.get("plot_id")) if visit.get("plot_id") else None)
+        ]
         return [normalize_live_visit_record(item) for item in filter_live_customer_items(visits)]
-    visits = await db.visits.find({}, {"_id": 0}).to_list(300)
-    return [normalize_live_visit_record(item) for item in filter_live_customer_items(visits)]
+    accessible_agent_ids = agent_accessible_ids(user)
+    assigned_plots = await db.plots.find({"agent_id": {"$in": accessible_agent_ids}}, {"_id": 0}).to_list(500)
+    asset_map = {plot.get("id"): plot for plot in assigned_plots if plot.get("id")}
+    visits = await db.visits.find(
+        {
+            "$or": [
+                {"assigned_agent_id": {"$in": accessible_agent_ids}},
+                {"created_by_agent_id": {"$in": accessible_agent_ids}},
+                {"agent_id": {"$in": accessible_agent_ids}},
+                {"plot_id": {"$in": list(asset_map)}},
+            ]
+        },
+        {"_id": 0},
+    ).to_list(300)
+    return [
+        normalize_live_visit_record(item)
+        for item in filter_live_customer_items(visits)
+        if agent_can_access_visit(user, item, asset_map.get(item.get("plot_id")))
+    ]
 
 @api_router.post("/agent/site-visits")
 async def agent_create_site_visit(req: AgentVisitReq, user: Dict[str, Any] = Depends(get_agent_user)):
     assigned_agent_id = req.assigned_agent_id or user["id"]
     if assigned_agent_id not in agent_accessible_ids(user):
         raise HTTPException(status_code=403, detail="You cannot assign this visit to that agent")
+    if req.plot_id:
+        plot = local_get_plot(req.plot_id) if not await is_database_available() else await db.plots.find_one({"id": req.plot_id}, {"_id": 0})
+        if not plot:
+            raise HTTPException(status_code=404, detail="Plot not found")
+        if not agent_can_access_plot(user, plot):
+            raise HTTPException(status_code=403, detail="You do not have access to this asset")
+    else:
+        if not await is_database_available():
+            has_property_access = any(agent_can_access_plot(user, plot) for plot in local_get_plots(req.property_id))
+        else:
+            has_property_access = await db.plots.count_documents({"property_id": req.property_id, "agent_id": {"$in": agent_accessible_ids(user)}}) > 0
+        if not has_property_access:
+            raise HTTPException(status_code=403, detail="You do not have access to this property")
     visit = {
         "id": str(uuid.uuid4()),
         "type": "site",
@@ -6675,7 +6841,7 @@ async def agent_update_site_visit(visit_id: str, req: AgentVisitUpdateReq, user:
         visit = next((item for item in local_list_visits() if item.get("id") == visit_id), None)
         if not visit:
             raise HTTPException(status_code=404, detail="Visit not found")
-        if visit.get("assigned_agent_id") not in agent_accessible_ids(user):
+        if not agent_can_access_visit(user, visit, local_get_plot(visit.get("plot_id")) if visit.get("plot_id") else None):
             raise HTTPException(status_code=403, detail="You do not have access to this visit")
         updated = local_update_visit(visit_id, updates)
         if updated:
@@ -6709,7 +6875,8 @@ async def agent_update_site_visit(visit_id: str, req: AgentVisitUpdateReq, user:
     visit = await db.visits.find_one({"id": visit_id}, {"_id": 0})
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
-    if visit.get("assigned_agent_id") not in agent_accessible_ids(user):
+    plot = await db.plots.find_one({"id": visit.get("plot_id")}, {"_id": 0}) if visit.get("plot_id") else None
+    if not agent_can_access_visit(user, visit, plot):
         raise HTTPException(status_code=403, detail="You do not have access to this visit")
     await db.visits.update_one({"id": visit_id}, {"$set": updates})
     updated = await db.visits.find_one({"id": visit_id}, {"_id": 0})
@@ -6751,9 +6918,8 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
         booking = next((item for item in local_list_bookings() if item.get("id") == booking_id), None)
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")
-        sub_agent_ids = user.get("sub_agent_ids", []) if user.get("role") == "agent" else []
-        accessible_agent_ids = [user["id"], *sub_agent_ids]
-        if booking.get("agent_id") is not None and booking.get("agent_id") not in accessible_agent_ids:
+        plot = local_get_plot(booking.get("plot_id")) if booking.get("plot_id") else None
+        if not agent_can_access_booking(user, booking, plot):
             raise HTTPException(status_code=403, detail="You do not have access to this booking")
         updated_booking = local_update_booking(booking_id, {"status": "completed", "approval_status": "admin_approved", "closed_at": now_utc().isoformat(), "updated_at": now_utc().isoformat()})
         local_save_plot_override(booking["plot_id"], {"status": "booked", "owner_id": booking["user_id"]})
@@ -6774,12 +6940,11 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
         )
         return {"success": True, "status": "completed", "booking": updated_booking}
 
-    sub_agent_ids = user.get("sub_agent_ids", []) if user.get("role") == "agent" else []
-    accessible_agent_ids = [user["id"], *sub_agent_ids]
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    if booking.get("agent_id") is not None and booking.get("agent_id") not in accessible_agent_ids:
+    plot = await db.plots.find_one({"id": booking.get("plot_id")}, {"_id": 0}) if booking.get("plot_id") else None
+    if not agent_can_access_booking(user, booking, plot):
         raise HTTPException(status_code=403, detail="You do not have access to this booking")
 
     await db.bookings.update_one(
@@ -6807,7 +6972,7 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
         roles=["admin"],
     )
     await publish_dashboard_metrics_update(user_ids=[booking.get("user_id"), booking.get("agent_id")], roles=["admin"])
-    return {"success": True, "status": "completed"}
+    return {"success": True, "status": "completed", "booking": refreshed_booking}
 
 
 @api_router.post("/admin/service-requests/{req_id}/status")

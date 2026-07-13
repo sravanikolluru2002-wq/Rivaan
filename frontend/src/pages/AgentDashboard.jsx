@@ -107,6 +107,7 @@ export default function AgentDashboard() {
   const [page, setPage] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [agentData, setAgentData] = useState({ profile: {}, kpis: {}, assets: [], bookings: [] });
   const [crmData, setCrmData] = useState({ leads: [], opportunities: [], tasks: [], activities: [], metrics: {}, stage_counts: {} });
   const [visits, setVisits] = useState([]);
@@ -162,6 +163,7 @@ export default function AgentDashboard() {
     if (!session?.access_token) return;
     if (showLoader) setLoading(true);
     setError('');
+    if (showLoader) setNotice('');
     const errors = [];
     try {
       const results = await Promise.allSettled([
@@ -171,9 +173,18 @@ export default function AgentDashboard() {
         getJson('/api/notifications', session.access_token),
       ]);
 
-      const nextAgentData = results[0].status === 'fulfilled' ? results[0].value : { profile: {}, kpis: {}, assets: [], bookings: [] };
-      const nextCrmData = results[1].status === 'fulfilled' ? results[1].value : { leads: [], opportunities: [], tasks: [], activities: [], metrics: {}, stage_counts: {} };
-      const nextVisits = results[2].status === 'fulfilled' ? results[2].value : [];
+      const nextAgentData = results[0].status === 'fulfilled' ? results[0].value : { profile: {}, kpis: {}, assets: [], bookings: [], visits: [], leads: [], opportunities: [], tasks: [], activities: [], metrics: {}, stage_counts: {} };
+      const nextCrmData = results[1].status === 'fulfilled'
+        ? results[1].value
+        : {
+            leads: nextAgentData.leads || [],
+            opportunities: nextAgentData.opportunities || [],
+            tasks: nextAgentData.tasks || [],
+            activities: nextAgentData.activities || [],
+            metrics: nextAgentData.metrics || {},
+            stage_counts: nextAgentData.stage_counts || {},
+          };
+      const nextVisits = results[2].status === 'fulfilled' ? results[2].value : (nextAgentData.visits || []);
       const nextNotifications = results[3].status === 'fulfilled' ? results[3].value : [];
 
       results.forEach((r, i) => {
@@ -184,7 +195,20 @@ export default function AgentDashboard() {
         }
       });
 
-      setAgentData(nextAgentData);
+      setAgentData({
+        profile: {},
+        kpis: {},
+        assets: [],
+        bookings: [],
+        visits: [],
+        leads: [],
+        opportunities: [],
+        tasks: [],
+        activities: [],
+        metrics: {},
+        stage_counts: {},
+        ...nextAgentData,
+      });
       setCrmData(nextCrmData);
       setVisits(Array.isArray(nextVisits) ? nextVisits : []);
       setNotifications(Array.isArray(nextNotifications) ? nextNotifications : []);
@@ -299,12 +323,12 @@ export default function AgentDashboard() {
 
   const assets = agentData.assets || [];
   const bookings = agentData.bookings || [];
-  const leads = crmData.leads || [];
-  const opportunities = crmData.opportunities || [];
-  const tasks = crmData.tasks || [];
-  const activities = crmData.activities || [];
-  const dashboardMetrics = crmData.metrics || {};
-  const stageCounts = crmData.stage_counts || {};
+  const leads = (crmData.leads?.length ? crmData.leads : agentData.leads) || [];
+  const opportunities = (crmData.opportunities?.length ? crmData.opportunities : agentData.opportunities) || [];
+  const tasks = (crmData.tasks?.length ? crmData.tasks : agentData.tasks) || [];
+  const activities = (crmData.activities?.length ? crmData.activities : agentData.activities) || [];
+  const dashboardMetrics = Object.keys(crmData.metrics || {}).length ? crmData.metrics : (agentData.metrics || {});
+  const stageCounts = Object.keys(crmData.stage_counts || {}).length ? crmData.stage_counts : (agentData.stage_counts || {});
   const propertyChoices = Array.from(
     new Map(
       assets.map((asset) => [
@@ -316,6 +340,8 @@ export default function AgentDashboard() {
   const filteredPlotsForVisit = assets.filter(
     (asset) => !visitForm.property_id || asset.property_id === visitForm.property_id,
   );
+  const canSubmitVisit = Boolean(visitForm.property_id && visitForm.customer_name.trim() && visitForm.customer_phone.trim() && visitForm.visit_date && visitForm.visit_time.trim());
+  const canSubmitBooking = Boolean(bookingForm.plot_id && bookingForm.customer_name.trim() && bookingForm.customer_phone.trim());
 
   const navItems = [
     ['dashboard', 'Dashboard'],
@@ -334,14 +360,17 @@ export default function AgentDashboard() {
     { label: 'Bookings', value: agentData.kpis?.bookings ?? bookings.length },
     { label: 'Visits', value: agentData.kpis?.visits ?? visits.length },
     { label: 'Leads', value: dashboardMetrics.lead_count ?? leads.length },
-    { label: 'Active Deals', value: dashboardMetrics.active_deals ?? opportunities.length },
+    { label: 'Active Deals', value: agentData.kpis?.active_deals ?? dashboardMetrics.active_deals ?? opportunities.length },
     { label: 'Closed Sales', value: agentData.kpis?.closed_sales ?? 0 },
     { label: 'Commission Earned', value: `₹${Math.round(agentData.kpis?.commission_earned ?? 0).toLocaleString('en-IN')}` },
     { label: 'Unread Notifications', value: agentData.kpis?.unread_notifications ?? unreadNotifications },
   ];
 
-  const renderTable = (columns, rows) => (
+  const renderTable = (columns, rows, emptyMessage = 'No assigned records yet.') => (
     <div style={{ overflowX: 'auto' }}>
+      {rows.length === 0 ? (
+        <p style={{ margin: 0, color: '#6d7d6f' }}>{emptyMessage}</p>
+      ) : (
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
         <thead>
           <tr style={{ textAlign: 'left' }}>
@@ -364,6 +393,7 @@ export default function AgentDashboard() {
           ))}
         </tbody>
       </table>
+      )}
     </div>
   );
 
@@ -378,8 +408,13 @@ export default function AgentDashboard() {
   };
 
   const submitVisit = async () => {
+    if (!visitForm.property_id || !visitForm.customer_name.trim() || !visitForm.customer_phone.trim() || !visitForm.visit_date || !visitForm.visit_time.trim()) {
+      setError('Select a property and add customer name, phone, visit date, and visit time.');
+      return;
+    }
     setSubmittingVisit(true);
     setError('');
+    setNotice('');
     try {
       await postJson('/api/agent/site-visits', visitForm, session.access_token);
       setVisitForm((current) => ({
@@ -391,6 +426,7 @@ export default function AgentDashboard() {
         notes: '',
       }));
       refreshAll(false);
+      setNotice('Visit scheduled and dashboard refreshed.');
     } catch (err) {
       setError(err?.message || 'Failed to schedule site visit');
     } finally {
@@ -399,8 +435,13 @@ export default function AgentDashboard() {
   };
 
   const submitBooking = async () => {
+    if (!bookingForm.plot_id || !bookingForm.customer_name.trim() || !bookingForm.customer_phone.trim()) {
+      setError('Select a plot and add customer name and phone before creating a booking.');
+      return;
+    }
     setSubmittingBooking(true);
     setError('');
+    setNotice('');
     try {
       await postJson('/api/agent/bookings', bookingForm, session.access_token);
       setBookingForm((current) => ({
@@ -411,6 +452,7 @@ export default function AgentDashboard() {
         notes: '',
       }));
       refreshAll(false);
+      setNotice('Booking created and dashboard refreshed.');
     } catch (err) {
       setError(err?.message || 'Failed to create booking');
     } finally {
@@ -420,8 +462,11 @@ export default function AgentDashboard() {
 
   const updateVisitStatus = async (visitId, status) => {
     try {
+      setError('');
+      setNotice('');
       await putJson(`/api/agent/site-visits/${visitId}`, { status }, session.access_token);
       refreshAll(false);
+      setNotice('Visit status updated.');
     } catch (err) {
       setError(err?.message || 'Failed to update visit');
     }
@@ -429,8 +474,11 @@ export default function AgentDashboard() {
 
   const updateBookingStatus = async (bookingId, status) => {
     try {
+      setError('');
+      setNotice('');
       await putJson(`/api/agent/bookings/${bookingId}/status`, { status }, session.access_token);
       refreshAll(false);
+      setNotice('Booking status updated.');
     } catch (err) {
       setError(err?.message || 'Failed to update booking');
     }
@@ -438,8 +486,11 @@ export default function AgentDashboard() {
 
   const completeTask = async (taskId) => {
     try {
+      setError('');
+      setNotice('');
       await postJson(`/api/crm/tasks/${taskId}/complete`, { completion_note: 'Completed from dashboard' }, session.access_token);
       refreshAll(false);
+      setNotice('Task completed.');
     } catch (err) {
       setError(err?.message || 'Failed to complete task');
     }
@@ -447,6 +498,8 @@ export default function AgentDashboard() {
 
   const saveProfile = async () => {
     setSavingProfile(true);
+    setError('');
+    setNotice('');
     try {
       const payload = { ...profileForm };
       Object.keys(payload).forEach(k => {
@@ -456,6 +509,8 @@ export default function AgentDashboard() {
       const nextSession = { ...session, user: updated };
       saveSession(nextSession);
       setSession(nextSession);
+      setAgentData((current) => ({ ...current, profile: updated }));
+      setNotice('Profile saved successfully.');
     } catch (err) {
       setError(err?.message || 'Failed to save profile');
     } finally {
@@ -537,6 +592,7 @@ export default function AgentDashboard() {
         </div>
 
         {error && <div style={{ ...cardStyle, marginBottom: '18px', color: '#c93b3b', fontWeight: 700 }}>{error}</div>}
+        {notice && <div style={{ ...cardStyle, marginBottom: '18px', color: '#1a8a4a', fontWeight: 700 }}>{notice}</div>}
         {loading && <div style={cardStyle}>Loading live agent data...</div>}
 
         {!loading && page === 'dashboard' && (
@@ -661,7 +717,7 @@ export default function AgentDashboard() {
                 <input value={visitForm.visit_time} onChange={(event) => setVisitForm((current) => ({ ...current, visit_time: event.target.value }))} placeholder="Visit time" style={{ height: '46px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit' }} />
                 <input value={visitForm.notes} onChange={(event) => setVisitForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" style={{ height: '46px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit' }} />
               </div>
-              <button onClick={submitVisit} disabled={submittingVisit} style={{ marginTop: '14px', height: '44px', border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', opacity: submittingVisit ? 0.7 : 1 }}>
+              <button onClick={submitVisit} disabled={submittingVisit || !canSubmitVisit} style={{ marginTop: '14px', height: '44px', border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: submittingVisit || !canSubmitVisit ? 'not-allowed' : 'pointer', opacity: submittingVisit || !canSubmitVisit ? 0.7 : 1 }}>
                 {submittingVisit ? 'Scheduling...' : 'Schedule Visit'}
               </button>
             </section>
@@ -704,7 +760,7 @@ export default function AgentDashboard() {
                 <input value={bookingForm.visit_time} onChange={(event) => setBookingForm((current) => ({ ...current, visit_time: event.target.value }))} placeholder="Visit time" style={{ height: '46px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit' }} />
                 <input value={bookingForm.notes} onChange={(event) => setBookingForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" style={{ height: '46px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit' }} />
               </div>
-              <button onClick={submitBooking} disabled={submittingBooking} style={{ marginTop: '14px', height: '44px', border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', opacity: submittingBooking ? 0.7 : 1 }}>
+              <button onClick={submitBooking} disabled={submittingBooking || !canSubmitBooking} style={{ marginTop: '14px', height: '44px', border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: submittingBooking || !canSubmitBooking ? 'not-allowed' : 'pointer', opacity: submittingBooking || !canSubmitBooking ? 0.7 : 1 }}>
                 {submittingBooking ? 'Creating...' : 'Create Booking'}
               </button>
             </section>
