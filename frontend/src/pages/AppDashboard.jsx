@@ -1001,7 +1001,7 @@ export default function AppDashboard() {
 
         <div style={{'padding': '20px 22px 0'}}>
           {/* hero banner */}
-          <div onClick={openFirstProject} style={{'position': 'relative', 'height': '172px', 'borderRadius': '22px', 'overflow': 'hidden', 'cursor': 'pointer', 'background': selectedImage ? `center / cover no-repeat url(${selectedImage})` : 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 52%,#c7dc9c 100%)', 'boxShadow': '0 16px 34px -18px rgba(18,53,29,.6)'}}>
+          <div onClick={openFirstProject} style={{'position': 'relative', 'height': '172px', 'borderRadius': '22px', 'overflow': 'hidden', 'cursor': 'pointer', 'background': selectedImage ? `center / cover no-repeat url('${selectedImage}')` : 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 52%,#c7dc9c 100%)', 'boxShadow': '0 16px 34px -18px rgba(18,53,29,.6)'}}>
             <div style={{'position': 'absolute', 'inset': '0', 'background': 'radial-gradient(80% 60% at 78% 22%,rgba(255,247,214,.35),transparent 60%),linear-gradient(180deg,rgba(9,32,16,.12),rgba(9,32,16,.62))'}}></div>
             <div style={{'position': 'absolute', 'inset': '0', 'padding': '20px', 'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'space-between'}}>
               <div>
@@ -1020,7 +1020,7 @@ export default function AppDashboard() {
           <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '13px'}}>
             { filteredFeatured.map((f, index) => (
               <div onClick={f.open} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
-                <div style={{height: '96px', background: f.property?.image ? `center / cover no-repeat url(${f.property.image})` : f.grad, position: 'relative'}}>
+                <div style={{height: '96px', background: f.property?.image ? `center / cover no-repeat url('${f.property.image}')` : f.grad, position: 'relative'}}>
                   <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>📍 {f.tag}</span>
                 </div>
                 <div style={{'padding': '11px 12px 13px'}}>
@@ -1342,7 +1342,7 @@ export default function AppDashboard() {
       {/* ===================== PROPERTY DETAILS ===================== */}
       {isPropDetail && (
       <div className="rv-screen">
-        <div style={{position: 'relative', height: '300px', background: selectedImage ? `center / cover no-repeat url(${selectedImage})` : sel.grad}}>
+        <div style={{position: 'relative', height: '300px', background: selectedImage ? `center / cover no-repeat url('${selectedImage}')` : sel.grad}}>
           <div style={{'position': 'absolute', 'inset': '0', 'background': 'linear-gradient(180deg,rgba(9,32,16,.28),transparent 30%,rgba(9,32,16,.5))'}}></div>
           <div style={{'position': 'absolute', 'top': '52px', 'left': '20px', 'right': '20px', 'display': 'flex', 'justifyContent': 'space-between'}}>
             <button onClick={back} style={{'width': '40px', 'height': '40px', 'borderRadius': '13px', 'border': 'none', 'background': 'rgba(255,255,255,.9)', 'color': '#1f5a31', 'fontSize': '18px', 'cursor': 'pointer'}}>←</button>
@@ -1389,7 +1389,7 @@ export default function AppDashboard() {
               <p style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#1f5a31', 'margin': '22px 0 10px'}}>Project Gallery</p>
               <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '10px'}}>
                 {selectedGallery.map((image, index) => (
-                  <div key={image + index} style={{'height': '96px', 'borderRadius': '16px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'background': `center / cover no-repeat url(${image})`}}></div>
+                  <div key={image + index} style={{'height': '96px', 'borderRadius': '16px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'background': `center / cover no-repeat url('${image}')`}}></div>
                 ))}
               </div>
             </>
