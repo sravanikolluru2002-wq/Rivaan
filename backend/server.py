@@ -591,6 +591,75 @@ def normalize_booking_record(item: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
+def normalize_plot_record(item: Dict[str, Any], property_doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    normalized = dict(item)
+    prop = normalize_live_property_record(property_doc or {}) if property_doc else {}
+    normalized["property_name"] = normalized.get("property_name") or prop.get("name") or normalized.get("property_id")
+    normalized["property_code"] = normalized.get("property_code") or prop.get("property_code") or property_code_for_record(prop or normalized)
+    normalized["location"] = normalized.get("location") or prop.get("location")
+    normalized["size_sqy"] = normalized.get("size_sqy") or normalized.get("sq_yards") or normalized.get("square_yards")
+    if normalized.get("size_sqy") and not normalized.get("size"):
+        normalized["size"] = f"{normalized['size_sqy']} sq yards"
+    return normalized
+
+
+def enrich_booking_record(
+    booking: Dict[str, Any],
+    *,
+    property_doc: Optional[Dict[str, Any]] = None,
+    plot_doc: Optional[Dict[str, Any]] = None,
+    customer_doc: Optional[Dict[str, Any]] = None,
+    agent_doc: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    prop = normalize_live_property_record(property_doc or {}) if property_doc else {}
+    plot = normalize_plot_record(plot_doc or {}, prop) if plot_doc else {}
+    customer = clean_user(customer_doc or {}) if customer_doc else None
+    agent = clean_user(agent_doc or {}) if agent_doc else None
+    return normalize_booking_record({
+        **booking,
+        "property_name": booking.get("property_name") or prop.get("name") or plot.get("property_name"),
+        "property_code": booking.get("property_code") or prop.get("property_code") or plot.get("property_code"),
+        "property_location": booking.get("property_location") or booking.get("location") or prop.get("location") or plot.get("location"),
+        "plot_number": booking.get("plot_number") or plot.get("plot_number"),
+        "facing": booking.get("facing") or plot.get("facing"),
+        "size_sqy": booking.get("size_sqy") or plot.get("size_sqy"),
+        "size": booking.get("size") or plot.get("size"),
+        "customer": customer,
+        "customer_name": booking.get("customer_name") or booking.get("name") or (customer or {}).get("name"),
+        "customer_phone": booking.get("customer_phone") or booking.get("mobile") or (customer or {}).get("phone"),
+        "assigned_agent_id": booking.get("assigned_agent_id") or booking.get("agent_id") or (agent or {}).get("id"),
+        "assigned_agent_name": booking.get("assigned_agent_name") or (agent or {}).get("name"),
+    })
+
+
+def enrich_visit_record(
+    visit: Dict[str, Any],
+    *,
+    property_doc: Optional[Dict[str, Any]] = None,
+    plot_doc: Optional[Dict[str, Any]] = None,
+    customer_doc: Optional[Dict[str, Any]] = None,
+    agent_doc: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    prop = normalize_live_property_record(property_doc or {}) if property_doc else {}
+    plot = normalize_plot_record(plot_doc or {}, prop) if plot_doc else {}
+    customer = clean_user(customer_doc or {}) if customer_doc else None
+    agent = clean_user(agent_doc or {}) if agent_doc else None
+    return normalize_live_visit_record({
+        **visit,
+        "property_name": visit.get("property_name") or visit.get("centre_name") or prop.get("name") or plot.get("property_name"),
+        "property_code": visit.get("property_code") or prop.get("property_code") or plot.get("property_code"),
+        "location": visit.get("location") or prop.get("location") or plot.get("location"),
+        "plot_number": visit.get("plot_number") or plot.get("plot_number"),
+        "facing": visit.get("facing") or plot.get("facing"),
+        "size_sqy": visit.get("size_sqy") or plot.get("size_sqy"),
+        "size": visit.get("size") or plot.get("size"),
+        "customer": customer,
+        "customer_name": visit.get("customer_name") or visit.get("name") or (customer or {}).get("name"),
+        "customer_phone": visit.get("customer_phone") or visit.get("mobile") or (customer or {}).get("phone"),
+        "assigned_agent_name": visit.get("assigned_agent_name") or (agent or {}).get("name"),
+    })
+
+
 def should_prune_local_store_item(name: str, item: Dict[str, Any]) -> bool:
     if name in {"bookings", "visits", "notifications", "leads", "opportunities", "tasks", "activities", "customer_agent_links"}:
         return should_hide_demo_item(item)
@@ -5676,6 +5745,8 @@ async def live_updates_websocket(websocket: WebSocket):
 # ---------- Admin ----------
 @api_router.get("/admin/stats")
 async def admin_stats(user: Dict[str, Any] = Depends(get_admin_user)):
+    if await is_database_available():
+        await ensure_primary_agent_seed()
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
             raise HTTPException(status_code=503, detail="Admin statistics are unavailable")
@@ -5749,24 +5820,26 @@ async def admin_bookings(user: Dict[str, Any] = Depends(get_admin_user)):
     raw_items = filter_live_customer_items(await db.bookings.find({}, {"_id": 0}).to_list(500))
     property_ids = sorted({item.get("property_id") for item in raw_items if item.get("property_id")})
     plot_ids = sorted({item.get("plot_id") for item in raw_items if item.get("plot_id")})
+    customer_ids = sorted({item.get("user_id") or item.get("customer_id") for item in raw_items if item.get("user_id") or item.get("customer_id")})
+    agent_ids = sorted({item.get("assigned_agent_id") or item.get("agent_id") or item.get("created_by_agent_id") for item in raw_items if item.get("assigned_agent_id") or item.get("agent_id") or item.get("created_by_agent_id")})
     properties = await db.properties.find({"id": {"$in": property_ids}}, {"_id": 0}).to_list(500) if property_ids else []
     plots = await db.plots.find({"id": {"$in": plot_ids}}, {"_id": 0}).to_list(500) if plot_ids else []
+    customers = await db.users.find({"id": {"$in": customer_ids}}, {"_id": 0}).to_list(500) if customer_ids else []
+    agents = await db.users.find({"id": {"$in": agent_ids}}, {"_id": 0}).to_list(500) if agent_ids else []
     property_map = {item.get("id"): normalize_live_property_record(item) for item in properties}
     plot_map = {item.get("id"): item for item in plots}
+    customer_map = {item.get("id"): item for item in customers}
+    agent_map = {item.get("id"): item for item in agents}
 
     items = []
     for item in raw_items:
-        prop = property_map.get(item.get("property_id"), {})
-        plot = plot_map.get(item.get("plot_id"), {})
-        enriched = normalize_booking_record({
-            **item,
-            "property_name": item.get("property_name") or prop.get("name"),
-            "property_code": prop.get("property_code") or property_code_for_record(prop or item),
-            "plot_number": item.get("plot_number") or plot.get("plot_number"),
-            "facing": item.get("facing") or plot.get("facing"),
-            "size_sqy": item.get("size_sqy") or plot.get("size_sqy"),
-        })
-        items.append(enriched)
+        items.append(enrich_booking_record(
+            item,
+            property_doc=property_map.get(item.get("property_id")),
+            plot_doc=plot_map.get(item.get("plot_id")),
+            customer_doc=customer_map.get(item.get("user_id") or item.get("customer_id")),
+            agent_doc=agent_map.get(item.get("assigned_agent_id") or item.get("agent_id") or item.get("created_by_agent_id")),
+        ))
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items
 
@@ -5785,7 +5858,14 @@ async def admin_plots(property_id: Optional[str] = None, user: Dict[str, Any] = 
     if property_id:
         query["property_id"] = property_id
     items = await db.plots.find(query, {"_id": 0}).to_list(1000)
-    return [item for item in items if not should_hide_demo_item(item)]
+    property_ids = sorted({item.get("property_id") for item in items if item.get("property_id")})
+    properties = await db.properties.find({"id": {"$in": property_ids}}, {"_id": 0}).to_list(500) if property_ids else []
+    property_map = {item.get("id"): item for item in properties}
+    return [
+        normalize_plot_record(item, property_map.get(item.get("property_id")))
+        for item in items
+        if not should_hide_demo_item(item)
+    ]
 
 
 @api_router.get("/admin/audit-logs")
@@ -5803,10 +5883,31 @@ async def admin_visits(user: Dict[str, Any] = Depends(get_admin_user)):
         items = filter_live_customer_items(local_list_visits())
         items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return [normalize_live_visit_record(item) for item in items]
-    items = await db.visits.find({}, {"_id": 0}).to_list(500)
-    items = filter_live_customer_items(items)
+    raw_items = filter_live_customer_items(await db.visits.find({}, {"_id": 0}).to_list(500))
+    property_ids = sorted({item.get("property_id") for item in raw_items if item.get("property_id")})
+    plot_ids = sorted({item.get("plot_id") for item in raw_items if item.get("plot_id")})
+    customer_ids = sorted({item.get("user_id") or item.get("customer_id") for item in raw_items if item.get("user_id") or item.get("customer_id")})
+    agent_ids = sorted({item.get("assigned_agent_id") or item.get("agent_id") or item.get("created_by_agent_id") for item in raw_items if item.get("assigned_agent_id") or item.get("agent_id") or item.get("created_by_agent_id")})
+    properties = await db.properties.find({"id": {"$in": property_ids}}, {"_id": 0}).to_list(500) if property_ids else []
+    plots = await db.plots.find({"id": {"$in": plot_ids}}, {"_id": 0}).to_list(500) if plot_ids else []
+    customers = await db.users.find({"id": {"$in": customer_ids}}, {"_id": 0}).to_list(500) if customer_ids else []
+    agents = await db.users.find({"id": {"$in": agent_ids}}, {"_id": 0}).to_list(500) if agent_ids else []
+    property_map = {item.get("id"): normalize_live_property_record(item) for item in properties}
+    plot_map = {item.get("id"): item for item in plots}
+    customer_map = {item.get("id"): item for item in customers}
+    agent_map = {item.get("id"): item for item in agents}
+    items = [
+        enrich_visit_record(
+            item,
+            property_doc=property_map.get(item.get("property_id")),
+            plot_doc=plot_map.get(item.get("plot_id")),
+            customer_doc=customer_map.get(item.get("user_id") or item.get("customer_id")),
+            agent_doc=agent_map.get(item.get("assigned_agent_id") or item.get("agent_id") or item.get("created_by_agent_id")),
+        )
+        for item in raw_items
+    ]
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    return [normalize_live_visit_record(item) for item in items]
+    return items
 
 
 @api_router.get("/admin/support-tickets")
@@ -6428,16 +6529,12 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
         logger.info("Agent dashboard: found %d plots", len(plots))
         property_ids = sorted({plot["property_id"] for plot in plots if plot.get("property_id")})
         properties = await db.properties.find({"id": {"$in": property_ids}}, {"_id": 0}).to_list(200)
-        property_map = {prop["id"]: prop for prop in properties}
+        property_map = {prop["id"]: normalize_live_property_record(prop) for prop in properties}
 
         assets = []
         for plot in plots:
             property_doc = property_map.get(plot["property_id"], {})
-            assets.append({
-                **plot,
-                "property_name": property_doc.get("name", plot["property_id"]),
-                "property_code": property_code_for_record(property_doc or plot),
-            })
+            assets.append(normalize_plot_record(plot, property_doc))
 
         asset_map = {asset["id"]: asset for asset in assets}
         asset_plot_ids = set(asset_map)
@@ -6464,14 +6561,13 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
             asset = asset_map.get(booking.get("plot_id", ""), {})
             if not agent_can_access_booking(user, booking, asset):
                 continue
-            customer = clean_user(customer_map.get(booking.get("user_id"), {})) if customer_map.get(booking.get("user_id")) else None
-            normalized_booking = normalize_booking_record({
-                **booking,
-                "plot_number": asset.get("plot_number"),
-                "property_name": asset.get("property_name"),
-                "property_code": asset.get("property_code"),
-                "customer": customer,
-            })
+            normalized_booking = enrich_booking_record(
+                booking,
+                property_doc=property_map.get(booking.get("property_id")),
+                plot_doc=asset,
+                customer_doc=customer_map.get(booking.get("user_id")),
+                agent_doc=user,
+            )
             bookings.append(normalized_booking)
             if normalized_booking.get("status") == "completed":
                 closed_sales += 1
@@ -6505,13 +6601,13 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
             asset = asset_map.get(visit.get("plot_id") or "")
             if not agent_can_access_visit(user, visit, asset):
                 continue
-            property_doc = property_map.get(visit.get("property_id"), {})
-            visits.append(normalize_live_visit_record({
-                **visit,
-                "property_name": live_property_name(visit.get("property_id"), visit.get("property_name") or property_doc.get("name")),
-                "property_code": property_code_for_record(property_doc or asset or visit),
-                "assigned_agent_name": visit.get("assigned_agent_name") or user.get("name"),
-            }))
+            visits.append(enrich_visit_record(
+                visit,
+                property_doc=property_map.get(visit.get("property_id")),
+                plot_doc=asset,
+                customer_doc=None,
+                agent_doc=user,
+            ))
         visits.sort(key=lambda x: ((x.get("visit_date") or ""), (x.get("visit_time") or ""), x.get("created_at", "")), reverse=True)
         notifications_count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
         active_deals = len([item for item in crm_dashboard.get("opportunities", []) if item.get("stage") not in CRM_CLOSED_STAGES])
