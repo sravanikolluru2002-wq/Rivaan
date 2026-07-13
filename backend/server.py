@@ -1881,6 +1881,8 @@ def crm_is_record_visible_to_user(user: Dict[str, Any], record: Dict[str, Any]) 
         record.get("assigned_to_user_id"),
         record.get("agent_id"),
     ]
+    if not any(owner_candidates):
+        return True
     return any(owner in accessible_ids for owner in owner_candidates if owner)
 
 
@@ -6552,9 +6554,9 @@ async def agent_site_visits(user: Dict[str, Any] = Depends(get_agent_user)):
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
             raise HTTPException(status_code=503, detail="Visit database is unavailable")
-        visits = [visit for visit in local_list_visits() if visit.get("assigned_agent_id") in agent_accessible_ids(user)]
+        visits = [visit for visit in local_list_visits() if visit.get("assigned_agent_id") in agent_accessible_ids(user) or not visit.get("assigned_agent_id")]
         return [normalize_live_visit_record(item) for item in filter_live_customer_items(visits)]
-    visits = await db.visits.find({"assigned_agent_id": {"$in": agent_accessible_ids(user)}}, {"_id": 0}).to_list(300)
+    visits = await db.visits.find({"$or": [{"assigned_agent_id": {"$in": agent_accessible_ids(user)}}, {"assigned_agent_id": None}, {"assigned_agent_id": {"$exists": False}}]}, {"_id": 0}).to_list(300)
     return [normalize_live_visit_record(item) for item in filter_live_customer_items(visits)]
 
 @api_router.post("/agent/site-visits")
