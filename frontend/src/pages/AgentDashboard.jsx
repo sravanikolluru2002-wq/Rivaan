@@ -145,12 +145,19 @@ export default function AgentDashboard() {
   const [submittingVisit, setSubmittingVisit] = useState(false);
   const [submittingBooking, setSubmittingBooking] = useState(false);
   const [liveStatus, setLiveStatus] = useState('connecting');
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 820);
 
   useEffect(() => {
     if (!session?.access_token || session?.user?.role !== 'agent') {
       navigate('/login', { replace: true });
     }
   }, [navigate, session]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 820);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const user = session?.user || {};
   const unreadNotifications = useMemo(
@@ -341,6 +348,44 @@ export default function AgentDashboard() {
   );
   const canSubmitVisit = Boolean(visitForm.property_id && visitForm.customer_name.trim() && visitForm.customer_phone.trim() && visitForm.visit_date && visitForm.visit_time.trim());
   const canSubmitBooking = Boolean(bookingForm.plot_id && bookingForm.customer_name.trim() && bookingForm.customer_phone.trim());
+  const shellStyle = {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: isMobile ? 'column' : 'row',
+    background: '#eef2ec',
+    color: '#16231a',
+  };
+  const sidebarStyle = {
+    width: isMobile ? 'auto' : '260px',
+    background: '#1f5a31',
+    color: '#fff',
+    padding: isMobile ? '14px' : '24px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: isMobile ? '12px' : '18px',
+    position: isMobile ? 'sticky' : 'static',
+    top: 0,
+    zIndex: 10,
+  };
+  const navStyle = {
+    display: 'flex',
+    flexDirection: isMobile ? 'row' : 'column',
+    gap: '8px',
+    overflowX: isMobile ? 'auto' : 'visible',
+    paddingBottom: isMobile ? '4px' : 0,
+  };
+  const mainStyle = { flex: 1, padding: isMobile ? '14px' : '24px', minWidth: 0 };
+  const headerStyle = {
+    ...cardStyle,
+    marginBottom: '18px',
+    display: 'flex',
+    alignItems: isMobile ? 'flex-start' : 'center',
+    justifyContent: 'space-between',
+    flexDirection: isMobile ? 'column' : 'row',
+    gap: '18px',
+  };
+  const twoColumnStyle = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' };
+  const formGridStyle = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit,minmax(220px,1fr))', gap: '12px' };
 
   const navItems = [
     ['dashboard', 'Dashboard'],
@@ -506,10 +551,11 @@ export default function AgentDashboard() {
         if (payload[k] === '') payload[k] = null;
       });
       const updated = await putJson('/api/auth/profile', payload, session.access_token);
-      const nextSession = { ...session, user: updated };
+      const mergedUser = { ...updated, ...payload };
+      const nextSession = { ...session, user: mergedUser };
       saveSession(nextSession);
       setSession(nextSession);
-      setAgentData((current) => ({ ...current, profile: updated }));
+      setAgentData((current) => ({ ...current, profile: mergedUser }));
       setNotice('Profile saved successfully.');
     } catch (err) {
       setError(err?.message || 'Failed to save profile');
@@ -519,15 +565,15 @@ export default function AgentDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: '#eef2ec', color: '#16231a' }}>
-      <aside style={{ width: '260px', background: '#1f5a31', color: '#fff', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={shellStyle}>
+      <aside style={sidebarStyle}>
         <div>
-          <img src="/assets/logo-full.png" alt="Rivan" style={{ width: '152px', height: 'auto' }} />
-          <p style={{ margin: '18px 0 0', fontSize: '12px', color: '#bcd6bd', lineHeight: 1.5 }}>
+          <img src="/assets/logo-full.png" alt="Rivan" style={{ width: isMobile ? '116px' : '152px', height: 'auto' }} />
+          <p style={{ margin: isMobile ? '8px 0 0' : '18px 0 0', fontSize: '12px', color: '#bcd6bd', lineHeight: 1.5, display: isMobile ? 'none' : 'block' }}>
             Manage your leads, visits, bookings, and customer follow-ups in one place.
           </p>
         </div>
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <nav style={navStyle}>
           {navItems.map(([id, label]) => (
             <button
               key={id}
@@ -535,8 +581,9 @@ export default function AgentDashboard() {
               style={{
                 border: 'none',
                 borderRadius: '12px',
-                padding: '12px 14px',
+                padding: isMobile ? '10px 12px' : '12px 14px',
                 textAlign: 'left',
+                whiteSpace: 'nowrap',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 fontSize: '13px',
@@ -551,16 +598,16 @@ export default function AgentDashboard() {
         </nav>
         <button
           onClick={logout}
-          style={{ marginTop: 'auto', height: '46px', border: 'none', borderRadius: '12px', background: '#e2822a', color: '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}
+          style={{ marginTop: isMobile ? 0 : 'auto', height: '46px', border: 'none', borderRadius: '12px', background: '#e2822a', color: '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: 800, cursor: 'pointer', minWidth: isMobile ? '120px' : 'auto' }}
         >
           Logout
         </button>
       </aside>
 
-      <main style={{ flex: 1, padding: '24px' }}>
-        <div style={{ ...cardStyle, marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '18px' }}>
+      <main style={mainStyle}>
+        <div style={headerStyle}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '32px', color: '#1f5a31' }}>
+            <h1 style={{ margin: 0, fontSize: isMobile ? '26px' : '32px', color: '#1f5a31' }}>
               {page === 'dashboard' ? 'Agent Dashboard' : navItems.find(([id]) => id === page)?.[1] || 'Agent'}
             </h1>
             <p style={{ margin: '6px 0 0', color: '#8a9a8c', fontSize: '12px' }}>
@@ -570,7 +617,7 @@ export default function AgentDashboard() {
               Welcome, {displayedUser.name || 'Agent'}
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
             <button onClick={() => setPage('notifications')} style={{ position: 'relative', width: '52px', height: '52px', borderRadius: '16px', border: '1px solid #e7ede3', background: '#fff', cursor: 'pointer' }}>
               <span style={{ fontSize: '20px' }}>🔔</span>
               {unreadNotifications > 0 && (
@@ -579,7 +626,7 @@ export default function AgentDashboard() {
                 </span>
               )}
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 14px', borderRadius: '18px', border: '1px solid #e7ede3', background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 14px', borderRadius: '18px', border: '1px solid #e7ede3', background: '#fff', minWidth: 0 }}>
               <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: 'linear-gradient(160deg,#2b6d3d,#3f8a54)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 }}>
                 {initialsOf(displayedUser.name)}
               </div>
@@ -597,7 +644,7 @@ export default function AgentDashboard() {
 
         {!loading && page === 'dashboard' && (
           <div style={{ display: 'grid', gap: '18px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit,minmax(180px,1fr))', gap: '14px' }}>
               {topCards.map((item) => (
                 <div key={item.label} style={cardStyle}>
                   <div style={{ fontSize: '12px', color: '#8a9a8c', fontWeight: 700 }}>{item.label}</div>
@@ -606,10 +653,10 @@ export default function AgentDashboard() {
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
+            <div style={twoColumnStyle}>
               <section style={cardStyle}>
                 <h3 style={{ marginTop: 0 }}>Pipeline Stages</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px' }}>
                   {Object.entries(stageCounts).map(([key, value]) => (
                     <div key={key} style={{ border: '1px solid #eef3ec', borderRadius: '14px', padding: '14px', background: '#fbfdfa' }}>
                       <div style={{ fontSize: '12px', color: '#8a9a8c', fontWeight: 700, textTransform: 'capitalize' }}>{key.replaceAll('_', ' ')}</div>
@@ -697,7 +744,7 @@ export default function AgentDashboard() {
           <div style={{ display: 'grid', gap: '18px' }}>
             <section style={cardStyle}>
               <h3 style={{ marginTop: 0 }}>Schedule New Visit</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '12px' }}>
+              <div style={formGridStyle}>
                 <select value={visitForm.property_id} onChange={(event) => setVisitForm((current) => ({ ...current, property_id: event.target.value, plot_id: '' }))} style={{ height: '46px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit' }}>
                   <option value="">Select property</option>
                   {propertyChoices.map((item) => (
@@ -746,7 +793,7 @@ export default function AgentDashboard() {
           <div style={{ display: 'grid', gap: '18px' }}>
             <section style={cardStyle}>
               <h3 style={{ marginTop: 0 }}>Create New Booking</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '12px' }}>
+              <div style={formGridStyle}>
                 <select value={bookingForm.plot_id} onChange={(event) => setBookingForm((current) => ({ ...current, plot_id: event.target.value }))} style={{ height: '46px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit' }}>
                   <option value="">Select plot</option>
                   {assets.map((asset) => (
