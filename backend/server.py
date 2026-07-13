@@ -1640,6 +1640,7 @@ class VisitBookingReq(BaseModel):
 class SiteVisitReq(BaseModel):
     property_id: str
     visit_date: str
+    visit_time: Optional[str] = None
     name: str
     mobile: str
 
@@ -5226,6 +5227,7 @@ async def book_site_visit(req: SiteVisitReq, user: Dict[str, Any] = Depends(get_
             "property_id": canonical_property_id,
             "property_name": property_name,
             "visit_date": req.visit_date,
+            "visit_time": req.visit_time,
             "name": req.name,
             "mobile": req.mobile,
             "customer_name": req.name,
@@ -5280,6 +5282,7 @@ async def book_site_visit(req: SiteVisitReq, user: Dict[str, Any] = Depends(get_
         "property_id": canonical_property_id,
         "property_name": property_name,
         "visit_date": req.visit_date,
+        "visit_time": req.visit_time,
         "name": req.name,
         "mobile": req.mobile,
         "customer_name": req.name,
