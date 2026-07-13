@@ -370,7 +370,7 @@ export default function Login() {
 
   const titleByRole = {
     customer: "Welcome back",
-    agent: "Agent Portal",
+    agent: "Partner Portal",
     admin: "Admin Portal",
   };
 
@@ -531,7 +531,7 @@ export default function Login() {
                   {[
                     {
                       role: "agent",
-                      label: "Agent Login",
+                      label: "Partner",
                       copy: "Leads, visits, bookings",
                       path: "M12 3a7 7 0 0 0-7 7v3a3 3 0 0 0 3 3h1v-5H7v-1a5 5 0 0 1 10 0v1h-2v5h1a3 3 0 0 0 3-3v-3a7 7 0 0 0-7-7Zm-2 15h4a2 2 0 0 1 2 2v1H8v-1a2 2 0 0 1 2-2Z",
                     },
