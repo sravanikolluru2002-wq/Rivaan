@@ -172,9 +172,10 @@ export async function requestJson(path, options = {}, token) {
 export async function postJson(path, body, token) {
   return requestJson(path, { method: "POST", body }, token);
 }
-
 export async function getJson(path, token) {
-  return requestJson(path, { method: "GET" }, token);
+  const separator = path.includes('?') ? '&' : '?';
+  const noCachePath = `${path}${separator}_t=${Date.now()}`;
+  return requestJson(noCachePath, { method: "GET" }, token);
 }
 
 export async function putJson(path, body, token) {
