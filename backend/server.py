@@ -6284,7 +6284,7 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
             "property_code": property_code_for_record(property_doc or plot),
         })
 
-    bookings_raw = await db.bookings.find({"agent_id": {"$in": accessible_agent_ids}}, {"_id": 0}).to_list(300)
+    bookings_raw = await db.bookings.find({"$or": [{"agent_id": {"$in": accessible_agent_ids}}, {"agent_id": None}, {"agent_id": {"$exists": False}}]}, {"_id": 0}).to_list(300)
     user_ids = sorted({booking["user_id"] for booking in bookings_raw if booking.get("user_id")})
     customer_docs = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0}).to_list(300)
     customer_map = {customer["id"]: customer for customer in customer_docs}
@@ -6311,8 +6311,8 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
     bookings.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     assets.sort(key=lambda x: (x.get("status") != "available", x.get("plot_number", "")))
     notifications_count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
-    visits_count = await db.visits.count_documents({"assigned_agent_id": user["id"]})
-    leads_count = await db.leads.count_documents({"assigned_agent_id": {"$in": accessible_agent_ids}})
+    visits_count = await db.visits.count_documents({"$or": [{"assigned_agent_id": user["id"]}, {"assigned_agent_id": None}, {"assigned_agent_id": {"$exists": False}}]})
+    leads_count = await db.leads.count_documents({"$or": [{"assigned_agent_id": {"$in": accessible_agent_ids}}, {"assigned_agent_id": None}, {"assigned_agent_id": {"$exists": False}}]})
 
     return {
         "profile": clean_user(user),
@@ -6463,7 +6463,7 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
         booking = next((item for item in local_list_bookings() if item.get("id") == booking_id), None)
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")
-        if booking.get("agent_id") not in agent_accessible_ids(user):
+        if booking.get("agent_id") is not None and booking.get("agent_id") not in agent_accessible_ids(user):
             raise HTTPException(status_code=403, detail="You do not have access to this booking")
         updated_booking = local_update_booking(booking_id, updates)
         if status_value in {"completed", "closed"}:
@@ -6498,7 +6498,7 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    if booking.get("agent_id") not in agent_accessible_ids(user):
+    if booking.get("agent_id") is not None and booking.get("agent_id") not in agent_accessible_ids(user):
         raise HTTPException(status_code=403, detail="You do not have access to this booking")
     await db.bookings.update_one({"id": booking_id}, {"$set": updates})
     if status_value in {"completed", "closed"}:
@@ -6717,7 +6717,7 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
             raise HTTPException(status_code=404, detail="Booking not found")
         sub_agent_ids = user.get("sub_agent_ids", []) if user.get("role") == "agent" else []
         accessible_agent_ids = [user["id"], *sub_agent_ids]
-        if booking.get("agent_id") not in accessible_agent_ids:
+        if booking.get("agent_id") is not None and booking.get("agent_id") not in accessible_agent_ids:
             raise HTTPException(status_code=403, detail="You do not have access to this booking")
         updated_booking = local_update_booking(booking_id, {"status": "completed", "approval_status": "admin_approved", "closed_at": now_utc().isoformat(), "updated_at": now_utc().isoformat()})
         local_save_plot_override(booking["plot_id"], {"status": "booked", "owner_id": booking["user_id"]})
@@ -6743,7 +6743,7 @@ async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(ge
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    if booking.get("agent_id") not in accessible_agent_ids:
+    if booking.get("agent_id") is not None and booking.get("agent_id") not in accessible_agent_ids:
         raise HTTPException(status_code=403, detail="You do not have access to this booking")
 
     await db.bookings.update_one(

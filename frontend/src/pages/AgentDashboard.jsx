@@ -427,7 +427,11 @@ export default function AgentDashboard() {
   const saveProfile = async () => {
     setSavingProfile(true);
     try {
-      const updated = await putJson('/api/auth/profile', profileForm, session.access_token);
+      const payload = { ...profileForm };
+      Object.keys(payload).forEach(k => {
+        if (payload[k] === '') payload[k] = null;
+      });
+      const updated = await putJson('/api/auth/profile', payload, session.access_token);
       const nextSession = { ...session, user: updated };
       saveSession(nextSession);
       setSession(nextSession);
