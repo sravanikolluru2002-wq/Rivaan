@@ -87,6 +87,32 @@ function propertyPrimaryImage(property) {
   return property.image || '';
 }
 
+function normalizeImageUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('http') || raw.startsWith('/') || raw.startsWith('data:')) return raw;
+  return `/${raw.replace(/^\.?\//, '')}`;
+}
+
+function PropertyImage({ src, alt, eager = false, fallback = G[0], style = {}, children, ...props }) {
+  const imageUrl = normalizeImageUrl(src);
+  return (
+    <div {...props} style={{ position: 'relative', overflow: 'hidden', background: fallback, ...style }}>
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt={alt || 'Property'}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={eager ? 'high' : 'auto'}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      )}
+      {children}
+    </div>
+  );
+}
+
 function loadGuestSession() {
   try {
     const raw = localStorage.getItem('rivan_guest_session');
@@ -323,6 +349,29 @@ export default function AppDashboard() {
       socket?.close();
     };
   }, [guestSession, session?.access_token]);
+
+  useEffect(() => {
+    const imagesToWarm = [...featuredRows, ...propertyRows]
+      .map((property) => normalizeImageUrl(propertyPrimaryImage(property)))
+      .filter(Boolean)
+      .slice(0, 4);
+    imagesToWarm.forEach((src, index) => {
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = src;
+      if (index === 0) link.fetchPriority = 'high';
+      document.head.appendChild(link);
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = src;
+      window.setTimeout(() => {
+        try {
+          document.head.removeChild(link);
+        } catch {}
+      }, 15000);
+    });
+  }, [featuredRows, propertyRows]);
 
   const fmtL = (n) => {
     if (n >= 10000000) return '₹' + (n / 10000000).toFixed(2).replace(/\.00$/, '') + ' Cr';
@@ -1016,7 +1065,7 @@ export default function AppDashboard() {
 
         <div style={{'padding': '20px 22px 0'}}>
           {/* hero banner */}
-          <div onClick={openFirstProject} style={{'position': 'relative', 'height': '172px', 'borderRadius': '22px', 'overflow': 'hidden', 'cursor': 'pointer', 'background': selectedImage ? `center / cover no-repeat url('${selectedImage}')` : 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 52%,#c7dc9c 100%)', 'boxShadow': '0 16px 34px -18px rgba(18,53,29,.6)'}}>
+          <PropertyImage src={selectedImage} alt={selectedProperty?.name || 'Featured property'} eager onClick={openFirstProject} fallback="linear-gradient(150deg,#2f6b3a 0%,#6ba15a 52%,#c7dc9c 100%)" style={{'height': '172px', 'borderRadius': '22px', 'cursor': 'pointer', 'boxShadow': '0 16px 34px -18px rgba(18,53,29,.6)'}}>
             <div style={{'position': 'absolute', 'inset': '0', 'background': 'radial-gradient(80% 60% at 78% 22%,rgba(255,247,214,.35),transparent 60%),linear-gradient(180deg,rgba(9,32,16,.12),rgba(9,32,16,.62))'}}></div>
             <div style={{'position': 'absolute', 'inset': '0', 'padding': '20px', 'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'space-between'}}>
               <div>
@@ -1025,7 +1074,7 @@ export default function AppDashboard() {
               </div>
               <span style={{'alignSelf': 'flex-start', 'background': '#fff', 'color': '#1f5a31', 'fontSize': '12.5px', 'fontWeight': '700', 'padding': '9px 16px', 'borderRadius': '11px'}}>Explore Now →</span>
             </div>
-          </div>
+          </PropertyImage>
 
           {/* featured */}
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'margin': '24px 0 12px'}}>
@@ -1035,9 +1084,9 @@ export default function AppDashboard() {
           <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '13px'}}>
             { filteredFeatured.map((f, index) => (
               <div onClick={f.open} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
-                <div style={{height: '96px', background: f.property?.image ? `center / cover no-repeat url('${f.property.image}')` : f.grad, position: 'relative'}}>
+                <PropertyImage src={propertyPrimaryImage(f.property)} alt={f.name} eager={index === 0} fallback={f.grad} style={{height: '96px'}}>
                   <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>📍 {f.tag}</span>
-                </div>
+                </PropertyImage>
                 <div style={{'padding': '11px 12px 13px'}}>
                   <p style={{'margin': '0', 'fontSize': '13.5px', 'fontWeight': '700', 'color': '#16231a'}}>{f.name}</p>
                   <p style={{'margin': '3px 0 8px', 'fontSize': '11.5px', 'color': '#8a988c', 'fontWeight': '500'}}>{f.loc}</p>
@@ -1124,7 +1173,7 @@ export default function AppDashboard() {
           <div style={{'display': 'flex', 'flexDirection': 'column', 'gap': '12px'}}>
             { nearby.map((n, index) => (
               <div onClick={n.open} style={{'display': 'flex', 'gap': '13px', 'background': '#fff', 'borderRadius': '16px', 'padding': '12px', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -22px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
-                <div style={{width: '82px', height: '82px', borderRadius: '13px', background: n.grad, flex: 'none'}}></div>
+                <PropertyImage src={propertyPrimaryImage(n.property)} alt={n.name} fallback={n.grad} style={{width: '82px', height: '82px', borderRadius: '13px', flex: 'none'}} />
                 <div style={{'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center'}}>
                   <p style={{'margin': '0', 'fontSize': '14.5px', 'fontWeight': '700', 'color': '#16231a'}}>{n.name}</p>
                   <p style={{'margin': '3px 0 8px', 'fontSize': '12px', 'color': '#8a988c', 'fontWeight': '500'}}>{n.loc}</p>
@@ -1357,7 +1406,7 @@ export default function AppDashboard() {
       {/* ===================== PROPERTY DETAILS ===================== */}
       {isPropDetail && (
       <div className="rv-screen">
-        <div style={{position: 'relative', height: '300px', background: selectedImage ? `center / cover no-repeat url('${selectedImage}')` : sel.grad}}>
+        <PropertyImage src={selectedImage} alt={sel.name || 'Property'} eager fallback={sel.grad} style={{position: 'relative', height: '300px'}}>
           <div style={{'position': 'absolute', 'inset': '0', 'background': 'linear-gradient(180deg,rgba(9,32,16,.28),transparent 30%,rgba(9,32,16,.5))'}}></div>
           <div style={{'position': 'absolute', 'top': '52px', 'left': '20px', 'right': '20px', 'display': 'flex', 'justifyContent': 'space-between'}}>
             <button onClick={back} style={{'width': '40px', 'height': '40px', 'borderRadius': '13px', 'border': 'none', 'background': 'rgba(255,255,255,.9)', 'color': '#1f5a31', 'fontSize': '18px', 'cursor': 'pointer'}}>←</button>
@@ -1368,7 +1417,7 @@ export default function AppDashboard() {
           <div style={{'position': 'absolute', 'bottom': '18px', 'left': '20px'}}>
             <span style={{'background': '#e2822a', 'color': '#fff', 'fontSize': '11px', 'fontWeight': '700', 'padding': '5px 11px', 'borderRadius': '20px'}}>{selectedProperty?.rera_number ? 'RERA Approved' : 'Live Property'}</span>
           </div>
-        </div>
+        </PropertyImage>
 
         <div style={{'padding': '20px 22px 0', 'marginTop': '-22px', 'background': '#f8fbf6', 'borderRadius': '24px 24px 0 0', 'position': 'relative'}}>
           <div style={{'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'flex-start'}}>
@@ -1404,7 +1453,7 @@ export default function AppDashboard() {
               <p style={{'fontSize': '15px', 'fontWeight': '800', 'color': '#1f5a31', 'margin': '22px 0 10px'}}>Project Gallery</p>
               <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '10px'}}>
                 {selectedGallery.map((image, index) => (
-                  <div key={image + index} style={{'height': '96px', 'borderRadius': '16px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'background': `center / cover no-repeat url('${image}')`}}></div>
+                  <PropertyImage key={image + index} src={image} alt={`${sel.name || 'Property'} gallery ${index + 1}`} fallback={sel.grad} style={{'height': '96px', 'borderRadius': '16px', 'border': '1px solid #eef3ec'}} />
                 ))}
               </div>
             </>
