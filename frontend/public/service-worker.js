@@ -6,17 +6,11 @@
    - Cross-origin (React/Babel CDN, Google Fonts): stale-while-revalidate so
      the app boots offline once it has been opened online at least once.
 */
-const CACHE = 'rivan-pwa-v3';
+const CACHE = 'rivan-pwa-v4';
 
 const CORE = [
   './',
   './index.html',
-  './Rivan Login.dc.html',
-  './Rivan App.dc.html',
-  './Rivan My Lands.dc.html',
-  './Rivan Visits.dc.html',
-  './Rivan Agent Dashboard.dc.html',
-  './Rivan Admin Dashboard.dc.html',
   './support.js',
   './manifest.json',
   './assets/logo-full.png',
@@ -112,3 +106,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+

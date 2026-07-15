@@ -18,7 +18,6 @@ const EMPTY_APPLICATION = {
   occupation: "",
   age: "",
   aadhaar_number: "",
-  bank_details: "",
   address: "",
   agent_brand_name: "",
   notes: "",
@@ -987,13 +986,6 @@ export default function Login() {
                   value={application.address}
                   onChange={(event) => updateApplicationField("address", event.target.value)}
                   placeholder="Address"
-                  rows={3}
-                  style={{ ...inputStyle, resize: "vertical" }}
-                />
-                <textarea
-                  value={application.bank_details}
-                  onChange={(event) => updateApplicationField("bank_details", event.target.value)}
-                  placeholder="Bank details"
                   rows={3}
                   style={{ ...inputStyle, resize: "vertical" }}
                 />

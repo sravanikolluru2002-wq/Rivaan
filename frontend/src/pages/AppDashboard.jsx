@@ -663,7 +663,6 @@ export default function AppDashboard() {
     { title: 'Payment Due Reminder', body: 'Your next installment of ₹1,00,000 is due on 12 Jun 2025.', time: '2 hours ago', unread: true, icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', iconColor: '#e2822a', iconBg: '#fdefe0' },
     { title: 'New Project Launched', body: 'Emerald Springs at Yendada is now open for bookings.', time: 'Yesterday', unread: true, icon: 'M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5', iconColor: '#2b6d3d', iconBg: '#eef6ea' },
     { title: 'Payment Received', body: 'We received your installment #6 of ₹1,00,000. Thank you!', time: '2 days ago', unread: false, icon: 'M5 12l4 4 10-10', iconColor: '#2b6d3d', iconBg: '#eef6ea' },
-    { title: 'KYC Verified', body: 'Your identity documents have been successfully verified.', time: '5 days ago', unread: false, icon: 'M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z', iconColor: '#2b6d3d', iconBg: '#eef6ea' },
   ].map((n) => ({ ...n, bg: n.unread ? '#f4faf1' : '#fff' }));
 
   notifs.splice(0, notifs.length);
@@ -703,12 +702,6 @@ export default function AppDashboard() {
     { label: 'City', value: 'Visakhapatnam' },
     { label: 'Date of Birth', value: '14 Aug 1996' },
   ];
-  const kycDocs = [
-    { name: 'Aadhaar Card', num: 'XXXX XXXX 4210' },
-    { name: 'PAN Card', num: 'ABCPX••••K' },
-    { name: 'Address Proof', num: 'Electricity Bill' },
-  ];
-
   if (landRows.length) {
     history.splice(0, history.length, ...landRows.map((land, index) => ({
       title: land.purchase_complete ? 'Registration Complete' : 'Purchase Progress',
@@ -749,13 +742,6 @@ export default function AppDashboard() {
     { label: 'City', value: profileForm.address || '' },
     { label: 'Date of Birth', value: profileForm.date_of_birth || '' },
   ]);
-
-  if (documentRows.length) {
-    kycDocs.splice(0, kycDocs.length, ...documentRows.slice(0, 3).map((doc) => ({
-      name: doc.title || doc.name || 'Property Document',
-      num: doc.document_number || doc.reference_number || doc.url || 'Available in your records',
-    })));
-  }
 
   const tabOf = {
     home: 'home',
@@ -832,8 +818,6 @@ export default function AppDashboard() {
   const isSettings = cur === 'settings';
   const isContact = cur === 'contact';
   const isPersonal = cur === 'personal';
-  const isKYC = false;
-
   const goHome = () => tab('home');
   const goExplore = () => tab('explore');
   const goProps = () => navigate('/my-lands');
@@ -1056,7 +1040,7 @@ export default function AppDashboard() {
         <div style={{'background': 'linear-gradient(160deg,#2b6d3d 0%,#377e4b 100%)', 'padding': '58px 22px 22px', 'borderRadius': '0 0 26px 26px'}}>
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
             <div>
-              <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>Hello, {userName} 👋</p>
+              <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>Hello, {userName}</p>
               <p style={{'margin': '4px 0 0', 'fontSize': '13px', 'color': '#bcd6bd', 'fontWeight': '500'}}>Let's find your dream property</p>
             </div>
             <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '10px'}}>
@@ -1092,7 +1076,7 @@ export default function AppDashboard() {
                 <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>{selectedProperty?.name || 'Sirpuram Gardens'}</p>
                 <p style={{'margin': '3px 0 0', 'fontSize': '12.5px', 'color': '#eaf3e4', 'fontWeight': '500'}}>{selectedProperty?.property_type || selectedProperty?.category || 'Live property details'}</p>
               </div>
-              <span style={{'alignSelf': 'flex-start', 'background': '#fff', 'color': '#1f5a31', 'fontSize': '12.5px', 'fontWeight': '700', 'padding': '9px 16px', 'borderRadius': '11px'}}>Explore Now →</span>
+              <span style={{'alignSelf': 'flex-start', 'background': '#fff', 'color': '#1f5a31', 'fontSize': '12.5px', 'fontWeight': '700', 'padding': '9px 16px', 'borderRadius': '11px'}}>Explore Now -&gt;</span>
             </div>
           </PropertyImage>
 
@@ -1105,7 +1089,7 @@ export default function AppDashboard() {
             { filteredFeatured.map((f, index) => (
               <div onClick={f.open} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
                 <PropertyImage src={propertyPrimaryImage(f.property)} alt={f.name} eager={index === 0} fallback={f.grad} style={{height: '96px'}}>
-                  <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>📍 {f.tag}</span>
+                  <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>Location: {f.tag}</span>
                 </PropertyImage>
                 <div style={{'padding': '11px 12px 13px'}}>
                   <p style={{'margin': '0', 'fontSize': '13.5px', 'fontWeight': '700', 'color': '#16231a'}}>{f.name}</p>
@@ -1443,7 +1427,7 @@ export default function AppDashboard() {
           <div style={{'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'flex-start'}}>
             <div>
               <p style={{'margin': '0', 'fontSize': '21px', 'fontWeight': '800', 'color': '#1f5a31'}}>{sel.name}</p>
-              <p style={{'margin': '5px 0 0', 'fontSize': '13px', 'color': '#8a988c', 'fontWeight': '500'}}>📍 {sel.loc}</p>
+              <p style={{'margin': '5px 0 0', 'fontSize': '13px', 'color': '#8a988c', 'fontWeight': '500'}}>Location: {sel.loc}</p>
               <p style={{'margin': '6px 0 0', 'fontSize': '11.5px', 'color': '#2b6d3d', 'fontWeight': '700'}}>{selectedProperty?.property_code || 'Property Code Pending'}</p>
             </div>
             <div style={{'textAlign': 'right'}}><p style={{'margin': '0', 'fontSize': '20px', 'fontWeight': '800', 'color': '#2b6d3d'}}>{sel.price}</p>{hasRatePrice(sel.price) && <p style={{'margin': '2px 0 0', 'fontSize': '11px', 'color': '#9aa89c', 'fontWeight': '600'}}>per sq.yd</p>}</div>
@@ -1646,37 +1630,6 @@ export default function AppDashboard() {
       </div>
       )}
 
-      {/* ===================== KYC ===================== */}
-      {isKYC && (
-      <div className="rv-screen">
-        <div style={{'background': 'linear-gradient(160deg,#2b6d3d 0%,#377e4b 100%)', 'padding': '56px 22px 22px', 'borderRadius': '0 0 26px 26px', 'display': 'flex', 'alignItems': 'center', 'gap': '14px'}}>
-          <button onClick={back} style={{'width': '38px', 'height': '38px', 'borderRadius': '12px', 'border': 'none', 'background': 'rgba(255,255,255,.14)', 'color': '#fff', 'fontSize': '18px', 'cursor': 'pointer'}}>←</button>
-          <span style={{'fontSize': '18px', 'fontWeight': '800', 'color': '#fff'}}>KYC Verification</span>
-        </div>
-        <div style={{'padding': '22px'}}>
-          <div style={{'background': '#e8f3e3', 'border': '1px solid #cfe6c6', 'borderRadius': '20px', 'padding': '22px', 'textAlign': 'center'}}>
-            <div style={{'width': '64px', 'height': '64px', 'borderRadius': '20px', 'background': '#2b6d3d', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'margin': '0 auto'}}>
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z M9 12l2 2 4-4"/></svg>
-            </div>
-            <p style={{'margin': '14px 0 4px', 'fontSize': '17px', 'fontWeight': '800', 'color': '#1f5a31'}}>Verification Complete</p>
-            <p style={{'margin': '0', 'fontSize': '12.5px', 'color': '#4a6b4a', 'fontWeight': '500'}}>Your identity has been verified successfully</p>
-          </div>
-          <p style={{'fontSize': '14px', 'fontWeight': '800', 'color': '#1f5a31', 'margin': '24px 0 12px'}}>Submitted Documents</p>
-          <div style={{'display': 'flex', 'flexDirection': 'column', 'gap': '12px'}}>
-            { kycDocs.map((d, index) => (
-              <div style={{'display': 'flex', 'alignItems': 'center', 'gap': '13px', 'background': '#fff', 'borderRadius': '16px', 'padding': '15px', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 26px -22px rgba(18,53,29,.5)'}}>
-                <span style={{'width': '42px', 'height': '42px', 'borderRadius': '12px', 'background': '#eef6ea', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'flex': 'none'}}>
-                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#2b6d3d" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg>
-                </span>
-                <div style={{'flex': '1'}}><p style={{'margin': '0', 'fontSize': '14px', 'fontWeight': '700', 'color': '#16231a'}}>{d.name}</p><p style={{'margin': '3px 0 0', 'fontSize': '11.5px', 'color': '#8a988c', 'fontWeight': '500'}}>{d.num}</p></div>
-                <span style={{'fontSize': '11px', 'fontWeight': '700', 'color': '#2b6d3d', 'background': '#e8f3e3', 'padding': '5px 11px', 'borderRadius': '20px'}}>✓ Verified</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      )}
-
       {/* ===================== CONTACT SALES ===================== */}
       {isContact && (
       <div className="rv-screen">
@@ -1690,7 +1643,7 @@ export default function AppDashboard() {
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
             </div>
             <p style={{'margin': '14px 0 4px', 'fontSize': '17px', 'fontWeight': '800', 'color': '#1f5a31'}}>Talk to Our Sales Team</p>
-            <p style={{'margin': '0', 'fontSize': '12.5px', 'color': '#4a6b4a', 'fontWeight': '500'}}>Available Mon–Sat, 9 AM – 7 PM</p>
+            <p style={{'margin': '0', 'fontSize': '12.5px', 'color': '#4a6b4a', 'fontWeight': '500'}}>Available Mon-Sat, 9 AM - 7 PM</p>
           </div>
           {contactActions.map((c, i) => (
             <div key={i} onClick={c.action} style={{'display': 'flex', 'alignItems': 'center', 'gap': '14px', 'background': '#fff', 'borderRadius': '18px', 'padding': '16px', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 26px -22px rgba(18,53,29,.5)', 'marginBottom': '12px', 'cursor': 'pointer'}}>
@@ -1754,7 +1707,7 @@ export default function AppDashboard() {
             <p style={{'margin': '0', 'fontSize': '18px', 'fontWeight': '800', 'color': '#1f5a31'}}>{actionFormMode === 'booking' ? 'Book This Property' : 'Schedule Site Visit'}</p>
             <p style={{'margin': '5px 0 0', 'fontSize': '12.5px', 'color': '#6d7d6f', 'lineHeight': '1.45'}}>{selectedProperty?.name || selData?.name || 'Selected property'}</p>
           </div>
-          <button onClick={() => setActionFormMode(null)} disabled={actionSubmitting} style={{'width': '36px', 'height': '36px', 'borderRadius': '12px', 'border': '1px solid #e6ede2', 'background': '#fff', 'color': '#1f5a31', 'fontSize': '18px', 'cursor': 'pointer'}}>×</button>
+          <button onClick={() => setActionFormMode(null)} disabled={actionSubmitting} style={{'width': '36px', 'height': '36px', 'borderRadius': '12px', 'border': '1px solid #e6ede2', 'background': '#fff', 'color': '#1f5a31', 'fontSize': '18px', 'cursor': 'pointer'}}>x</button>
         </div>
 
         <div style={{'display': 'grid', 'gap': '12px', 'marginTop': '18px'}}>
@@ -1836,3 +1789,4 @@ export default function AppDashboard() {
 
   );
 }
+

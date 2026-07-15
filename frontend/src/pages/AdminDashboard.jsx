@@ -828,7 +828,6 @@ export default function AdminDashboard() {
                   <div><strong>Age:</strong> {selectedApproval.age || '—'}</div>
                   <div><strong>Occupation:</strong> {selectedApproval.occupation || '—'}</div>
                   <div><strong>Aadhaar:</strong> {selectedApproval.aadhaar_number || '—'}</div>
-                  <div><strong>Bank Details:</strong> {selectedApproval.bank_details || '—'}</div>
                   <div><strong>Brand Name:</strong> {selectedApproval.agent_brand_name || '—'}</div>
                   <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedApproval.address || '—'}</div>
                   <div style={{ gridColumn: '1 / -1' }}><strong>Notes:</strong> {selectedApproval.application_notes || '—'}</div>

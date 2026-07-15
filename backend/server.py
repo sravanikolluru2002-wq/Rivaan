@@ -871,7 +871,6 @@ def ensure_local_demo_users() -> None:
             "role": "agent",
             "age": 34,
             "aadhaar_number": "5555 6666 7777",
-            "bank_details": "HDFC Bank · A/C XXXX1298 · IFSC HDFC0000456",
             "manager_name": "Regional Sales Director",
             "manager_id": None,
             "agent_brand_name": "Rivan Crest Partners",
@@ -897,7 +896,6 @@ def ensure_local_demo_users() -> None:
             "role": "sub_agent",
             "age": 28,
             "aadhaar_number": "8888 9999 0000",
-            "bank_details": "ICICI Bank · A/C XXXX4432 · IFSC ICIC0000789",
             "manager_name": "Arjun Reddy",
             "manager_id": "agent-main-001",
             "agent_brand_name": "Rivan Crest Partners",
@@ -923,7 +921,6 @@ def ensure_local_demo_users() -> None:
             "role": "agent",
             "age": 31,
             "aadhaar_number": "1111 2222 3333",
-            "bank_details": "SBI Bank · A/C XXXX7821 · IFSC SBIN0001234",
             "manager_name": "Regional Sales Director",
             "manager_id": None,
             "agent_brand_name": "Rivan Crest Partners",
@@ -1015,7 +1012,6 @@ async def sync_demo_auth_users_to_db() -> None:
             "role": "agent",
             "age": 34,
             "aadhaar_number": "5555 6666 7777",
-            "bank_details": "HDFC Bank · A/C XXXX1298 · IFSC HDFC0000456",
             "manager_name": "Regional Sales Director",
             "manager_id": None,
             "agent_brand_name": "Rivan Crest Partners",
@@ -1042,7 +1038,6 @@ async def sync_demo_auth_users_to_db() -> None:
             "role": "sub_agent",
             "age": 28,
             "aadhaar_number": "8888 9999 0000",
-            "bank_details": "ICICI Bank · A/C XXXX4432 · IFSC ICIC0000789",
             "manager_name": "Arjun Reddy",
             "manager_id": "agent-main-001",
             "agent_brand_name": "Rivan Crest Partners",
@@ -1069,7 +1064,6 @@ async def sync_demo_auth_users_to_db() -> None:
             "role": "agent",
             "age": 31,
             "aadhaar_number": "1111 2222 3333",
-            "bank_details": "SBI Bank · A/C XXXX7821 · IFSC SBIN0001234",
             "manager_name": "Regional Sales Director",
             "manager_id": None,
             "agent_brand_name": "Rivan Crest Partners",
@@ -1730,7 +1724,6 @@ class UpdateProfileReq(BaseModel):
     date_of_birth: Optional[str] = None
     age: Optional[int] = None
     aadhaar_number: Optional[str] = None
-    bank_details: Optional[str] = None
     occupation: Optional[str] = None
     agent_brand_name: Optional[str] = None
     notification_preferences: Optional[Dict[str, bool]] = None
@@ -1810,7 +1803,6 @@ class AgentUpsertReq(BaseModel):
     email: Optional[EmailStr] = None
     age: Optional[int] = None
     aadhaar_number: Optional[str] = None
-    bank_details: Optional[str] = None
     status: Optional[str] = "active"
 
 class AgentApplicationReq(BaseModel):
@@ -1820,7 +1812,6 @@ class AgentApplicationReq(BaseModel):
     occupation: Optional[str] = None
     age: Optional[int] = None
     aadhaar_number: Optional[str] = None
-    bank_details: Optional[str] = None
     address: Optional[str] = None
     agent_brand_name: Optional[str] = None
     notes: Optional[str] = None
@@ -3644,7 +3635,6 @@ async def ensure_primary_agent_seed() -> None:
                 "address": "",
                 "age": None,
                 "aadhaar_number": "",
-                "bank_details": "HDFC Bank · A/C XXXX1298 · IFSC HDFC0000456",
                 "manager_name": "",
                 "manager_id": None,
                 "sub_agent_ids": [],
@@ -3778,7 +3768,6 @@ def build_primary_agent_payload(*, created_at: Optional[str] = None, updated_at:
         "address": "",
         "age": None,
         "aadhaar_number": "",
-        "bank_details": "HDFC Bank · A/C XXXX1298 · IFSC HDFC0000456",
         "manager_name": "",
         "manager_id": None,
         "sub_agent_ids": [],
@@ -3963,7 +3952,6 @@ async def apply_agent_access(req: AgentApplicationReq, request: Request):
         "occupation": (req.occupation or "").strip(),
         "age": req.age,
         "aadhaar_number": req.aadhaar_number,
-        "bank_details": req.bank_details,
         "address": (req.address or "").strip(),
         "agent_brand_name": (req.agent_brand_name or "").strip(),
         "application_notes": (req.notes or "").strip(),
@@ -8003,8 +7991,6 @@ async def seed_data():
             {"name": "Payment Receipt #1", "type": "Receipt", "size": "180 KB"},
             {"name": "Payment Receipt #2", "type": "Receipt", "size": "180 KB"},
             {"name": "Payment Receipt #3", "type": "Receipt", "size": "180 KB"},
-            {"name": "KYC - PAN Card", "type": "KYC", "size": "220 KB"},
-            {"name": "KYC - Aadhaar", "type": "KYC", "size": "340 KB"},
             {"name": "HMDA Approval Copy", "type": "Approval", "size": "2.1 MB"},
             {"name": "Sale Deed Draft", "type": "Deed", "size": "850 KB"},
         ]
@@ -8067,7 +8053,6 @@ async def seed_data():
         "role": "agent",
         "age": 34,
         "aadhaar_number": "5555 6666 7777",
-        "bank_details": "HDFC Bank · A/C XXXX1298 · IFSC HDFC0000456",
         "manager_name": "Regional Sales Director",
         "agent_brand_name": "Rivan Crest Partners",
         "sub_agent_ids": ["agent-sub-001"],
@@ -8094,7 +8079,6 @@ async def seed_data():
         "role": "sub_agent",
         "age": 28,
         "aadhaar_number": "8888 9999 0000",
-        "bank_details": "ICICI Bank · A/C XXXX4432 · IFSC ICIC0000789",
         "manager_name": "Arjun Reddy",
         "manager_id": "agent-main-001",
         "agent_brand_name": "Rivan Crest Partners",
@@ -8122,7 +8106,6 @@ async def seed_data():
         "role": "agent",
         "age": 31,
         "aadhaar_number": "1111 2222 3333",
-        "bank_details": "SBI Bank · A/C XXXX7821 · IFSC SBIN0001234",
         "manager_name": "Regional Sales Director",
         "agent_brand_name": "Rivan Crest Partners",
         "sub_agent_ids": [],

@@ -193,14 +193,17 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px;
 /* ─── Navigation ── */
 .rv-nav {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 68px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  min-height: calc(78px + env(safe-area-inset-bottom));
   z-index: 40;
   background: linear-gradient(180deg, #1a5229 0%, #112e1a 100%);
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
-  justify-content: space-around;
-  padding: 0 8px max(6px, env(safe-area-inset-bottom));
+  gap: 2px;
+  padding: 8px max(6px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-right));
   border-top: 1px solid rgba(255,255,255,.08);
   box-shadow: 0 -4px 20px rgba(9,32,16,.35);
 }
@@ -212,26 +215,46 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 5px;
   color: rgba(255,255,255,.5);
   font-family: inherit;
-  padding: 6px 12px;
+  padding: 7px 3px;
   border-radius: 12px;
   transition: background .15s, color .15s;
-  min-width: 52px;
+  min-width: 0;
+  width: 100%;
+  min-height: 58px;
+  line-height: 1.1;
 }
 .rv-nav-btn:hover { color: rgba(255,255,255,.85); background: rgba(255,255,255,.06); }
 .rv-nav-btn.active { color: #fff; }
 .rv-nav-btn.active svg { stroke: #fff; }
-.rv-nav-btn span.nav-label { font-size: 10px; font-weight: 700; }
-.rv-nav-btn svg { transition: stroke .15s; }
+.rv-nav-btn span.nav-label {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  font-size: clamp(9px, 2.45vw, 11px);
+  font-weight: 700;
+  line-height: 1.12;
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+}
+.rv-nav-btn svg {
+  width: 21px;
+  height: 21px;
+  flex: none;
+  transition: stroke .15s;
+}
 
 /* Scroll area accounts for bottom nav */
-.rv-scroll.with-nav { padding-bottom: calc(74px + env(safe-area-inset-bottom)) !important; }
+.rv-scroll.with-nav { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
 
 /* ─── Desktop: left sidebar ─────────────────────────────────── */
 @media (min-width: 768px) {
   .rv-nav {
+    display: flex;
     top: 0;
     right: auto;
     bottom: 0;

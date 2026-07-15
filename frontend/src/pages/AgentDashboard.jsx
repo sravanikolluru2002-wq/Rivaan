@@ -620,7 +620,6 @@ export default function AgentDashboard() {
     setNotice('');
     try {
       const payload = { ...profileForm };
-      delete payload.bank_details;
       Object.keys(payload).forEach(k => {
         if (payload[k] === '') payload[k] = null;
       });
@@ -1004,3 +1003,4 @@ export default function AgentDashboard() {
     </div>
   );
 }
+
