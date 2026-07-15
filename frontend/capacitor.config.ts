@@ -2,8 +2,11 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.rivan.reality',
-  appName: 'rivan-realty-web',
-  webDir: 'dist'
+  appName: 'Rivan Reality',
+  webDir: 'dist',
+  server: {
+    androidScheme: 'https'
+  }
 };
 
 export default config;

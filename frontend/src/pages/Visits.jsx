@@ -313,7 +313,7 @@ export default function Visits() {
   const goVisitsPage = () => reset('visits');
   const goVisitsTab = () => reset('visits');
 
-  const directions = () => {};
+  const directions = () => dir();
   const listShow = list.length > 0;
   const listEmpty = list.length === 0;
   const emptyTitle = emptyMap[tab][0];
@@ -703,7 +703,7 @@ export default function Visits() {
           ))}
         </div>
         <button onClick={goVisits} style={{'marginTop': '28px', 'width': '100%', 'height': '56px', 'border': 'none', 'borderRadius': '16px', 'background': 'linear-gradient(180deg,#2b6d3d,#3f8a54)', 'color': '#fff', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer', 'boxShadow': '0 14px 26px -12px rgba(18,68,35,.7)'}}>View My Visits</button>
-        <button onClick={goVisits} style={{'marginTop': '12px', 'width': '100%', 'height': '56px', 'border': '1.5px solid #cfe6c6', 'borderRadius': '16px', 'background': '#fff', 'color': '#2b6d3d', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer'}}>Back to Home</button>
+        <button onClick={goHome} style={{'marginTop': '12px', 'width': '100%', 'height': '56px', 'border': '1.5px solid #cfe6c6', 'borderRadius': '16px', 'background': '#fff', 'color': '#2b6d3d', 'fontFamily': 'inherit', 'fontSize': '15px', 'fontWeight': '700', 'cursor': 'pointer'}}>Back to Home</button>
       </div>
       )}
 

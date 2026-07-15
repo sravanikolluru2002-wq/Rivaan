@@ -18,7 +18,17 @@ export function getWebSocketUrl(token) {
 let liveUpdatesCapabilityPromise = null;
 
 export async function supportsLiveUpdates() {
-  return false;
+  if (!liveUpdatesCapabilityPromise) {
+    liveUpdatesCapabilityPromise = fetch(`${getBackendUrl()}/api/health?_t=${Date.now()}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((response) => response.json())
+      .then((data) => Boolean(data?.live_updates_enabled && data?.live_updates_path))
+      .catch(() => false);
+  }
+  return liveUpdatesCapabilityPromise;
 }
 
 export function saveSession(session) {
@@ -148,19 +158,40 @@ export class ApiError extends Error {
   }
 }
 
-async function performJsonRequest(path, options = {}, token) {
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function shouldRetryRequest(method, status) {
+  return method === "GET" && [408, 429, 500, 502, 503, 504].includes(status);
+}
+
+async function performJsonRequest(path, options = {}, token, attempt = 0) {
   const { method = "GET", body } = options;
-  const response = await fetch(`${getBackendUrl()}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: "include",
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const data = await response.json().catch(() => ({}));
-  return { response, data };
+  try {
+    const response = await fetch(`${getBackendUrl()}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "include",
+      ...(method === "GET" ? { cache: "no-store" } : {}),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (attempt < 2 && shouldRetryRequest(method, response.status)) {
+      await wait(350 * (attempt + 1));
+      return performJsonRequest(path, options, token, attempt + 1);
+    }
+    return { response, data };
+  } catch (error) {
+    if (attempt < 2 && method === "GET") {
+      await wait(350 * (attempt + 1));
+      return performJsonRequest(path, options, token, attempt + 1);
+    }
+    throw error;
+  }
 }
 
 export async function requestJson(path, options = {}, token) {
