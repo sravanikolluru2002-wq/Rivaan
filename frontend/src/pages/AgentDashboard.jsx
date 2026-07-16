@@ -408,6 +408,8 @@ export default function AgentDashboard() {
   const visibleBookings = bookings.filter((item) => matchesPartnerSearch(item) && matchesPartnerStatus(item));
   const visibleAssets = assets.filter((item) => matchesPartnerSearch(item) && matchesPartnerStatus(item));
   const visibleNotifications = notifications.filter((item) => matchesPartnerSearch(item) && matchesPartnerStatus(item));
+  const hasPartnerFilters = Boolean(partnerSearch.trim() || partnerStatusFilter !== 'all');
+  const partnerEmptyMessage = hasPartnerFilters ? 'No records match the current filters.' : 'No assigned records yet.';
   const canSubmitVisit = Boolean(visitForm.property_id && visitForm.customer_name.trim() && visitForm.customer_phone.trim() && visitForm.visit_date && visitForm.visit_time.trim());
   const canSubmitBooking = Boolean(bookingForm.plot_id && bookingForm.customer_name.trim() && bookingForm.customer_phone.trim());
   const shellStyle = {
@@ -444,6 +446,20 @@ export default function AgentDashboard() {
     flex: 1,
     minWidth: 0,
     scrollbarWidth: 'none',
+  };
+  const mobileSectionSelectStyle = {
+    display: isMobile ? 'block' : 'none',
+    width: '100%',
+    height: '44px',
+    borderRadius: '14px',
+    border: '1px solid rgba(255,255,255,.25)',
+    background: '#fff',
+    color: '#1f5a31',
+    padding: '0 12px',
+    fontFamily: 'inherit',
+    fontSize: '13px',
+    fontWeight: 800,
+    outline: 'none',
   };
   const mainStyle = {
     flex: 1,
@@ -490,7 +506,7 @@ export default function AgentDashboard() {
     { label: 'Unread Notifications', value: agentData.kpis?.unread_notifications ?? unreadNotifications },
   ];
 
-  const renderTable = (columns, rows, emptyMessage = 'No assigned records yet.') => (
+  const renderTable = (columns, rows, emptyMessage = partnerEmptyMessage) => (
     <div style={{ overflowX: 'auto' }}>
       {rows.length === 0 ? (
         <p style={{ margin: 0, color: '#6d7d6f' }}>{emptyMessage}</p>
@@ -688,30 +704,42 @@ export default function AgentDashboard() {
             </button>
           )}
         </div>
-        <nav style={navStyle}>
-          {navItems.map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setPage(id)}
-              style={{
-                border: 'none',
-                borderRadius: '12px',
-                padding: isMobile ? '9px 12px' : '12px 14px',
-                textAlign: isMobile ? 'center' : 'left',
-                whiteSpace: 'nowrap',
-                flex: isMobile ? '0 0 auto' : 'initial',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                fontSize: isMobile ? '12px' : '13px',
-                fontWeight: 700,
-                background: page === id ? '#fff' : 'rgba(255,255,255,.08)',
-                color: page === id ? '#1f5a31' : '#fff',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        {isMobile ? (
+          <select
+            aria-label="Partner dashboard section"
+            value={page}
+            onChange={(event) => setPage(event.target.value)}
+            style={mobileSectionSelectStyle}
+          >
+            {navItems.map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+        ) : (
+          <nav style={navStyle}>
+            {navItems.map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setPage(id)}
+                style={{
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  background: page === id ? '#fff' : 'rgba(255,255,255,.08)',
+                  color: page === id ? '#1f5a31' : '#fff',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
         <button
           onClick={logout}
           style={{ display: isMobile ? 'none' : 'block', marginTop: 'auto', height: '46px', border: 'none', borderRadius: '12px', background: '#e2822a', color: '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}
