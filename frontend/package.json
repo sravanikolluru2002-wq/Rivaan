@@ -7,7 +7,11 @@
     "dev": "vite --host 127.0.0.1 --port 8082",
     "build": "vite build",
     "build:web": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 8082"
+    "preview": "vite preview --host 127.0.0.1 --port 8082",
+    "android:sync": "vite build && cap sync android",
+    "android:open": "cap open android",
+    "android:bundle": "vite build && cap sync android && cd android && gradlew.bat bundleRelease",
+    "android:apk": "vite build && cap sync android && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

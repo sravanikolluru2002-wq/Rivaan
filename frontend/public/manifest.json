@@ -1,7 +1,7 @@
 {
-  "name": "Rivan Reality",
+  "name": "Rivan Realty",
   "short_name": "Rivan",
-  "description": "Discover, visit and own verified plots, villas and homes with Rivan Reality.",
+  "description": "Discover, visit and own verified plots, villas and homes with Rivan Realty.",
   "id": "/",
   "start_url": "./index.html",
   "scope": "./",

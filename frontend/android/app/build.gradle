@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def rivanUploadStoreFile = System.getenv("RIVAN_UPLOAD_STORE_FILE")
+def rivanUploadStorePassword = System.getenv("RIVAN_UPLOAD_STORE_PASSWORD")
+def rivanUploadKeyAlias = System.getenv("RIVAN_UPLOAD_KEY_ALIAS")
+def rivanUploadKeyPassword = System.getenv("RIVAN_UPLOAD_KEY_PASSWORD")
+def hasRivanReleaseSigning = rivanUploadStoreFile && rivanUploadStorePassword && rivanUploadKeyAlias && rivanUploadKeyPassword
+
 android {
     namespace = "com.rivan.reality"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -8,20 +14,46 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (hasRivanReleaseSigning) {
+                storeFile file(rivanUploadStoreFile)
+                storePassword rivanUploadStorePassword
+                keyAlias rivanUploadKeyAlias
+                keyPassword rivanUploadKeyPassword
+            }
         }
     }
     buildTypes {
         release {
-            minifyEnabled false
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+tasks.register("validateRivanReleaseSigning") {
+    doLast {
+        if (!hasRivanReleaseSigning) {
+            throw new GradleException("Release signing is not configured. Set RIVAN_UPLOAD_STORE_FILE, RIVAN_UPLOAD_STORE_PASSWORD, RIVAN_UPLOAD_KEY_ALIAS, and RIVAN_UPLOAD_KEY_PASSWORD before building a Play Store release.")
+        }
+    }
+}
+
+tasks.matching { task ->
+    task.name in ["bundleRelease", "assembleRelease"]
+}.configureEach {
+    dependsOn("validateRivanReleaseSigning")
 }
 
 repositories {
