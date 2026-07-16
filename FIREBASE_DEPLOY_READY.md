@@ -6,6 +6,7 @@ Set these in the deployed frontend environment:
 
 ```env
 EXPO_PUBLIC_BACKEND_URL=https://your-backend-origin
+VITE_ENABLE_WEBSOCKETS=true
 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-google-web-client-id
 EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your-google-android-client-id
 EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-google-ios-client-id

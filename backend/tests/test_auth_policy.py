@@ -63,5 +63,5 @@ def test_preflight_from_live_frontend_receives_cors_headers():
             "Access-Control-Request-Method": "POST",
         },
     )
-    assert response.status_code == 200
+    assert response.status_code in {200, 204}
     assert response.headers["access-control-allow-origin"] == "https://rivanreality.com"

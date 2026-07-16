@@ -18,7 +18,7 @@ export function getWebSocketUrl(token) {
 let liveUpdatesCapabilityPromise = null;
 
 export async function supportsLiveUpdates() {
-  if (import.meta.env.VITE_ENABLE_WEBSOCKETS !== "true") {
+  if (import.meta.env.VITE_ENABLE_WEBSOCKETS === "false") {
     return false;
   }
   if (!liveUpdatesCapabilityPromise) {
