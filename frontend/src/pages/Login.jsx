@@ -588,11 +588,12 @@ export default function Login() {
               >
                 <img
                   className="rv-splash-logo"
-                  src="/assets/logo-full.png"
-                  alt="Rivan Reality"
+                  src="/RivanRealtyLogo.jpg"
+                  alt="Rivan Realty"
                   style={{
                     width: "min(360px, 82vw)",
                     height: "auto",
+                    borderRadius: "18px",
                     filter: "drop-shadow(0 18px 34px rgba(18,53,29,.22))",
                   }}
                 />
@@ -683,7 +684,7 @@ export default function Login() {
                 >
                   ←
                 </button>
-                <img src="/assets/logo-mark.png" alt="Rivan" style={{ height: "38px", width: "auto" }} />
+                <img src="/RivanRealtyLogo.jpg" alt="Rivan Realty" style={{ height: "38px", width: "62px", objectFit: "contain", borderRadius: "10px" }} />
               </div>
 
               <h1
@@ -786,7 +787,7 @@ export default function Login() {
                 >
                   ←
                 </button>
-                <img src="/assets/logo-mark.png" alt="Rivan" style={{ height: "38px", width: "auto" }} />
+                <img src="/RivanRealtyLogo.jpg" alt="Rivan Realty" style={{ height: "38px", width: "62px", objectFit: "contain", borderRadius: "10px" }} />
               </div>
 
               <h1

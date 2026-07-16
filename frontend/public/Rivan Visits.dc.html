@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -33,10 +33,10 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
   @keyframes rvRing{0%{transform:scale(.6);opacity:.6}100%{transform:scale(1.5);opacity:0}}
   .rv-screen{animation:rvFade .34s cubic-bezier(.22,.61,.36,1) both}
   input:focus,select:focus{outline:none}
-        /* ── Full-viewport layout: web + mobile ── */
+        /* â”€â”€ Full-viewport layout: web + mobile â”€â”€ */
   html, body { height: 100%; margin: 0; }
 
-  /* ─── Stage / outer wrapper ─────────────────────────────── */
+  /* â”€â”€â”€ Stage / outer wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   .rv-stage {
     min-height: 100vh;
     width: 100%;
@@ -47,7 +47,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
     background: radial-gradient(140% 100% at 50% 0%, #eef4ea 0%, #e0ece0 55%, #d4e8d4 100%);
   }
 
-  /* ─── Phone / content card ───────────────────────────────── */
+  /* â”€â”€â”€ Phone / content card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   .rv-phone {
     width: 100%;
     max-width: none;
@@ -70,7 +70,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
   @media (min-width: 901px){
     .rv-phone{border-radius:12px}
     .rv-nav{top:0;bottom:0;left:0;right:auto;width:214px;flex-direction:column;justify-content:flex-start;align-items:stretch;padding:30px 14px 20px;border-radius:12px 0 0 12px;background:linear-gradient(180deg,#155d24 0%,#0f431b 100%);box-shadow:none;border-right:1px solid rgba(255,255,255,.08)}
-    .rv-nav::before{content:'';display:block;width:38px;height:48px;margin:4px 0 22px 12px;background:url('./assets/logo-mark-white.png') center/contain no-repeat;opacity:.98}
+    .rv-nav::before{content:'';display:block;width:38px;height:48px;margin:4px 0 22px 12px;background:url('./RivanRealtyLogo.jpg') center/contain no-repeat;opacity:.98}
     .rv-nav-btn{flex:0 0 auto;width:100%;padding:14px 16px;border-radius:18px;flex-direction:row;justify-content:flex-start;gap:14px;color:rgba(236,246,233,.58);font-size:0}
     .rv-nav-btn svg{width:22px;height:22px}
     .rv-nav-btn.active{background:rgba(255,255,255,.14);color:#fff}
@@ -78,9 +78,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
     .rv-scroll{padding-bottom:24px;padding-left:214px}
   }
 
-  /* ─── Hide phone-shell chrome on desktop ─────────────────── */
+  /* â”€â”€â”€ Hide phone-shell chrome on desktop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-  /* ─── Mobile: full-screen, no card ───────────────────────── */
+  /* â”€â”€â”€ Mobile: full-screen, no card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   @media (max-width: 600px) {
     .rv-stage {
       padding: 0;
@@ -109,7 +109,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="background:linear-gradient(160deg,#1a5e2e 0%,#123f21 100%);padding:56px 22px 20px;border-radius:0 0 26px 26px">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:10px">
-              <img src="assets/logo-mark-white.png" alt="Rivan" style="height:26px;opacity:.95">
+              <img src="RivanRealtyLogo.jpg" alt="Rivan Realty" style="height:26px;opacity:.95">
               <span style="font-size:19px;font-weight:800;color:#fff">My Visits</span>
             </div>
             <button style="width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">
@@ -159,20 +159,20 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
                         <p style="margin:0;font-size:15.5px;font-weight:800;color:#16231a">{{ v.name }}</p>
                         <span style="{{ v.statusStyle }}">{{ v.status }}</span>
                       </div>
-                      <p style="margin:3px 0 6px;font-size:12px;color:#8a988c;font-weight:500">{{ v.project }} · {{ v.plot }}</p>
+                      <p style="margin:3px 0 6px;font-size:12px;color:#8a988c;font-weight:500">{{ v.project }} Â· {{ v.plot }}</p>
                       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a988c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg>
                         <span style="font-size:11.5px;color:#6d7d6f;font-weight:500">{{ v.location }}</span>
                       </div>
                       <div style="display:flex;align-items:center;gap:6px">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a5e2e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>
-                        <span style="font-size:11.5px;color:#3d4f40;font-weight:700">{{ v.date }} · {{ v.time }}</span>
+                        <span style="font-size:11.5px;color:#3d4f40;font-weight:700">{{ v.date }} Â· {{ v.time }}</span>
                       </div>
                     </div>
                   </div>
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px solid #f0f4ee">
                     <span style="font-size:11px;color:#9aa89c;font-weight:600">Booking ID: {{ v.bookingId }}</span>
-                    <span style="font-size:12px;color:#e2822a;font-weight:700">View Details →</span>
+                    <span style="font-size:12px;color:#e2822a;font-weight:700">View Details â†’</span>
                   </div>
                 </div>
                 <!-- actions -->
@@ -198,7 +198,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="position:relative;height:230px;background:{{ sel.grad }}">
           <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(9,32,16,.3),transparent 40%,rgba(9,32,16,.5))"></div>
           <div style="position:absolute;top:52px;left:20px;right:20px;display:flex;align-items:center;justify-content:space-between">
-            <button onClick="{{ back }}" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.92);color:#12351d;font-size:18px;cursor:pointer">←</button>
+            <button onClick="{{ back }}" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.92);color:#12351d;font-size:18px;cursor:pointer">â†</button>
             <span style="font-size:15px;font-weight:800;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.4)">Visit Details</span>
             <button onClick="{{ share }}" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.92);cursor:pointer;display:flex;align-items:center;justify-content:center">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#12351d" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/></svg>
@@ -303,7 +303,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
             </sc-if>
             <button onClick="{{ goBook }}" style="width:100%;height:54px;border-radius:16px;border:none;background:linear-gradient(180deg,#eb9236,#e2822a);color:#fff;font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 12px 24px -12px rgba(226,130,42,.55);margin-bottom:12px">Book Another Visit</button>
             <div style="display:flex;gap:12px">
-              <button style="flex:1;height:50px;border-radius:15px;border:1.5px solid #cfe6c6;background:#fff;color:#1a5e2e;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer">♡ Mark Interested</button>
+              <button style="flex:1;height:50px;border-radius:15px;border:1.5px solid #cfe6c6;background:#fff;color:#1a5e2e;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer">â™¡ Mark Interested</button>
               <button style="flex:1;height:50px;border-radius:15px;border:1.5px solid #cfe6c6;background:#fff;color:#1a5e2e;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer">Request Callback</button>
             </div>
           </div>
@@ -316,17 +316,17 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen">
         <div style="background:linear-gradient(160deg,#1a5e2e 0%,#123f21 100%);padding:56px 22px 20px;border-radius:0 0 26px 26px;display:flex;align-items:center;gap:14px">
-          <button onClick="{{ back }}" style="width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:18px;cursor:pointer">←</button>
+          <button onClick="{{ back }}" style="width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:18px;cursor:pointer">â†</button>
           <span style="font-size:18px;font-weight:800;color:#fff">{{ bookTitle }}</span>
         </div>
 
         <div style="padding:18px 22px 0">
           <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #eef3ec;border-radius:16px;padding:12px;box-shadow:0 12px 30px -24px rgba(18,53,29,.5)">
             <div style="width:52px;height:52px;border-radius:13px;background:{{ sel.grad }};flex:none"></div>
-            <div style="flex:1"><p style="margin:0;font-size:14.5px;font-weight:800;color:#16231a">{{ sel.name }}</p><p style="margin:3px 0 0;font-size:11.5px;color:#8a988c;font-weight:500">{{ sel.plot }} · {{ sel.location }}</p></div>
+            <div style="flex:1"><p style="margin:0;font-size:14.5px;font-weight:800;color:#16231a">{{ sel.name }}</p><p style="margin:3px 0 0;font-size:11.5px;color:#8a988c;font-weight:500">{{ sel.plot }} Â· {{ sel.location }}</p></div>
           </div>
 
-          <p style="margin:22px 0 12px;font-size:14px;font-weight:800;color:#12351d">Select Date · May 2025</p>
+          <p style="margin:22px 0 12px;font-size:14px;font-weight:800;color:#12351d">Select Date Â· May 2025</p>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
             <sc-for list="{{ weekdays }}" as="w" hint-placeholder-count="7"><span style="text-align:center;font-size:10.5px;font-weight:700;color:#9aa89c">{{ w }}</span></sc-for>
             <sc-for list="{{ calendar }}" as="d" hint-placeholder-count="35">
@@ -347,7 +347,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
             <div style="display:flex;justify-content:space-between;padding:6px 0"><span style="font-size:12.5px;color:#6d7d6f;font-weight:500">Mobile</span><span style="font-size:13px;color:#16231a;font-weight:700">+91 98765 43210</span></div>
           </div>
 
-          <button onClick="{{ confirmBook }}" style="margin:20px 0;width:100%;height:56px;border:none;border-radius:16px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 14px 26px -12px rgba(18,68,35,.7)">{{ confirmLabel }} · {{ pickedDate }} May, {{ pickedTime }}</button>
+          <button onClick="{{ confirmBook }}" style="margin:20px 0;width:100%;height:56px;border:none;border-radius:16px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 14px 26px -12px rgba(18,68,35,.7)">{{ confirmLabel }} Â· {{ pickedDate }} May, {{ pickedTime }}</button>
         </div>
       </div>
       </sc-if>
@@ -461,18 +461,18 @@ class Component extends DCLogic {
 
     const upcoming=[
       {id:'u1',name:'Emerald Estate',project:'Emerald Estate',plot:'Plot A-120',type:'Plot / Land',location:'Visakhapatnam',date:'22 May 2025',time:'11:00 AM',bookingId:'VIS-250522-011',status:'Confirmed',countdown:'Your visit is in 2 days',grad:G[0],phase:'upcoming',
-        specs:[['Plot','A-120'],['Size','200 Sq.Yd'],['Facing','East'],['Price','₹45,00,000']]},
+        specs:[['Plot','A-120'],['Size','200 Sq.Yd'],['Facing','East'],['Price','â‚¹45,00,000']]},
       {id:'u2',name:'Palm Grove Villa',project:'Palm Grove',plot:'Villa V-08',type:'Villa',location:'Yendada',date:'21 May 2025',time:'11:00 AM',bookingId:'VIS-250521-008',status:'Upcoming',countdown:'Tomorrow at 11:00 AM',grad:G[3],phase:'upcoming',
-        specs:[['Villa','V-08'],['Built-up','3200 Sq.ft'],['Facing','North-East'],['Price','₹64,00,000']]},
+        specs:[['Villa','V-08'],['Built-up','3200 Sq.ft'],['Facing','North-East'],['Price','â‚¹64,00,000']]},
       {id:'u3',name:'Green Valley Farms',project:'Green Valley',plot:'Farm F-12',type:'Farm Land',location:'Anakapalle',date:'26 May 2025',time:'4:00 PM',bookingId:'VIS-250526-014',status:'Rescheduled',countdown:'Your visit is in 6 days',grad:G[2],phase:'upcoming',
-        specs:[['Extent','2 Acre'],['Soil','Red Loam'],['Facing','—'],['Price','₹12,00,000']]},
+        specs:[['Extent','2 Acre'],['Soil','Red Loam'],['Facing','â€”'],['Price','â‚¹12,00,000']]},
     ];
     const completed=[
       {id:'c1',name:'Sunrise Valley',project:'Sunrise Valley',plot:'Plot C-45',type:'Plot / Land',location:'Bhemunipatnam',date:'02 May 2025',time:'10:00 AM',bookingId:'VIS-250502-004',status:'Completed',grad:G[0],phase:'completed',
         notes:'Liked the corner plot & wide roads. Discussed pricing and possession timeline with executive.',
-        specs:[['Plot','C-45'],['Size','300 Sq.Yd'],['Facing','North'],['Price','₹42,00,000']]},
+        specs:[['Plot','C-45'],['Size','300 Sq.Yd'],['Facing','North'],['Price','â‚¹42,00,000']]},
       {id:'c2',name:'Emerald Heights',project:'Emerald Heights',plot:'Flat B-402',type:'Apartment',location:'Vizag',date:'18 Apr 2025',time:'3:00 PM',bookingId:'VIS-250418-002',status:'Completed',grad:G[1],phase:'completed',notes:'',
-        specs:[['Flat','B-402'],['Carpet','1650 Sq.ft'],['Facing','East'],['Price','₹50,00,000']]},
+        specs:[['Flat','B-402'],['Carpet','1650 Sq.ft'],['Facing','East'],['Price','â‚¹50,00,000']]},
     ];
 
     const tab=(l)=>({label:l, pick:()=>this.setState({tab:l}),
@@ -590,3 +590,4 @@ class Component extends DCLogic {
 </script>
 </body>
 </html>
+

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -46,10 +46,10 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
   .rv-screen{animation:rvFade .38s cubic-bezier(.22,.61,.36,1) both}
   input::placeholder{color:#9aa89c}
   input:focus{outline:none}
-        /* ── Responsive Login Card ── */
+        /* â”€â”€ Responsive Login Card â”€â”€ */
   html, body { height: 100%; margin: 0; background: #eef3ec; }
 
-  /* ─── Stage / outer wrapper ─────────────────────────────── */
+  /* â”€â”€â”€ Stage / outer wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   .rv-stage {
     min-height: 100vh;
     width: 100%;
@@ -60,7 +60,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
     background: radial-gradient(140% 100% at 50% 0%, #eef4ea 0%, #e0ece0 55%, #d4e8d4 100%);
   }
 
-  /* ─── Phone / content card ───────────────────────────────── */
+  /* â”€â”€â”€ Phone / content card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   .rv-phone {
     width: 100%;
     max-width: none;
@@ -76,9 +76,9 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
     flex: none;
   }
 
-  /* ─── Hide phone-shell chrome on desktop ─────────────────── */
+  /* â”€â”€â”€ Hide phone-shell chrome on desktop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-  /* ─── Mobile: full-screen, no card ───────────────────────── */
+  /* â”€â”€â”€ Mobile: full-screen, no card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   @media (max-width: 600px) {
     .rv-stage {
       padding: 0;
@@ -105,11 +105,11 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <sc-if value="{{ isSplash }}" hint-placeholder-val="{{ true }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;background:linear-gradient(180deg,#f3f8f0 0%,#e7f0e2 46%,#12351d 46%,#0d2916 100%)">
         <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 34px 20px;text-align:center">
-          <img src="assets/logo-full.png" alt="Rivan Reality" style="width:290px;height:auto;filter:drop-shadow(0 10px 24px rgba(18,53,29,.18))">
-          <p style="margin:22px 0 0;font-size:15px;line-height:1.55;color:#4a5c4d;max-width:250px;font-weight:500">Your journey to a home you'll be proud to own — starts here.</p>
+          <img src="RivanRealtyLogo.jpg" alt="Rivan Realty" style="width:290px;height:auto;filter:drop-shadow(0 10px 24px rgba(18,53,29,.18))">
+          <p style="margin:22px 0 0;font-size:15px;line-height:1.55;color:#4a5c4d;max-width:250px;font-weight:500">Your journey to a home you'll be proud to own â€” starts here.</p>
         </div>
         <div style="padding:0 34px 46px;display:flex;flex-direction:column;gap:14px">
-          <button onClick="{{ goLogin }}" style="width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#eb9236,#e2822a);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 12px 24px -8px rgba(226,130,42,.7)">Get Started <span style="font-size:19px">→</span></button>
+          <button onClick="{{ goLogin }}" style="width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#eb9236,#e2822a);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 12px 24px -8px rgba(226,130,42,.7)">Get Started <span style="font-size:19px">â†’</span></button>
           <button onClick="{{ goSuccess }}" style="width:100%;height:58px;border:1.5px solid rgba(255,255,255,.35);border-radius:18px;background:rgba(255,255,255,.08);color:#eaf2e6;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer">Explore as Guest</button>
           <button onClick="{{ goAgentLogin }}" style="width:100%;height:58px;border:1.5px solid rgba(255,255,255,.35);border-radius:18px;background:rgba(255,255,255,.08);color:#eaf2e6;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer">Agent Login</button>
           <button onClick="{{ goAdminLogin }}" style="width:100%;height:58px;border:1.5px solid rgba(255,255,255,.35);border-radius:18px;background:rgba(255,255,255,.08);color:#eaf2e6;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer">Admin Login</button>
@@ -128,10 +128,10 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;padding:64px 30px 34px;background:linear-gradient(180deg,#f4f8f1 0%,#ffffff 30%)">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <button onClick="{{ goSplash }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">←</button>
-          <img src="assets/logo-mark.png" alt="Rivan" style="height:38px;width:auto">
+          <button onClick="{{ goSplash }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">â†</button>
+          <img src="RivanRealtyLogo.jpg" alt="Rivan Realty" style="height:38px;width:auto">
         </div>
-        <h1 style="margin:26px 0 6px;font-size:28px;font-weight:800;color:#12351d;letter-spacing:-.5px">Welcome back 👋</h1>
+        <h1 style="margin:26px 0 6px;font-size:28px;font-weight:800;color:#12351d;letter-spacing:-.5px">Welcome back ðŸ‘‹</h1>
         <p style="margin:0;font-size:14.5px;color:#6d7d6f;line-height:1.5">Sign in to continue with Rivan Reality</p>
 
         <!-- method toggle -->
@@ -145,7 +145,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:22px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Mobile Number</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:#12351d;border-right:1.5px solid #e2e8e0;padding-right:12px">🇮🇳 +91</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:#12351d;border-right:1.5px solid #e2e8e0;padding-right:12px">ðŸ‡®ðŸ‡³ +91</span>
             <input inputmode="numeric" placeholder="98765 43210" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
           </div>
         </div>
@@ -156,7 +156,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:22px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Email Address</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="font-size:16px">✉️</span>
+            <span style="font-size:16px">âœ‰ï¸</span>
             <input type="email" placeholder="you@email.com" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
           </div>
         </div>
@@ -167,7 +167,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:18px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Password</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="font-size:15px">🔒</span>
+            <span style="font-size:15px">ðŸ”’</span>
             <input type="{{ pwType }}" placeholder="Enter your password" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
             <button onClick="{{ toggleShowPw }}" style="border:none;background:transparent;cursor:pointer;font-size:16px;color:#8a988c">{{ pwEye }}</button>
           </div>
@@ -181,7 +181,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
           <a onClick="{{ toggleAuthMode }}" style="font-weight:700;color:#12351d;text-decoration:underline;cursor:pointer">{{ authSwitchAction }}</a>
         </div>
 
-        <button onClick="{{ loginContinue }}" style="margin-top:24px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 14px 26px -10px rgba(18,68,35,.75)">{{ loginBtnLabel }} <span style="font-size:19px">→</span></button>
+        <button onClick="{{ loginContinue }}" style="margin-top:24px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 14px 26px -10px rgba(18,68,35,.75)">{{ loginBtnLabel }} <span style="font-size:19px">â†’</span></button>
 
         <div style="display:flex;align-items:center;gap:12px;margin:26px 0">
           <span style="flex:1;height:1px;background:#e2e8e0"></span>
@@ -201,8 +201,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <sc-if value="{{ isAgentLogin }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;padding:64px 30px 34px;background:linear-gradient(180deg,#f4f8f1 0%,#ffffff 30%)">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <button onClick="{{ goSplash }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">←</button>
-          <img src="assets/logo-mark.png" alt="Rivan" style="height:38px;width:auto">
+          <button onClick="{{ goSplash }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">â†</button>
+          <img src="RivanRealtyLogo.jpg" alt="Rivan Realty" style="height:38px;width:auto">
         </div>
         <h1 style="margin:26px 0 6px;font-size:28px;font-weight:800;color:#12351d;letter-spacing:-.5px">Agent Portal</h1>
         <p style="margin:0;font-size:14.5px;color:#6d7d6f;line-height:1.5">Sign in as a Rivan Agent</p>
@@ -218,7 +218,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:22px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Mobile Number</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:#12351d;border-right:1.5px solid #e2e8e0;padding-right:12px">🇮🇳 +91</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:#12351d;border-right:1.5px solid #e2e8e0;padding-right:12px">ðŸ‡®ðŸ‡³ +91</span>
             <input inputmode="numeric" placeholder="98765 43210" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
           </div>
         </div>
@@ -229,7 +229,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:22px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Email Address</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="font-size:16px">✉️</span>
+            <span style="font-size:16px">âœ‰ï¸</span>
             <input type="email" placeholder="you@email.com" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
           </div>
         </div>
@@ -240,7 +240,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:18px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Password</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="font-size:15px">🔒</span>
+            <span style="font-size:15px">ðŸ”’</span>
             <input type="{{ pwType }}" placeholder="Enter your password" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
             <button onClick="{{ toggleShowPw }}" style="border:none;background:transparent;cursor:pointer;font-size:16px;color:#8a988c">{{ pwEye }}</button>
           </div>
@@ -254,7 +254,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
           <a onClick="{{ toggleAuthMode }}" style="font-weight:700;color:#12351d;text-decoration:underline;cursor:pointer">{{ authSwitchAction }}</a>
         </div>
 
-        <button onClick="{{ goAgentDash }}" style="margin-top:24px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 14px 26px -10px rgba(18,68,35,.75)">Access Dashboard <span style="font-size:19px">→</span></button>
+        <button onClick="{{ goAgentDash }}" style="margin-top:24px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 14px 26px -10px rgba(18,68,35,.75)">Access Dashboard <span style="font-size:19px">â†’</span></button>
 
         <div style="display:flex;align-items:center;gap:12px;margin:26px 0">
           <span style="flex:1;height:1px;background:#e2e8e0"></span>
@@ -274,8 +274,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <sc-if value="{{ isAdminLogin }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;padding:64px 30px 34px;background:linear-gradient(180deg,#f4f8f1 0%,#ffffff 30%)">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <button onClick="{{ goSplash }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">←</button>
-          <img src="assets/logo-mark.png" alt="Rivan" style="height:38px;width:auto">
+          <button onClick="{{ goSplash }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">â†</button>
+          <img src="RivanRealtyLogo.jpg" alt="Rivan Realty" style="height:38px;width:auto">
         </div>
         <h1 style="margin:26px 0 6px;font-size:28px;font-weight:800;color:#12351d;letter-spacing:-.5px">Admin Portal</h1>
         <p style="margin:0;font-size:14.5px;color:#6d7d6f;line-height:1.5">Sign in as a Rivan Admin</p>
@@ -291,7 +291,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:22px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Mobile Number</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:#12351d;border-right:1.5px solid #e2e8e0;padding-right:12px">🇮🇳 +91</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:#12351d;border-right:1.5px solid #e2e8e0;padding-right:12px">ðŸ‡®ðŸ‡³ +91</span>
             <input inputmode="numeric" placeholder="98765 43210" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
           </div>
         </div>
@@ -302,7 +302,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:22px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Email Address</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="font-size:16px">✉️</span>
+            <span style="font-size:16px">âœ‰ï¸</span>
             <input type="email" placeholder="you@email.com" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
           </div>
         </div>
@@ -313,7 +313,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         <div style="margin-top:18px">
           <label style="font-size:13px;font-weight:700;color:#3d4f40">Password</label>
           <div style="margin-top:9px;display:flex;align-items:center;gap:10px;height:56px;border:1.5px solid #e2e8e0;border-radius:16px;padding:0 16px;background:#fbfdfa">
-            <span style="font-size:15px">🔒</span>
+            <span style="font-size:15px">ðŸ”’</span>
             <input type="{{ pwType }}" placeholder="Enter your password" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15.5px;font-weight:600;color:#16231a"/>
             <button onClick="{{ toggleShowPw }}" style="border:none;background:transparent;cursor:pointer;font-size:16px;color:#8a988c">{{ pwEye }}</button>
           </div>
@@ -327,7 +327,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
           <a onClick="{{ toggleAuthMode }}" style="font-weight:700;color:#12351d;text-decoration:underline;cursor:pointer">{{ authSwitchAction }}</a>
         </div>
 
-        <button onClick="{{ goAdminDash }}" style="margin-top:24px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 14px 26px -10px rgba(18,68,35,.75)">Access Dashboard <span style="font-size:19px">→</span></button>
+        <button onClick="{{ goAdminDash }}" style="margin-top:24px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#1a5e2e,#124423);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 14px 26px -10px rgba(18,68,35,.75)">Access Dashboard <span style="font-size:19px">â†’</span></button>
 
         <div style="display:flex;align-items:center;gap:12px;margin:26px 0">
           <span style="flex:1;height:1px;background:#e2e8e0"></span>
@@ -346,8 +346,8 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <!-- ===== OTP ===== -->
       <sc-if value="{{ isOtp }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;padding:64px 30px 34px;background:linear-gradient(180deg,#f4f8f1 0%,#ffffff 30%)">
-        <button onClick="{{ goLogin }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">←</button>
-        <div style="margin:30px auto 0;width:80px;height:80px;border-radius:24px;background:#eef6ea;display:flex;align-items:center;justify-content:center;font-size:34px">💬</div>
+        <button onClick="{{ goLogin }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">â†</button>
+        <div style="margin:30px auto 0;width:80px;height:80px;border-radius:24px;background:#eef6ea;display:flex;align-items:center;justify-content:center;font-size:34px">ðŸ’¬</div>
         <h1 style="margin:24px 0 8px;font-size:26px;font-weight:800;color:#12351d;text-align:center;letter-spacing:-.5px">Verify your number</h1>
         <p style="margin:0;font-size:14.5px;color:#6d7d6f;line-height:1.55;text-align:center">Enter the 6-digit code we sent to<br><strong style="color:#16231a">+91 98765 43210</strong></p>
         <div style="display:flex;justify-content:center;gap:10px;margin-top:32px">
@@ -364,7 +364,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
       <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;padding:60px 30px 34px;background:linear-gradient(180deg,#f4f8f1 0%,#ffffff 26%)">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <button onClick="{{ goLogin }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">←</button>
+          <button onClick="{{ goLogin }}" style="width:42px;height:42px;border-radius:13px;border:1px solid #e4ece0;background:#fff;color:#12351d;font-size:19px;cursor:pointer">â†</button>
           <a onClick="{{ goSuccess }}" style="font-size:14px;font-weight:700;color:#6d7d6f;cursor:pointer">Skip for Now</a>
         </div>
         <h1 style="margin:22px 0 6px;font-size:26px;font-weight:800;color:#12351d;letter-spacing:-.5px">Set up your profile</h1>
@@ -372,27 +372,27 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
 
         <label style="margin-top:18px;font-size:13px;font-weight:700;color:#3d4f40">Full Name</label>
         <div style="margin-top:8px;display:flex;align-items:center;gap:10px;height:54px;border:1.5px solid #e2e8e0;border-radius:15px;padding:0 15px;background:#fbfdfa">
-          <span>👤</span><input placeholder="Aarav Sharma" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:#16231a"/>
+          <span>ðŸ‘¤</span><input placeholder="Aarav Sharma" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:#16231a"/>
         </div>
 
         <label style="margin-top:15px;font-size:13px;font-weight:700;color:#3d4f40">Phone Number</label>
         <div style="margin-top:8px;display:flex;align-items:center;gap:10px;height:54px;border:1.5px solid #e2e8e0;border-radius:15px;padding:0 15px;background:#fbfdfa">
           <span style="font-weight:700;color:#12351d;font-size:14px;border-right:1.5px solid #e2e8e0;padding-right:10px">+91</span><input inputmode="numeric" value="98765 43210" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:#16231a"/>
-          <span style="color:#1a5e2e;font-size:16px">✓</span>
+          <span style="color:#1a5e2e;font-size:16px">âœ“</span>
         </div>
 
         <label style="margin-top:15px;font-size:13px;font-weight:700;color:#3d4f40">Email Address</label>
         <div style="margin-top:8px;display:flex;align-items:center;gap:10px;height:54px;border:1.5px solid #e2e8e0;border-radius:15px;padding:0 15px;background:#fbfdfa">
-          <span>✉️</span><input type="email" placeholder="aarav@email.com" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:#16231a"/>
+          <span>âœ‰ï¸</span><input type="email" placeholder="aarav@email.com" style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:#16231a"/>
         </div>
 
         <label style="margin-top:15px;font-size:13px;font-weight:700;color:#3d4f40">City</label>
         <div style="margin-top:8px;display:flex;align-items:center;gap:10px;height:54px;border:1.5px solid #e2e8e0;border-radius:15px;padding:0 15px;background:#fbfdfa">
-          <span>📍</span>
+          <span>ðŸ“</span>
           <select style="flex:1;border:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:#16231a;-webkit-appearance:none;appearance:none;cursor:pointer">
             <option>Hyderabad</option><option>Visakhapatnam</option><option>Bengaluru</option><option>Mumbai</option><option>Pune</option><option>Chennai</option><option>Delhi NCR</option>
           </select>
-          <span style="color:#8a988c">▾</span>
+          <span style="color:#8a988c">â–¾</span>
         </div>
 
         <label style="margin-top:18px;font-size:13px;font-weight:700;color:#3d4f40">Interested Property Type</label>
@@ -403,19 +403,19 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         </div>
 
         <button onClick="{{ goSuccess }}" style="margin-top:26px;width:100%;height:58px;border:none;border-radius:18px;background:linear-gradient(180deg,#eb9236,#e2822a);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 14px 26px -10px rgba(226,130,42,.6)">Create Profile</button>
-        <p style="text-align:center;margin:14px 0 0;font-size:12px;color:#9aa89c;display:flex;align-items:center;justify-content:center;gap:6px">🔒 Your information is secure &amp; private</p>
+        <p style="text-align:center;margin:14px 0 0;font-size:12px;color:#9aa89c;display:flex;align-items:center;justify-content:center;gap:6px">ðŸ”’ Your information is secure &amp; private</p>
       </div>
       </sc-if>
 
       <!-- ===== SUCCESS ===== -->
       <sc-if value="{{ isSuccess }}" hint-placeholder-val="{{ false }}">
       <div class="rv-screen" style="min-height:820px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 34px;background:linear-gradient(180deg,#12351d 0%,#0d2916 100%)">
-        <div style="width:104px;height:104px;border-radius:34px;background:linear-gradient(180deg,#eb9236,#e2822a);display:flex;align-items:center;justify-content:center;font-size:48px;color:#fff;box-shadow:0 18px 40px -12px rgba(226,130,42,.8)">✓</div>
-        <img src="assets/logo-mark.png" alt="Rivan" style="width:70px;margin-top:30px;filter:brightness(0) invert(1) sepia(0)">
+        <div style="width:104px;height:104px;border-radius:34px;background:linear-gradient(180deg,#eb9236,#e2822a);display:flex;align-items:center;justify-content:center;font-size:48px;color:#fff;box-shadow:0 18px 40px -12px rgba(226,130,42,.8)">âœ“</div>
+        <img src="RivanRealtyLogo.jpg" alt="Rivan Realty" style="width:70px;margin-top:30px;filter:brightness(0) invert(1) sepia(0)">
         <h1 style="margin:20px 0 8px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-.5px">You're all set!</h1>
         <p style="margin:0;font-size:15px;color:#b8cbb6;line-height:1.55;max-width:260px">Welcome to Rivan Reality. Let's find the home that builds your legacy.</p>
         <div style="display:flex;gap:22px;margin-top:34px;color:#8fae8c;font-size:12.5px;font-weight:700">
-          <span>Secure</span><span style="color:#4a6b4a">•</span><span>Transparent</span><span style="color:#4a6b4a">•</span><span>Trusted</span>
+          <span>Secure</span><span style="color:#4a6b4a">â€¢</span><span>Transparent</span><span style="color:#4a6b4a">â€¢</span><span>Trusted</span>
         </div>
         <button onClick="{{ goApp }}" style="margin-top:38px;width:100%;height:58px;border:none;border-radius:18px;background:#fff;color:#12351d;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer">Explore Properties</button>
       </div>
@@ -481,7 +481,7 @@ class Component extends DCLogic {
       statusColor: (screen==='success') ? '#eaf2e6' : '#12351d',
       isPhoneMethod, isEmailMethod: !isPhoneMethod, isPasswordAuth,
       phoneTabStyle: tab(isPhoneMethod), emailTabStyle: tab(!isPhoneMethod),
-      pwType: s.showPw ? 'text' : 'password', pwEye: s.showPw ? '🙈' : '👁',
+      pwType: s.showPw ? 'text' : 'password', pwEye: s.showPw ? 'ðŸ™ˆ' : 'ðŸ‘',
       toggleShowPw: ()=>this.setState(st=>({showPw:!st.showPw})),
       setPhone: ()=>this.setState({method:'phone'}), setEmail: ()=>this.setState({method:'email'}),
       toggleAuthMode: ()=>this.setState(st=>({auth: st.auth==='otp'?'password':'otp'})),
@@ -507,3 +507,4 @@ class Component extends DCLogic {
 </script>
 </body>
 </html>
+
