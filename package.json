@@ -11,6 +11,7 @@
     "android:sync": "npm --prefix frontend run android:sync",
     "android:bundle": "npm --prefix frontend run android:bundle",
     "android:apk": "npm --prefix frontend run android:apk",
+    "android:debug": "npm --prefix frontend run android:debug",
     "web": "npm --prefix frontend run dev -- --host 127.0.0.1 --port 8082",
     "lint": "npm --prefix frontend run lint"
   },

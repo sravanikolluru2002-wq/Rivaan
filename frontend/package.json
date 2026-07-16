@@ -11,7 +11,8 @@
     "android:sync": "vite build && cap sync android",
     "android:open": "cap open android",
     "android:bundle": "vite build && cap sync android && cd android && gradlew.bat bundleRelease",
-    "android:apk": "vite build && cap sync android && cd android && gradlew.bat assembleRelease"
+    "android:apk": "vite build && cap sync android && cd android && gradlew.bat assembleRelease",
+    "android:debug": "vite build && cap sync android && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

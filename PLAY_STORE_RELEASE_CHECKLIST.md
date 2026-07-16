@@ -25,7 +25,16 @@ This repo already contains a Capacitor Android app at `frontend/android`. Use th
 
 ## Required Local Signing Variables
 
-Set these only on the build machine or CI secret store:
+The `:app:validateRivanReleaseSigning` error is expected until these are configured. It protects us from accidentally uploading a debug or unsigned release to Play Store.
+
+Create a private upload key outside the repo:
+
+```powershell
+New-Item -ItemType Directory -Force "C:\secure"
+keytool -genkeypair -v -keystore "C:\secure\rivan-upload-key.jks" -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias rivan-upload
+```
+
+Set these only on the build machine or CI secret store before running `npm run android:bundle`:
 
 ```powershell
 $env:RIVAN_UPLOAD_STORE_FILE="C:\secure\rivan-upload-key.jks"
@@ -37,6 +46,20 @@ $env:RIVAN_UPLOAD_KEY_PASSWORD="..."
 Do not commit `.jks`, `.p12`, `.key`, `.pem`, or local `.env` files.
 
 ## Build Commands
+
+For Android Studio/device testing without Play signing:
+
+```powershell
+npm run android:debug
+```
+
+The debug APK is generated at:
+
+```text
+frontend/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+For a Play Store release after setting signing variables:
 
 ```powershell
 npm run build
