@@ -118,6 +118,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [agents, setAgents] = useState([]);
   const [properties, setProperties] = useState([]);
+  const [plots, setPlots] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [visits, setVisits] = useState([]);
   const [supportTickets, setSupportTickets] = useState([]);
@@ -132,6 +133,30 @@ export default function AdminDashboard() {
     email: session?.user?.email || '',
     address: session?.user?.address || '',
   });
+  const [propertyForm, setPropertyForm] = useState({
+    id: '',
+    name: '',
+    property_code: '',
+    category: 'Open Plots',
+    location: '',
+    starting_price: '',
+    size: '',
+    image: '',
+    availability: 'Available',
+    description: '',
+  });
+  const [plotForm, setPlotForm] = useState({
+    id: '',
+    property_id: '',
+    plot_number: '',
+    facing: '',
+    size_sqy: '',
+    price: '',
+    status: 'available',
+    assigned_agent_id: '',
+  });
+  const [savingProperty, setSavingProperty] = useState(false);
+  const [savingPlot, setSavingPlot] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [liveStatus, setLiveStatus] = useState('connecting');
@@ -214,6 +239,7 @@ export default function AdminDashboard() {
         nextUsers,
         nextAgents,
         nextProperties,
+        nextPlots,
         nextBookings,
         nextVisits,
         nextSupport,
@@ -226,6 +252,7 @@ export default function AdminDashboard() {
         getJson('/api/admin/users', session.access_token).catch(() => []),
         getJson('/api/admin/agents', session.access_token).catch(() => []),
         getJson('/api/admin/properties', session.access_token).catch(() => []),
+        getJson('/api/admin/plots', session.access_token).catch(() => []),
         getJson('/api/admin/bookings', session.access_token).catch(() => []),
         getOptional('/api/admin/visits', []),
         loadSupportTickets(),
@@ -239,6 +266,7 @@ export default function AdminDashboard() {
       setUsers(nextUsers);
       setAgents(nextAgents);
       setProperties(nextProperties);
+      setPlots(nextPlots);
       setBookings(nextBookings);
       setVisits(nextVisits);
       setSupportTickets(nextSupport);
@@ -433,6 +461,7 @@ export default function AdminDashboard() {
   };
   const dashboardGridStyle = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.35fr) minmax(300px,.65fr)', gap: '18px', alignItems: 'start' };
   const formGridStyle = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit,minmax(220px,1fr))', gap: '12px' };
+  const fieldStyle = { height: '44px', borderRadius: '12px', border: '1px solid #dfe8dc', padding: '0 12px', fontFamily: 'inherit', minWidth: 0 };
 
   const legacyDashboardCards = [
     { label: 'Users', value: stats?.users ?? users.length },
@@ -562,6 +591,117 @@ export default function AdminDashboard() {
       refreshAll(false);
     } catch (err) {
       setError(err?.message || 'Failed to update support ticket');
+    }
+  };
+
+  const resetPropertyForm = () => {
+    setPropertyForm({
+      id: '',
+      name: '',
+      property_code: '',
+      category: 'Open Plots',
+      location: '',
+      starting_price: '',
+      size: '',
+      image: '',
+      availability: 'Available',
+      description: '',
+    });
+  };
+
+  const editProperty = (property) => {
+    setPropertyForm({
+      id: property.id || '',
+      name: property.name || '',
+      property_code: property.property_code || '',
+      category: property.category || 'Open Plots',
+      location: property.location || '',
+      starting_price: property.starting_price || '',
+      size: property.size || '',
+      image: property.image || property.images?.[0] || '',
+      availability: property.availability || 'Available',
+      description: property.description || '',
+    });
+  };
+
+  const saveProperty = async () => {
+    if (!propertyForm.name.trim() || !propertyForm.location.trim() || !propertyForm.image.trim()) {
+      setError('Property name, location, and image path are required.');
+      return;
+    }
+    setSavingProperty(true);
+    setError('');
+    try {
+      const payload = {
+        ...propertyForm,
+        starting_price: Number(propertyForm.starting_price || 0),
+        amenities: [],
+        approvals: [],
+      };
+      if (propertyForm.id) {
+        await putJson(`/api/admin/properties/${propertyForm.id}`, payload, session.access_token);
+      } else {
+        await postJson('/api/admin/properties', payload, session.access_token);
+      }
+      resetPropertyForm();
+      refreshAll(false);
+    } catch (err) {
+      setError(err?.message || 'Failed to save property');
+    } finally {
+      setSavingProperty(false);
+    }
+  };
+
+  const resetPlotForm = () => {
+    setPlotForm({
+      id: '',
+      property_id: properties[0]?.id || '',
+      plot_number: '',
+      facing: '',
+      size_sqy: '',
+      price: '',
+      status: 'available',
+      assigned_agent_id: '',
+    });
+  };
+
+  const editPlot = (plot) => {
+    setPlotForm({
+      id: plot.id || '',
+      property_id: plot.property_id || '',
+      plot_number: plot.plot_number || '',
+      facing: plot.facing || '',
+      size_sqy: plot.size_sqy || '',
+      price: plot.price || '',
+      status: plot.status || 'available',
+      assigned_agent_id: plot.assigned_agent_id || plot.agent_id || '',
+    });
+  };
+
+  const savePlot = async () => {
+    if (!plotForm.property_id || !plotForm.plot_number.trim()) {
+      setError('Choose a property and enter plot number.');
+      return;
+    }
+    setSavingPlot(true);
+    setError('');
+    try {
+      const payload = {
+        ...plotForm,
+        size_sqy: plotForm.size_sqy === '' ? null : Number(plotForm.size_sqy),
+        price: plotForm.price === '' ? null : Number(plotForm.price),
+      };
+      if (plotForm.id) {
+        await putJson(`/api/admin/plots/${plotForm.id}`, payload, session.access_token);
+      } else {
+        await postJson('/api/admin/plots', payload, session.access_token);
+      }
+      resetPlotForm();
+      refreshAll(false);
+    } catch (err) {
+      setError(err?.message || 'Failed to save plot');
+    } finally {
+      setSavingPlot(false);
     }
   };
 
@@ -939,22 +1079,105 @@ export default function AdminDashboard() {
         )}
 
         {!loading && page === 'properties' && (
-          <section style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Properties</h3>
-            {renderTable(
-              ['Property', 'Location', 'Category', 'Starting Price', 'Updated'],
-              properties.map((item) => [
-                <div>
-                  <div style={{ fontWeight: 800 }}>{item.name || 'Property'}</div>
-                  <div style={{ marginTop: '4px', color: '#2b6d3d', fontSize: '12px', fontWeight: 800 }}>{item.property_code || 'Code pending'}</div>
-                </div>,
-                item.location || '—',
-                item.category || '—',
-                item.starting_price ? `₹${Number(item.starting_price).toLocaleString('en-IN')}` : '—',
-                formatShortDate(item.updated_at),
-              ]),
-            )}
-          </section>
+          <div style={{ display: 'grid', gap: '18px' }}>
+            <section style={cardStyle}>
+              <h3 style={{ marginTop: 0 }}>{propertyForm.id ? 'Edit Property' : 'Create Property'}</h3>
+              <div style={formGridStyle}>
+                <input value={propertyForm.name} onChange={(event) => setPropertyForm((current) => ({ ...current, name: event.target.value }))} placeholder="Property name" style={fieldStyle} />
+                <input value={propertyForm.property_code} onChange={(event) => setPropertyForm((current) => ({ ...current, property_code: event.target.value.toUpperCase() }))} placeholder="Property code, e.g. ATC-001" style={fieldStyle} />
+                <input value={propertyForm.category} onChange={(event) => setPropertyForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" style={fieldStyle} />
+                <input value={propertyForm.location} onChange={(event) => setPropertyForm((current) => ({ ...current, location: event.target.value }))} placeholder="Location" style={fieldStyle} />
+                <input value={propertyForm.starting_price} onChange={(event) => setPropertyForm((current) => ({ ...current, starting_price: event.target.value }))} placeholder="Starting price" inputMode="numeric" style={fieldStyle} />
+                <input value={propertyForm.size} onChange={(event) => setPropertyForm((current) => ({ ...current, size: event.target.value }))} placeholder="Size summary" style={fieldStyle} />
+                <input value={propertyForm.image} onChange={(event) => setPropertyForm((current) => ({ ...current, image: event.target.value }))} placeholder="Image path or URL" style={fieldStyle} />
+                <select value={propertyForm.availability} onChange={(event) => setPropertyForm((current) => ({ ...current, availability: event.target.value }))} style={fieldStyle}>
+                  <option value="Available">Available</option>
+                  <option value="Limited">Limited</option>
+                  <option value="Sold Out">Sold Out</option>
+                </select>
+              </div>
+              <textarea value={propertyForm.description} onChange={(event) => setPropertyForm((current) => ({ ...current, description: event.target.value }))} placeholder="Property description" rows={3} style={{ ...fieldStyle, height: 'auto', padding: '12px', marginTop: '12px', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px' }}>
+                <button onClick={saveProperty} disabled={savingProperty} style={{ border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer', opacity: savingProperty ? 0.7 : 1 }}>
+                  {savingProperty ? 'Saving...' : propertyForm.id ? 'Save Property' : 'Create Property'}
+                </button>
+                {propertyForm.id && <button onClick={resetPropertyForm} style={{ border: '1px solid #d7e4d4', borderRadius: '12px', background: '#fff', color: '#2b6d3d', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' }}>Cancel Edit</button>}
+              </div>
+            </section>
+
+            <section style={cardStyle}>
+              <h3 style={{ marginTop: 0 }}>{plotForm.id ? 'Edit Plot / Unit' : 'Create Plot / Unit'}</h3>
+              <div style={formGridStyle}>
+                <select value={plotForm.property_id} onChange={(event) => setPlotForm((current) => ({ ...current, property_id: event.target.value }))} style={fieldStyle}>
+                  <option value="">Select property</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>{property.property_code || property.id} - {property.name}</option>
+                  ))}
+                </select>
+                <input value={plotForm.plot_number} onChange={(event) => setPlotForm((current) => ({ ...current, plot_number: event.target.value }))} placeholder="Plot / unit ID" style={fieldStyle} />
+                <input value={plotForm.facing} onChange={(event) => setPlotForm((current) => ({ ...current, facing: event.target.value }))} placeholder="Facing" style={fieldStyle} />
+                <input value={plotForm.size_sqy} onChange={(event) => setPlotForm((current) => ({ ...current, size_sqy: event.target.value }))} placeholder="Square yards" inputMode="decimal" style={fieldStyle} />
+                <input value={plotForm.price} onChange={(event) => setPlotForm((current) => ({ ...current, price: event.target.value }))} placeholder="Price" inputMode="numeric" style={fieldStyle} />
+                <select value={plotForm.status} onChange={(event) => setPlotForm((current) => ({ ...current, status: event.target.value }))} style={fieldStyle}>
+                  <option value="available">Available</option>
+                  <option value="reserved">Reserved</option>
+                  <option value="booked">Booked</option>
+                  <option value="sold">Sold</option>
+                </select>
+                <select value={plotForm.assigned_agent_id} onChange={(event) => setPlotForm((current) => ({ ...current, assigned_agent_id: event.target.value }))} style={fieldStyle}>
+                  <option value="">No assigned Partner</option>
+                  {assignableAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>{agent.name || agent.phone || 'Partner'}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px' }}>
+                <button onClick={savePlot} disabled={savingPlot} style={{ border: 'none', borderRadius: '12px', background: '#2b6d3d', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer', opacity: savingPlot ? 0.7 : 1 }}>
+                  {savingPlot ? 'Saving...' : plotForm.id ? 'Save Plot' : 'Create Plot'}
+                </button>
+                {plotForm.id && <button onClick={resetPlotForm} style={{ border: '1px solid #d7e4d4', borderRadius: '12px', background: '#fff', color: '#2b6d3d', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' }}>Cancel Edit</button>}
+              </div>
+            </section>
+
+            <section style={cardStyle}>
+              <h3 style={{ marginTop: 0 }}>Properties</h3>
+              {renderTable(
+                ['Property', 'Location', 'Category', 'Starting Price', 'Availability', 'Updated', 'Action'],
+                properties.map((item) => [
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{item.name || 'Property'}</div>
+                    <div style={{ marginTop: '4px', color: '#2b6d3d', fontSize: '12px', fontWeight: 800 }}>{item.property_code || 'Code pending'}</div>
+                  </div>,
+                  item.location || '—',
+                  item.category || '—',
+                  item.starting_price ? formatMoney(item.starting_price) : '—',
+                  item.availability || 'Available',
+                  formatShortDate(item.updated_at || item.created_at),
+                  <button onClick={() => editProperty(item)} style={{ border: '1px solid #d7e4d4', borderRadius: '10px', background: '#fff', color: '#2b6d3d', padding: '8px 12px', fontWeight: 800, cursor: 'pointer' }}>Edit</button>,
+                ]),
+              )}
+            </section>
+
+            <section style={cardStyle}>
+              <h3 style={{ marginTop: 0 }}>Plots / Units</h3>
+              {renderTable(
+                ['Property', 'Plot', 'Facing', 'Sq Yards', 'Price', 'Partner', 'Status', 'Action'],
+                plots.map((item) => [
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{item.property_name || item.property_id || 'Property'}</div>
+                    <div style={{ marginTop: '4px', color: '#2b6d3d', fontSize: '12px', fontWeight: 800 }}>{item.property_code || 'Code pending'}</div>
+                  </div>,
+                  item.plot_number || item.id,
+                  item.facing || '—',
+                  formatSize(item.size_sqy, item.size),
+                  item.price ? formatMoney(item.price) : '—',
+                  item.assigned_agent_name || item.agent_name || 'Unassigned',
+                  <span style={tone(item.status)}>{item.status || 'available'}</span>,
+                  <button onClick={() => editPlot(item)} style={{ border: '1px solid #d7e4d4', borderRadius: '10px', background: '#fff', color: '#2b6d3d', padding: '8px 12px', fontWeight: 800, cursor: 'pointer' }}>Edit</button>,
+                ]),
+              )}
+            </section>
+          </div>
         )}
 
         {!loading && page === 'bookings' && (

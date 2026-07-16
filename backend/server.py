@@ -1871,12 +1871,24 @@ class AdminPropertyReq(BaseModel):
     starting_price: float
     size: str
     image: str
+    property_code: Optional[str] = None
+    availability: Optional[str] = "Available"
     description: Optional[str] = ""
     survey_number: Optional[str] = ""
     facing: Optional[str] = ""
     road_width: Optional[str] = ""
     amenities: Optional[List[str]] = []
     approvals: Optional[List[str]] = []
+
+class AdminPlotReq(BaseModel):
+    property_id: str
+    plot_number: str
+    facing: Optional[str] = None
+    size_sqy: Optional[float] = None
+    size: Optional[str] = None
+    price: Optional[float] = None
+    status: Optional[str] = "available"
+    assigned_agent_id: Optional[str] = None
 
 
 CRM_STAGES = [
@@ -7463,17 +7475,139 @@ async def admin_update_service_status(req_id: str, status_val: str = Query(...),
 
 @api_router.post("/admin/properties")
 async def admin_create_property(req: AdminPropertyReq, user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Property database is unavailable")
+    now_iso = now_utc().isoformat()
     prop = {
         "id": str(uuid.uuid4()),
-        **req.dict(),
+        **req.model_dump(),
         "images": [req.image],
         "featured": False,
-        "availability": "Available",
-        "created_at": now_utc().isoformat(),
+        "availability": req.availability or "Available",
+        "created_at": now_iso,
+        "updated_at": now_iso,
     }
+    prop["property_code"] = req.property_code or property_code_for_record(prop)
     await db.properties.insert_one(prop.copy())
-    prop.pop("_id", None)
-    return prop
+    saved = normalize_live_property_record(prop)
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action="property.created",
+        entity_type="property",
+        entity_id=saved["id"],
+        metadata={"property_code": saved.get("property_code")},
+    )
+    await publish_live_update("property.updated", {"property": saved, "scope": "admin_create"}, roles=["admin", "agent", "customer"])
+    await publish_dashboard_metrics_update(roles=["admin"])
+    return saved
+
+
+@api_router.put("/admin/properties/{property_id}")
+async def admin_update_property(property_id: str, req: AdminPropertyReq, user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Property database is unavailable")
+    existing = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Property not found")
+    updates = {
+        **req.model_dump(),
+        "images": [req.image],
+        "availability": req.availability or existing.get("availability") or "Available",
+        "updated_at": now_utc().isoformat(),
+    }
+    updates["property_code"] = req.property_code or property_code_for_record({**existing, **updates})
+    await db.properties.update_one({"id": property_id}, {"$set": updates})
+    updated = normalize_live_property_record(await db.properties.find_one({"id": property_id}, {"_id": 0}) or {**existing, **updates})
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action="property.updated",
+        entity_type="property",
+        entity_id=property_id,
+        metadata={"property_code": updated.get("property_code")},
+    )
+    await publish_live_update("property.updated", {"property": updated, "scope": "admin_update"}, roles=["admin", "agent", "customer"])
+    await publish_dashboard_metrics_update(roles=["admin"])
+    return {"success": True, "property": updated}
+
+
+def clean_plot_payload(req: AdminPlotReq, *, existing: Optional[Dict[str, Any]] = None, assigned_agent: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = req.model_dump()
+    payload["status"] = str(payload.get("status") or "available").strip().lower()
+    if payload.get("size_sqy") and not payload.get("size"):
+        payload["size"] = f"{payload['size_sqy']} sq yards"
+    if assigned_agent:
+        payload["assigned_agent_id"] = assigned_agent.get("id")
+        payload["agent_id"] = assigned_agent.get("id")
+        payload["assigned_agent_name"] = assigned_agent.get("name")
+        payload["assigned_agent_phone"] = assigned_agent.get("phone")
+    elif payload.get("assigned_agent_id") in {"", None}:
+        payload["assigned_agent_id"] = None
+        payload["agent_id"] = None
+        payload["assigned_agent_name"] = None
+        payload["assigned_agent_phone"] = None
+    payload["updated_at"] = now_utc().isoformat()
+    return {**(existing or {}), **payload}
+
+
+@api_router.post("/admin/plots")
+async def admin_create_plot(req: AdminPlotReq, user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Plot database is unavailable")
+    property_doc = await db.properties.find_one({"id": req.property_id}, {"_id": 0})
+    if not property_doc:
+        raise HTTPException(status_code=404, detail="Property not found")
+    assigned_agent = None
+    if req.assigned_agent_id:
+        assigned_agent = await db.users.find_one({"id": req.assigned_agent_id, "role": ROLE_AGENT}, {"_id": 0})
+        if not assigned_agent:
+            raise HTTPException(status_code=404, detail="Assigned partner not found")
+    now_iso = now_utc().isoformat()
+    plot = clean_plot_payload(req, assigned_agent=assigned_agent)
+    plot.update({
+        "id": str(uuid.uuid4()),
+        "property_code": property_code_for_record(property_doc),
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    })
+    await db.plots.insert_one(plot.copy())
+    saved = normalize_plot_record(plot, property_doc)
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action="plot.created",
+        entity_type="plot",
+        entity_id=saved["id"],
+        metadata={"property_id": req.property_id, "plot_number": req.plot_number},
+    )
+    await publish_live_update("property.updated", {"plot": saved, "scope": "admin_plot_create"}, roles=["admin", "agent", "customer"])
+    await publish_dashboard_metrics_update(roles=["admin"])
+    return {"success": True, "plot": saved}
+
+
+@api_router.put("/admin/plots/{plot_id}")
+async def admin_update_plot(plot_id: str, req: AdminPlotReq, user: Dict[str, Any] = Depends(get_admin_user)):
+    await require_database("Plot database is unavailable")
+    existing = await db.plots.find_one({"id": plot_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Plot not found")
+    property_doc = await db.properties.find_one({"id": req.property_id}, {"_id": 0})
+    if not property_doc:
+        raise HTTPException(status_code=404, detail="Property not found")
+    assigned_agent = None
+    if req.assigned_agent_id:
+        assigned_agent = await db.users.find_one({"id": req.assigned_agent_id, "role": ROLE_AGENT}, {"_id": 0})
+        if not assigned_agent:
+            raise HTTPException(status_code=404, detail="Assigned partner not found")
+    updates = clean_plot_payload(req, existing=existing, assigned_agent=assigned_agent)
+    updates["property_code"] = property_code_for_record(property_doc)
+    await db.plots.update_one({"id": plot_id}, {"$set": updates})
+    updated = normalize_plot_record(await db.plots.find_one({"id": plot_id}, {"_id": 0}) or updates, property_doc)
+    await create_audit_log(
+        actor_user_id=user["id"],
+        action="plot.updated",
+        entity_type="plot",
+        entity_id=plot_id,
+        metadata={"property_id": req.property_id, "plot_number": req.plot_number},
+    )
+    await publish_live_update("property.updated", {"plot": updated, "scope": "admin_plot_update"}, roles=["admin", "agent", "customer"])
+    await publish_dashboard_metrics_update(roles=["admin"])
+    return {"success": True, "plot": updated}
 
 
 # ---------- Seed Data ----------
