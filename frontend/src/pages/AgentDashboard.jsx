@@ -925,8 +925,8 @@ export default function AgentDashboard() {
                     <span style={badgeTone(item.status || 'pending')}>{String(item.status || 'pending').replaceAll('_', ' ')}</span>,
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button onClick={() => updateBookingStatus(item.id, 'agent_approved')} style={{ border: 'none', borderRadius: '10px', background: '#eef6ea', color: '#2b6d3d', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>Approve</button>
-                      <button onClick={() => updateBookingStatus(item.id, 'completed')} style={{ border: 'none', borderRadius: '10px', background: '#e6f4ea', color: '#1a8a4a', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>Complete</button>
                       <button onClick={() => updateBookingStatus(item.id, 'cancelled')} style={{ border: 'none', borderRadius: '10px', background: '#fdeaea', color: '#c93b3b', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                      <span style={{ alignSelf: 'center', color: '#8a9a8c', fontSize: '12px', fontWeight: 700 }}>Admin closes final sale</span>
                     </div>,
                   ];
                 }),

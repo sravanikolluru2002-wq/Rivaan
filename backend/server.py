@@ -1796,6 +1796,7 @@ class AgentBookingCreateReq(BaseModel):
 
 class AgentBookingStatusReq(BaseModel):
     status: str
+    review_notes: Optional[str] = None
 
 class AgentUpsertReq(BaseModel):
     name: str = Field(min_length=2, max_length=120)
@@ -1853,6 +1854,8 @@ class AgentVisitUpdateReq(BaseModel):
 class AdminVisitStatusReq(BaseModel):
     status: Optional[str] = None
     assigned_agent_id: Optional[str] = None
+    visit_date: Optional[str] = None
+    visit_time: Optional[str] = None
     review_notes: Optional[str] = None
 
 class WishlistReq(BaseModel):
@@ -6237,12 +6240,22 @@ async def admin_update_booking_status(
         raise HTTPException(status_code=400, detail="Invalid booking status")
 
     now_iso = now_utc().isoformat()
+    saved_settings = await admin_settings(user)
+    commission_defaults = saved_settings.get("commission_defaults") or {}
     plot_status = (
         "booked" if status_value in {"admin_approved", "reserved"}
         else "sold" if status_value == "completed"
         else "available" if status_value in {"cancelled", "rejected"}
         else None
     )
+
+    def calculate_commission(sale_value: float) -> float:
+        if not commission_defaults.get("enabled", True):
+            return 0.0
+        if str(commission_defaults.get("model") or "percentage").lower() == "flat":
+            return float(commission_defaults.get("flat_amount") or 0)
+        percentage = float(commission_defaults.get("percentage") or 2.0)
+        return round(sale_value * percentage / 100, 2)
 
     def build_updates(existing_booking: Dict[str, Any], plot_doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         updates: Dict[str, Any] = {
@@ -6255,13 +6268,14 @@ async def admin_update_booking_status(
             "updated_at": now_iso,
             "reviewed_by_admin": user.get("name") or user.get("phone") or "Admin",
             "reviewed_at": now_iso,
+            "review_notes": (req.review_notes or "").strip(),
         }
         if status_value in {"admin_approved", "reserved"}:
             updates["confirmed_at"] = existing_booking.get("confirmed_at") or now_iso
         if status_value == "completed":
             sale_value = float(existing_booking.get("booking_value") or existing_booking.get("total_amount") or existing_booking.get("sale_value") or (plot_doc or {}).get("price") or 0)
             updates["closed_at"] = existing_booking.get("closed_at") or now_iso
-            updates["commission_amount"] = float(existing_booking.get("commission_amount") or round(sale_value * 0.02, 2))
+            updates["commission_amount"] = float(existing_booking.get("commission_amount") or calculate_commission(sale_value))
         return updates
 
     if not await is_database_available():
@@ -6644,6 +6658,10 @@ async def admin_update_visit_status(
         if "status" not in updates:
             updates["status"] = "assigned"
             updates["approval_status"] = "admin_approved"
+    if req.visit_date:
+        updates["visit_date"] = req.visit_date
+    if req.visit_time:
+        updates["visit_time"] = req.visit_time
 
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
@@ -7001,20 +7019,17 @@ async def agent_create_booking(req: AgentBookingCreateReq, user: Dict[str, Any] 
 
 @api_router.put("/agent/bookings/{booking_id}/status")
 async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusReq, user: Dict[str, Any] = Depends(get_agent_user)):
-    allowed_statuses = BOOKING_STATUSES_FOR_AGENT | {"closed"}
+    allowed_statuses = {"pending", "agent_approved", "rejected", "cancelled"}
     status_value = normalize_booking_status_value(req.status)
     if status_value not in allowed_statuses:
-        raise HTTPException(status_code=400, detail="Invalid booking status")
-    updates = {"status": status_value, "updated_at": now_utc().isoformat()}
+        raise HTTPException(status_code=400, detail="Partners can create, approve, reject, or cancel bookings. Final sale closing is handled by Admin.")
+    updates = {"status": status_value, "updated_at": now_utc().isoformat(), "review_notes": (req.review_notes or "").strip()}
     if status_value in {"agent_approved", "admin_approved"}:
         updates["approval_status"] = status_value
         updates["reviewed_by_agent"] = user.get("name") or user.get("phone") or "Agent"
     elif status_value in {"rejected", "cancelled"}:
         updates["approval_status"] = "rejected"
         updates["reviewed_by_agent"] = user.get("name") or user.get("phone") or "Agent"
-    elif status_value in {"completed", "closed"}:
-        updates["approval_status"] = "admin_approved"
-        updates["closed_at"] = now_utc().isoformat()
 
     if not await is_database_available():
         booking = next((item for item in local_list_bookings() if item.get("id") == booking_id), None)
@@ -7024,8 +7039,6 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
         if not agent_can_access_booking(user, booking, plot):
             raise HTTPException(status_code=403, detail="You do not have access to this booking")
         updated_booking = local_update_booking(booking_id, updates)
-        if status_value in {"completed", "closed"}:
-            local_save_plot_override(booking["plot_id"], {"status": "booked", "owner_id": booking["user_id"]})
         if status_value in {"cancelled", "rejected"}:
             local_save_plot_override(booking["plot_id"], {"status": "available", "owner_id": None})
         customer = local_find_user(user_id=booking.get("user_id")) or {"id": booking.get("user_id"), "name": booking.get("name"), "phone": booking.get("mobile"), "email": booking.get("customer_email")}
@@ -7034,8 +7047,6 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
                 "agent_approved": "Your booking request was approved by the agent and is waiting for admin review.",
                 "rejected": "Your booking request was rejected by the agent.",
                 "cancelled": "Your booking request was cancelled.",
-                "completed": "Your booking journey is marked as completed.",
-                "closed": "Your booking journey is marked as completed.",
             }.get(status_value)
             if customer_message:
                 await create_notification(booking["user_id"], "Booking status updated", customer_message, "booking")
@@ -7060,8 +7071,6 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
     if not agent_can_access_booking(user, booking, plot):
         raise HTTPException(status_code=403, detail="You do not have access to this booking")
     await db.bookings.update_one({"id": booking_id}, {"$set": updates})
-    if status_value in {"completed", "closed"}:
-        await db.plots.update_one({"id": booking["plot_id"]}, {"$set": {"status": "booked", "owner_id": booking["user_id"]}})
     if status_value in {"cancelled", "rejected"}:
         await db.plots.update_one({"id": booking["plot_id"]}, {"$set": {"status": "available"}, "$unset": {"owner_id": ""}})
     updated = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
@@ -7071,8 +7080,6 @@ async def agent_update_booking_status(booking_id: str, req: AgentBookingStatusRe
             "agent_approved": "Your booking request was approved by the agent and is waiting for admin review.",
             "rejected": "Your booking request was rejected by the agent.",
             "cancelled": "Your booking request was cancelled.",
-            "completed": "Your booking journey is marked as completed.",
-            "closed": "Your booking journey is marked as completed.",
         }.get(status_value)
         if customer_message:
             await create_notification(booking["user_id"], "Booking status updated", customer_message, "booking")
@@ -7322,6 +7329,7 @@ async def agent_update_site_visit(visit_id: str, req: AgentVisitUpdateReq, user:
 
 @api_router.post("/agent/bookings/{booking_id}/close")
 async def agent_close_booking(booking_id: str, user: Dict[str, Any] = Depends(get_agent_user)):
+    raise HTTPException(status_code=403, detail="Final sale closing is handled by Admin.")
     if not await is_database_available():
         if not ALLOW_LOCAL_AUTH_FALLBACK:
             raise HTTPException(status_code=503, detail="Booking database is unavailable")

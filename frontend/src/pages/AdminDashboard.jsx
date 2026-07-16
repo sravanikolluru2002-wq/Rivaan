@@ -125,6 +125,8 @@ export default function AdminDashboard() {
   const [notifications, setNotifications] = useState([]);
   const [settings, setSettings] = useState({ permissions: {}, notification_preferences: {}, role_label: 'Admin' });
   const [selectedApprovalId, setSelectedApprovalId] = useState(null);
+  const [approvalNotes, setApprovalNotes] = useState({});
+  const [visitWorkflowForms, setVisitWorkflowForms] = useState({});
   const [profileForm, setProfileForm] = useState({
     name: session?.user?.name || '',
     email: session?.user?.email || '',
@@ -464,12 +466,13 @@ export default function AdminDashboard() {
     setNotifications((current) => current.map((item) => ({ ...item, read: true })));
   };
 
-  const updateAgentStatus = async (agentId, approvalStatus) => {
+  const updateAgentStatus = async (agentId, approvalStatus, notes = '') => {
     try {
+      const reviewNotes = String(notes || approvalNotes[agentId] || '').trim();
       try {
         await requestJson(
           `/api/admin/agents/${agentId}/status`,
-          { method: 'POST', body: { approval_status: approvalStatus, review_notes: '' } },
+          { method: 'POST', body: { approval_status: approvalStatus, review_notes: reviewNotes } },
           session.access_token,
         );
       } catch (err) {
@@ -478,10 +481,11 @@ export default function AdminDashboard() {
         }
         await putJson(
           `/api/admin/agents/${agentId}/status`,
-          { approval_status: approvalStatus, review_notes: '' },
+          { approval_status: approvalStatus, review_notes: reviewNotes },
           session.access_token,
         );
       }
+      setApprovalNotes((current) => ({ ...current, [agentId]: '' }));
       refreshAll(false);
     } catch (err) {
       setError(err?.message || 'Failed to update agent status');
@@ -517,6 +521,50 @@ export default function AdminDashboard() {
     }
   };
 
+  const updateVisitWorkflowField = (visitId, field, value) => {
+    setVisitWorkflowForms((current) => ({
+      ...current,
+      [visitId]: { ...(current[visitId] || {}), [field]: value },
+    }));
+  };
+
+  const submitVisitWorkflow = async (visit, status) => {
+    const form = visitWorkflowForms[visit.id] || {};
+    const payload = {
+      status,
+      assigned_agent_id: form.assigned_agent_id || visit.assigned_agent_id || undefined,
+      visit_date: form.visit_date || visit.visit_date || undefined,
+      visit_time: form.visit_time || visit.visit_time || undefined,
+      review_notes: form.review_notes || undefined,
+    };
+    if (['scheduled', 'rescheduled'].includes(status) && (!payload.visit_date || !payload.visit_time)) {
+      setError('Choose visit date and time before scheduling or rescheduling.');
+      return;
+    }
+    if (status === 'assigned' && !payload.assigned_agent_id) {
+      setError('Choose a partner before assigning this visit.');
+      return;
+    }
+    if (['rejected', 'cancelled'].includes(status) && !payload.review_notes) {
+      setError('Add a reason before rejecting or cancelling a visit.');
+      return;
+    }
+    await updateVisitWorkflow(visit.id, payload);
+  };
+
+  const updateSupportStatus = async (ticketId, status) => {
+    try {
+      await requestJson(
+        `/api/admin/service-requests/${ticketId}/status?status_val=${encodeURIComponent(status)}`,
+        { method: 'POST' },
+        session.access_token,
+      );
+      refreshAll(false);
+    } catch (err) {
+      setError(err?.message || 'Failed to update support ticket');
+    }
+  };
+
   const saveProfile = async () => {
     setSavingProfile(true);
     try {
@@ -546,6 +594,7 @@ export default function AdminDashboard() {
 
   const confirmBooking = async (bookingId) => {
     try {
+      if (!window.confirm('Reserve this booking and mark the plot as booked?')) return;
       await postJson(`/api/admin/bookings/${bookingId}/confirm`, {}, session.access_token);
       refreshAll(false);
     } catch (err) {
@@ -555,7 +604,10 @@ export default function AdminDashboard() {
 
   const updateBookingStatus = async (bookingId, status) => {
     try {
-      await postJson(`/api/admin/bookings/${bookingId}/status`, { status }, session.access_token);
+      const needsConfirm = ['completed', 'rejected', 'cancelled'].includes(status);
+      if (needsConfirm && !window.confirm(`Confirm booking status change to ${status.replace('_', ' ')}?`)) return;
+      const review_notes = needsConfirm ? window.prompt('Add review notes or reason for this booking update:', '') || '' : '';
+      await postJson(`/api/admin/bookings/${bookingId}/status`, { status, review_notes }, session.access_token);
       refreshAll(false);
     } catch (err) {
       setError(err?.message || 'Failed to update booking');
@@ -832,9 +884,17 @@ export default function AdminDashboard() {
                   <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedApproval.address || '—'}</div>
                   <div style={{ gridColumn: '1 / -1' }}><strong>Notes:</strong> {selectedApproval.application_notes || '—'}</div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                <textarea
+                  value={approvalNotes[selectedApproval.id] || ''}
+                  onChange={(event) => setApprovalNotes((current) => ({ ...current, [selectedApproval.id]: event.target.value }))}
+                  placeholder="Add admin review notes before approving, rejecting, or suspending"
+                  rows={3}
+                  style={{ borderRadius: '12px', border: '1px solid #dfe8dc', padding: '12px', fontFamily: 'inherit', resize: 'vertical' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
                   <button onClick={() => { updateAgentStatus(selectedApproval.id, 'approved'); setSelectedApprovalId(null); }} style={{ border: 'none', borderRadius: '10px', background: '#2b6d3d', color: '#fff', padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}>Approve Partner</button>
                   <button onClick={() => { updateAgentStatus(selectedApproval.id, 'rejected'); setSelectedApprovalId(null); }} style={{ border: '1px solid #f0c8c8', borderRadius: '10px', background: '#fff', color: '#c93b3b', padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}>Reject Partner</button>
+                  <button onClick={() => { updateAgentStatus(selectedApproval.id, 'suspended'); setSelectedApprovalId(null); }} style={{ border: '1px solid #e8d0a8', borderRadius: '10px', background: '#fff8ed', color: '#9b5b10', padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}>Suspend Partner</button>
                 </div>
               </div>
             ) : (
@@ -944,10 +1004,10 @@ export default function AdminDashboard() {
                 item.visit_time || '—',
                 item.assigned_agent_name || 'Unassigned',
                 <span style={tone(item.status)}>{String(item.status || 'pending').replaceAll('_', ' ')}</span>,
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <select
-                    value={item.assigned_agent_id || ''}
-                    onChange={(event) => event.target.value && updateVisitWorkflow(item.id, { assigned_agent_id: event.target.value })}
+                    value={visitWorkflowForms[item.id]?.assigned_agent_id ?? item.assigned_agent_id ?? ''}
+                    onChange={(event) => updateVisitWorkflowField(item.id, 'assigned_agent_id', event.target.value)}
                     style={{ height: '34px', borderRadius: '9px', border: '1px solid #dfe8dc', padding: '0 8px', fontFamily: 'inherit', maxWidth: '180px' }}
                   >
                     <option value="">Assign partner</option>
@@ -955,9 +1015,28 @@ export default function AdminDashboard() {
                       <option key={agent.id} value={agent.id}>Assign to {agent.name || agent.phone || 'Partner'}</option>
                     ))}
                   </select>
-                  <button onClick={() => updateVisitWorkflow(item.id, { status: 'scheduled' })} style={{ border: 'none', borderRadius: '9px', background: '#eef2fb', color: '#2a6fdb', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>✓ Schedule</button>
-                  <button onClick={() => updateVisitWorkflow(item.id, { status: 'completed' })} style={{ border: 'none', borderRadius: '9px', background: '#e6f4ea', color: '#1a8a4a', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>✓ Complete</button>
-                  <button onClick={() => updateVisitWorkflow(item.id, { status: 'rejected' })} style={{ border: 'none', borderRadius: '9px', background: '#fdeaea', color: '#c93b3b', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>× Reject</button>
+                  <input
+                    type="date"
+                    value={visitWorkflowForms[item.id]?.visit_date ?? item.visit_date ?? ''}
+                    onChange={(event) => updateVisitWorkflowField(item.id, 'visit_date', event.target.value)}
+                    style={{ height: '34px', borderRadius: '9px', border: '1px solid #dfe8dc', padding: '0 8px', fontFamily: 'inherit' }}
+                  />
+                  <input
+                    value={visitWorkflowForms[item.id]?.visit_time ?? item.visit_time ?? ''}
+                    onChange={(event) => updateVisitWorkflowField(item.id, 'visit_time', event.target.value)}
+                    placeholder="Time"
+                    style={{ height: '34px', borderRadius: '9px', border: '1px solid #dfe8dc', padding: '0 8px', fontFamily: 'inherit', width: '90px' }}
+                  />
+                  <input
+                    value={visitWorkflowForms[item.id]?.review_notes ?? ''}
+                    onChange={(event) => updateVisitWorkflowField(item.id, 'review_notes', event.target.value)}
+                    placeholder="Reason / notes"
+                    style={{ height: '34px', borderRadius: '9px', border: '1px solid #dfe8dc', padding: '0 8px', fontFamily: 'inherit', minWidth: '150px' }}
+                  />
+                  <button onClick={() => submitVisitWorkflow(item, 'assigned')} style={{ border: 'none', borderRadius: '9px', background: '#eef6ea', color: '#2b6d3d', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>Assign</button>
+                  <button onClick={() => submitVisitWorkflow(item, 'scheduled')} style={{ border: 'none', borderRadius: '9px', background: '#eef2fb', color: '#2a6fdb', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>Schedule</button>
+                  <button onClick={() => submitVisitWorkflow(item, 'completed')} style={{ border: 'none', borderRadius: '9px', background: '#e6f4ea', color: '#1a8a4a', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>Complete</button>
+                  <button onClick={() => submitVisitWorkflow(item, 'rejected')} style={{ border: 'none', borderRadius: '9px', background: '#fdeaea', color: '#c93b3b', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>Reject</button>
                 </div>,
               ]) : [[<span style={{ color: '#8a9a8c' }}>No visits available.</span>, '', '', '', '', '', '']],
             )}
@@ -968,7 +1047,7 @@ export default function AdminDashboard() {
           <section style={cardStyle}>
             <h3 style={{ marginTop: 0 }}>Service Request Queue</h3>
             {renderTable(
-              ['Ticket #', 'Customer', 'Subject', 'Priority', 'Status', 'Date'],
+              ['Ticket #', 'Customer', 'Subject', 'Priority', 'Status', 'Date', 'Actions'],
               latestTickets.length
                 ? supportTickets.map((item) => [
                     item.ticket_number,
@@ -977,8 +1056,12 @@ export default function AdminDashboard() {
                     <span style={tone(item.priority)}>{item.priority}</span>,
                     <span style={tone(item.status)}>{item.status}</span>,
                     formatDateTime(item.created_at),
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button onClick={() => updateSupportStatus(item.id, 'in_progress')} style={{ border: 'none', borderRadius: '9px', background: '#eef2fb', color: '#2a6fdb', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>In Progress</button>
+                      <button onClick={() => updateSupportStatus(item.id, 'completed')} style={{ border: 'none', borderRadius: '9px', background: '#e6f4ea', color: '#1a8a4a', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>Complete</button>
+                    </div>,
                   ])
-                : [[<span style={{ color: '#8a9a8c' }}>No support tickets yet.</span>, '', '', '', '', '']],
+                : [[<span style={{ color: '#8a9a8c' }}>No support tickets yet.</span>, '', '', '', '', '', '']],
             )}
           </section>
         )}
