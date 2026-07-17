@@ -66,6 +66,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const [recaptchaResetCount, setRecaptchaResetCount] = useState(0);
   const [staffAccessOpen, setStaffAccessOpen] = useState(false);
   const [, setRememberedStaffRole] = useState(() => localStorage.getItem(LAST_STAFF_ROLE_KEY) || "");
 
@@ -134,7 +135,7 @@ export default function Login() {
       setRecaptchaReady(true);
     }
     recaptchaRef.current = window.recaptchaVerifier;
-  }, []);
+  }, [recaptchaResetCount]);
 
   const resetMessages = () => {
     setError("");
@@ -276,7 +277,12 @@ export default function Login() {
       setStatus(precheck.statusMessage || `OTP sent to ${formatPhoneLabel(normalizedPhone)}.`);
       setScreen("otp");
     } catch (err) {
-      setError(err?.message || "Failed to send OTP. Check Firebase phone auth setup.");
+      setError(friendlyFirebaseError(err));
+      if (String(err?.code || err?.message || "").includes("captcha-check-failed")) {
+        resetFirebaseRecaptcha();
+        setRecaptchaReady(false);
+        setRecaptchaResetCount((value) => value + 1);
+      }
     } finally {
       setLoading(false);
     }
@@ -386,6 +392,31 @@ export default function Login() {
     agent: "Use your approved mobile number to access the Partner portal",
     admin: "Only the authorized admin mobile number can continue",
   };
+
+  function friendlyFirebaseError(error) {
+    const message = String(error?.message || error || "");
+    const code = String(error?.code || "");
+    if (code.includes("captcha-check-failed") || message.toLowerCase().includes("hostname match not found")) {
+      return "Firebase domain setup issue: add rivanreality.com and www.rivanreality.com in Firebase Authentication > Settings > Authorized domains, then try OTP again.";
+    }
+    if (code.includes("too-many-requests")) {
+      return "Firebase has temporarily blocked OTP attempts for this number/device. Please wait a few minutes and try again.";
+    }
+    if (code.includes("invalid-phone-number")) {
+      return "Enter a valid 10-digit mobile number.";
+    }
+    if (code.includes("quota-exceeded")) {
+      return "Firebase OTP quota is exceeded for now. Please check Firebase SMS quota/billing.";
+    }
+    return message || "Failed to send OTP. Check Firebase phone auth setup.";
+  }
+
+  function resetFirebaseRecaptcha() {
+    try {
+      window.recaptchaVerifier?.clear?.();
+    } catch {}
+    window.recaptchaVerifier = null;
+  }
 
   const inputStyle = {
     width: "100%",
