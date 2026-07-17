@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "290363461131-u342snqi9aka7j51cv0ofsvos0h6dbeu.apps.googleusercontent.com",
+          "client_id": "290363461131-aak4g2l45ohi913e97thsvvp919863fa.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.rivan.app",
-            "certificate_hash": "d76a1df5b6164786efb7f726c67749e9366688b3"
+            "certificate_hash": "da40e63032f6395fc3b746dfe027e80ec95dafdf"
           }
         },
         {
