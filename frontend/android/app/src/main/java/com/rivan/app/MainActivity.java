@@ -1,4 +1,4 @@
-package com.rivan.reality;
+package com.rivan.app;
 
 import com.getcapacitor.BridgeActivity;
 

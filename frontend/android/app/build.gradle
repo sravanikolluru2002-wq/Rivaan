@@ -7,10 +7,10 @@ def rivanUploadKeyPassword = System.getenv("RIVAN_UPLOAD_KEY_PASSWORD")
 def hasRivanReleaseSigning = rivanUploadStoreFile && rivanUploadStorePassword && rivanUploadKeyAlias && rivanUploadKeyPassword
 
 android {
-    namespace = "com.rivan.reality"
+    namespace = "com.rivan.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.rivan.reality"
+        applicationId "com.rivan.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

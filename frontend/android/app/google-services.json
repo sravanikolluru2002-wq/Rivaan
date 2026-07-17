@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "290363461131",
+    "project_id": "rivan-auth-live",
+    "storage_bucket": "rivan-auth-live.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:290363461131:android:4ba7559eb8dffc9b4c410e",
+        "android_client_info": {
+          "package_name": "com.rivan.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "290363461131-u342snqi9aka7j51cv0ofsvos0h6dbeu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rivan.app",
+            "certificate_hash": "d76a1df5b6164786efb7f726c67749e9366688b3"
+          }
+        },
+        {
+          "client_id": "290363461131-gbd4a8ch6kda7ebgi8qqpikosfirbq8p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBP4sxaBNpH6uFITgl4nryoPaDFr0k4rzw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "290363461131-1o2d8le7fg846cdkvhksrklstepn7kpj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
