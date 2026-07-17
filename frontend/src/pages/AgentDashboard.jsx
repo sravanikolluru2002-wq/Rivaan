@@ -783,7 +783,7 @@ export default function AgentDashboard() {
     <div ref={shellRef} style={shellStyle}>
       <aside style={sidebarStyle}>
         <div style={{ display: isMobile ? 'flex' : 'block', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <img src="/RivanRealtyLogo.png" alt="Rivan Realty" style={{ width: isMobile ? '96px' : '148px', height: 'auto', borderRadius: '10px', display: 'block', margin: isMobile ? 0 : '0 auto' }} />
+          <img src="/RivanRealtyLogo-fast.webp" alt="Rivan Realty" loading="eager" decoding="async" style={{ width: isMobile ? '96px' : '148px', height: 'auto', borderRadius: '10px', display: 'block', margin: isMobile ? 0 : '0 auto' }} />
           <p style={{ margin: isMobile ? '8px 0 0' : '14px 0 0', fontSize: '12px', color: '#d8ead7', lineHeight: 1.45, display: isMobile ? 'none' : 'block' }}>
             Manage your leads, visits, bookings, and customer follow-ups in one place.
           </p>

@@ -17,7 +17,19 @@ const G = [
   'linear-gradient(150deg,#4a6b2f 0%,#84a95a 55%,#d3dfa0 100%)',
 ];
 const DEFAULT_PROPERTY_IMAGE = '/Property Image 1.jpeg';
+const FAST_LOGO = '/RivanRealtyLogo-fast.webp';
 const PUBLIC_DASHBOARD_CACHE_KEY = 'rivan_customer_dashboard_public_cache';
+const DEFAULT_LIVE_PROPERTY = {
+  id: 'prop-1',
+  name: 'Sirpuram Gardens Independent House',
+  location: 'Achutapuram, Visakhapatnam',
+  category: 'Open Plots',
+  property_type: 'Open Plots',
+  starting_price: 1600000,
+  image: DEFAULT_PROPERTY_IMAGE,
+  images: [DEFAULT_PROPERTY_IMAGE, '/Property Image 2.jpeg', '/East Face.jpeg', '/West Face.jpeg'],
+  amenities: ['Gated Security', 'Wide Roads', 'Water Supply', 'Street Lighting'],
+};
 
 function customerDashboardCacheKey(session, guestSession) {
   if (guestSession?.guest) return PUBLIC_DASHBOARD_CACHE_KEY;
@@ -188,8 +200,8 @@ export default function AppDashboard() {
   const [liveStatus, setLiveStatus] = useState('connecting');
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState('');
-  const [featuredRows, setFeaturedRows] = useState(() => initialDashboardCache.current.featuredRows || []);
-  const [propertyRows, setPropertyRows] = useState(() => initialDashboardCache.current.propertyRows || []);
+  const [featuredRows, setFeaturedRows] = useState(() => initialDashboardCache.current.featuredRows?.length ? initialDashboardCache.current.featuredRows : [DEFAULT_LIVE_PROPERTY]);
+  const [propertyRows, setPropertyRows] = useState(() => initialDashboardCache.current.propertyRows?.length ? initialDashboardCache.current.propertyRows : [DEFAULT_LIVE_PROPERTY]);
   const [landRows, setLandRows] = useState(() => initialDashboardCache.current.landRows || []);
   const [notificationRows, setNotificationRows] = useState(() => initialDashboardCache.current.notificationRows || []);
   const [documentRows, setDocumentRows] = useState(() => initialDashboardCache.current.documentRows || []);
@@ -317,8 +329,8 @@ export default function AppDashboard() {
           promo: me?.communication_preferences?.promotional_emails ?? false,
           dark: me?.dark_mode_enabled ?? false,
         });
-        const nextFeaturedRows = Array.isArray(featuredApi) ? featuredApi : [];
-        const nextPropertyRows = Array.isArray(propertiesApi) ? propertiesApi : [];
+        const nextFeaturedRows = Array.isArray(featuredApi) && featuredApi.length ? featuredApi : [DEFAULT_LIVE_PROPERTY];
+        const nextPropertyRows = Array.isArray(propertiesApi) && propertiesApi.length ? propertiesApi : [DEFAULT_LIVE_PROPERTY];
         const nextLandRows = Array.isArray(myLandApi) ? myLandApi : [];
         const nextNotificationRows = Array.isArray(notificationsApi) ? notificationsApi : [];
         const nextDocumentRows = Array.isArray(documentsApi) ? documentsApi : [];
@@ -1082,7 +1094,7 @@ export default function AppDashboard() {
                   </span>
                 )}
               </button>
-              <img src="/RivanRealtyLogo.png" alt="Rivan Realty" style={{'height': '34px', 'width': '54px', 'objectFit': 'contain', 'borderRadius': '9px', 'opacity': '.95'}} />
+              <img src={FAST_LOGO} alt="Rivan Realty" loading="eager" decoding="async" style={{'height': '34px', 'width': '54px', 'objectFit': 'contain', 'borderRadius': '9px', 'opacity': '.95'}} />
             </div>
           </div>
           <div style={{'marginTop': '18px', 'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'height': '50px', 'background': '#fff', 'borderRadius': '15px', 'padding': '0 14px'}}>
@@ -1414,7 +1426,7 @@ export default function AppDashboard() {
         <div style={{'background': 'linear-gradient(160deg,#2b6d3d 0%,#377e4b 100%)', 'padding': '56px 22px 24px', 'borderRadius': '0 0 26px 26px'}}>
           <div style={{'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between'}}>
             <span style={{'fontSize': '18px', 'fontWeight': '800', 'color': '#fff'}}>Profile</span>
-            <img src="/RivanRealtyLogo.png" alt="Rivan Realty" style={{'height': '30px', 'width': '48px', 'objectFit': 'contain', 'borderRadius': '8px', 'opacity': '.9'}} />
+            <img src={FAST_LOGO} alt="Rivan Realty" loading="lazy" decoding="async" style={{'height': '30px', 'width': '48px', 'objectFit': 'contain', 'borderRadius': '8px', 'opacity': '.9'}} />
           </div>
           <div style={{'marginTop': '18px', 'display': 'flex', 'alignItems': 'center', 'gap': '14px'}}>
             <div style={{'width': '62px', 'height': '62px', 'borderRadius': '20px', 'background': 'rgba(255,255,255,.16)', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'fontSize': '24px', 'fontWeight': '800', 'color': '#fff'}}>{initials}</div>

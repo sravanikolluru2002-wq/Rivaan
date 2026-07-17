@@ -1,11 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login';
-import AppDashboard from './pages/AppDashboard';
-import MyLands from './pages/MyLands';
-import Visits from './pages/Visits';
-import AgentDashboard from './pages/AgentDashboard';
-import AdminDashboard from './pages/AdminDashboard';
+
+const Login = lazy(() => import('./pages/Login'));
+const AppDashboard = lazy(() => import('./pages/AppDashboard'));
+const MyLands = lazy(() => import('./pages/MyLands'));
+const Visits = lazy(() => import('./pages/Visits'));
+const AgentDashboard = lazy(() => import('./pages/AgentDashboard'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+
+function AppLoader() {
+  return (
+    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: '#eef6ea', color: '#1f5a31', fontWeight: 800 }}>
+      Loading Rivan Realty...
+    </div>
+  );
+}
 
 export default function App() {
   const [isOffline, setIsOffline] = useState(() => (
@@ -29,18 +38,20 @@ export default function App() {
           You are offline. Saved pages will still open, and live data will sync when connection returns.
         </div>
       )}
-      <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/app" element={<AppDashboard />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
-        <Route path="/agent" element={<AgentDashboard />} />
-        <Route path="/agent-dashboard" element={<AgentDashboard />} />
-        <Route path="/my-lands" element={<MyLands />} />
-        <Route path="/visits" element={<Visits />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <Suspense fallback={<AppLoader />}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/app" element={<AppDashboard />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          <Route path="/agent" element={<AgentDashboard />} />
+          <Route path="/agent-dashboard" element={<AgentDashboard />} />
+          <Route path="/my-lands" element={<MyLands />} />
+          <Route path="/visits" element={<Visits />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

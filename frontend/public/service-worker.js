@@ -6,7 +6,7 @@
    - Cross-origin (React/Babel CDN, Google Fonts): stale-while-revalidate so
      the app boots offline once it has been opened online at least once.
 */
-const CACHE = 'rivan-pwa-v6';
+const CACHE = 'rivan-pwa-v7';
 
 const CORE = [
   './',
@@ -14,6 +14,10 @@ const CORE = [
   './support.js',
   './manifest.json',
   './RivanRealtyLogo.png',
+  './RivanRealtyLogo-fast.webp',
+  './RivanRealtyLogo-fast.png',
+  './RivanRealtyLogo-icon.webp',
+  './RivanRealtyLogo-icon.png',
   './Property Image 1.jpeg',
   './Property Image 2.jpeg',
   './Map.jpeg',
