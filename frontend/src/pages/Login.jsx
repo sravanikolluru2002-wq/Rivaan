@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
-import { clearSession, loadSession, postJson, restoreSession, saveSession } from "../lib/auth";
+import { clearSession, getBackendUrl, loadSession, postJson, restoreSession, saveSession } from "../lib/auth";
 
 const RESEND_SECONDS = 20;
 const PRIMARY_AGENT_PHONE = "9052644345";
@@ -91,6 +91,14 @@ export default function Login() {
       mounted = false;
     };
   }, [navigate]);
+
+  useEffect(() => {
+    fetch(`${getBackendUrl()}/api/health?_t=${Date.now()}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     roleRef.current = role;

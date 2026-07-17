@@ -17,6 +17,31 @@ const G = [
   'linear-gradient(150deg,#4a6b2f 0%,#84a95a 55%,#d3dfa0 100%)',
 ];
 const DEFAULT_PROPERTY_IMAGE = '/Property Image 1.jpeg';
+const PUBLIC_DASHBOARD_CACHE_KEY = 'rivan_customer_dashboard_public_cache';
+
+function customerDashboardCacheKey(session, guestSession) {
+  if (guestSession?.guest) return PUBLIC_DASHBOARD_CACHE_KEY;
+  const identity = session?.user?.id || session?.user?.phone || session?.user?.uid;
+  return identity ? `rivan_customer_dashboard_${identity}` : null;
+}
+
+function loadCustomerDashboardCache(cacheKey) {
+  if (!cacheKey) return {};
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCustomerDashboardCache(cacheKey, payload) {
+  if (!cacheKey) return;
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ ...payload, cached_at: new Date().toISOString() }));
+  } catch {}
+}
 
 function initialsFromName(name) {
   return String(name || 'CU')
@@ -145,6 +170,8 @@ export default function AppDashboard() {
 
   const [session, setSession] = useState(() => loadSession());
   const [guestSession, setGuestSession] = useState(() => loadGuestSession());
+  const cacheKey = customerDashboardCacheKey(session, guestSession);
+  const initialDashboardCache = useRef(loadCustomerDashboardCache(cacheKey));
   const [stack, setStack] = useState(['home']);
   const [chip, setChip] = useState('All');
   const [myTab, setMyTab] = useState('Active');
@@ -161,12 +188,12 @@ export default function AppDashboard() {
   const [liveStatus, setLiveStatus] = useState('connecting');
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState('');
-  const [featuredRows, setFeaturedRows] = useState([]);
-  const [propertyRows, setPropertyRows] = useState([]);
-  const [landRows, setLandRows] = useState([]);
-  const [notificationRows, setNotificationRows] = useState([]);
-  const [documentRows, setDocumentRows] = useState([]);
-  const [serviceRows, setServiceRows] = useState([]);
+  const [featuredRows, setFeaturedRows] = useState(() => initialDashboardCache.current.featuredRows || []);
+  const [propertyRows, setPropertyRows] = useState(() => initialDashboardCache.current.propertyRows || []);
+  const [landRows, setLandRows] = useState(() => initialDashboardCache.current.landRows || []);
+  const [notificationRows, setNotificationRows] = useState(() => initialDashboardCache.current.notificationRows || []);
+  const [documentRows, setDocumentRows] = useState(() => initialDashboardCache.current.documentRows || []);
+  const [serviceRows, setServiceRows] = useState(() => initialDashboardCache.current.serviceRows || []);
   const [profileForm, setProfileForm] = useState({
     name: '',
     email: '',
@@ -214,7 +241,11 @@ export default function AppDashboard() {
     setTimeout(scrollTop, 10);
   };
   const openFirstProject = () => {
-    openProject(featured[0] || { name: 'Sirpuram Gardens', loc: 'Achutapuram, Visakhapatnam', tag: 'Achutapuram', price: '₹0', grad: 'linear-gradient(150deg,#2f6b3a 0%,#6ba15a 55%,#c7dc9c 100%)' });
+    if (featured[0]) {
+      openProject(featured[0]);
+      return;
+    }
+    refreshExplore();
   };
 
   useEffect(() => {
@@ -286,12 +317,26 @@ export default function AppDashboard() {
           promo: me?.communication_preferences?.promotional_emails ?? false,
           dark: me?.dark_mode_enabled ?? false,
         });
-        setFeaturedRows(Array.isArray(featuredApi) ? featuredApi : []);
-        setPropertyRows(Array.isArray(propertiesApi) ? propertiesApi : []);
-        setLandRows(Array.isArray(myLandApi) ? myLandApi : []);
-        setNotificationRows(Array.isArray(notificationsApi) ? notificationsApi : []);
-        setDocumentRows(Array.isArray(documentsApi) ? documentsApi : []);
-        setServiceRows(Array.isArray(servicesApi) ? servicesApi : []);
+        const nextFeaturedRows = Array.isArray(featuredApi) ? featuredApi : [];
+        const nextPropertyRows = Array.isArray(propertiesApi) ? propertiesApi : [];
+        const nextLandRows = Array.isArray(myLandApi) ? myLandApi : [];
+        const nextNotificationRows = Array.isArray(notificationsApi) ? notificationsApi : [];
+        const nextDocumentRows = Array.isArray(documentsApi) ? documentsApi : [];
+        const nextServiceRows = Array.isArray(servicesApi) ? servicesApi : [];
+        setFeaturedRows(nextFeaturedRows);
+        setPropertyRows(nextPropertyRows);
+        setLandRows(nextLandRows);
+        setNotificationRows(nextNotificationRows);
+        setDocumentRows(nextDocumentRows);
+        setServiceRows(nextServiceRows);
+        saveCustomerDashboardCache(cacheKey, {
+          featuredRows: nextFeaturedRows,
+          propertyRows: nextPropertyRows,
+          landRows: isGuest ? [] : nextLandRows,
+          notificationRows: isGuest ? [] : nextNotificationRows,
+          documentRows: isGuest ? [] : nextDocumentRows,
+          serviceRows: isGuest ? [] : nextServiceRows,
+        });
       } catch (error) {
         if (!active) return;
         setPageError(error?.message || 'Unable to load customer dashboard.');
@@ -304,7 +349,7 @@ export default function AppDashboard() {
     return () => {
       active = false;
     };
-  }, [guestSession, session?.access_token, session?.user?.role]);
+  }, [cacheKey, guestSession, session?.access_token, session?.user?.role]);
 
   useEffect(() => {
     if (!session?.access_token || guestSession?.guest) return undefined;
@@ -320,6 +365,15 @@ export default function AppDashboard() {
       if (closed) return;
       setNotificationRows(Array.isArray(notificationsApi) ? notificationsApi : []);
       setLandRows(Array.isArray(myLandApi) ? myLandApi : []);
+      const cachedDashboard = loadCustomerDashboardCache(cacheKey);
+      saveCustomerDashboardCache(cacheKey, {
+        featuredRows: cachedDashboard.featuredRows || [],
+        propertyRows: cachedDashboard.propertyRows || [],
+        landRows: Array.isArray(myLandApi) ? myLandApi : [],
+        notificationRows: Array.isArray(notificationsApi) ? notificationsApi : [],
+        documentRows: cachedDashboard.documentRows || [],
+        serviceRows: cachedDashboard.serviceRows || [],
+      });
     };
 
     const beginPolling = () => {
@@ -360,7 +414,7 @@ export default function AppDashboard() {
       if (poller) window.clearInterval(poller);
       socket?.close();
     };
-  }, [guestSession, session?.access_token]);
+  }, [cacheKey, guestSession, session?.access_token]);
 
   useEffect(() => {
     const imagesToWarm = [...featuredRows, ...propertyRows]
@@ -426,36 +480,8 @@ export default function AppDashboard() {
   ];
   const homeQuery = normalizeSearch(homeSearch);
   const exploreQuery = normalizeSearch(exploreSearch);
-
-  featured.splice(0, featured.length, {
-    name: 'Sirpuram Gardens',
-    loc: 'Achutapuram, Visakhapatnam',
-    tag: 'Achutapuram',
-    price: 'Price on request',
-    grad: G[0],
-    open: () => openProject({
-      name: 'Sirpuram Gardens',
-      loc: 'Achutapuram, Visakhapatnam',
-      tag: 'Achutapuram',
-      price: 'Price on request',
-      grad: G[0],
-    }),
-  });
-  nearbyAll.splice(0, nearbyAll.length, {
-    name: 'Sirpuram Gardens',
-    loc: 'Achutapuram, Visakhapatnam',
-    price: 'Price on request',
-    type: 'Plots',
-    grad: G[0],
-  });
-
-  if (featured[0]?.name === 'Sirpuram Gardens') {
-    featured[0].price = 'Price on request';
-    featured[0].open = () => openProject({ ...featured[0], price: 'Price on request' });
-  }
-  if (nearbyAll[0]?.name === 'Sirpuram Gardens') {
-    nearbyAll[0].price = 'Price on request';
-  }
+  featured.splice(0, featured.length);
+  nearbyAll.splice(0, nearbyAll.length);
 
   const getChip = (l) => ({
     label: l,
@@ -548,6 +574,7 @@ export default function AppDashboard() {
   }
 
   const filteredFeatured = featured.filter((item) => propertyMatches(item, homeQuery));
+  const homeDataLoading = pageLoading && !featuredRows.length && !propertyRows.length;
   const nearby = nearbyAll
     .filter((n) => chip === 'All' || n.type === chip)
     .filter((n) => propertyMatches(n, exploreQuery || homeQuery))
@@ -1073,8 +1100,8 @@ export default function AppDashboard() {
             <div style={{'position': 'absolute', 'inset': '0', 'background': 'radial-gradient(80% 60% at 78% 22%,rgba(255,247,214,.35),transparent 60%),linear-gradient(180deg,rgba(9,32,16,.12),rgba(9,32,16,.62))'}}></div>
             <div style={{'position': 'absolute', 'inset': '0', 'padding': '20px', 'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'space-between'}}>
               <div>
-                <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>{selectedProperty?.name || 'Sirpuram Gardens'}</p>
-                <p style={{'margin': '3px 0 0', 'fontSize': '12.5px', 'color': '#eaf3e4', 'fontWeight': '500'}}>{selectedProperty?.property_type || selectedProperty?.category || 'Live property details'}</p>
+                <p style={{'margin': '0', 'fontSize': '19px', 'fontWeight': '800', 'color': '#fff'}}>{selectedProperty?.name || (homeDataLoading ? 'Loading live properties' : 'Live properties')}</p>
+                <p style={{'margin': '3px 0 0', 'fontSize': '12.5px', 'color': '#eaf3e4', 'fontWeight': '500'}}>{selectedProperty?.property_type || selectedProperty?.category || (homeDataLoading ? 'Fetching current inventory' : 'Live property details')}</p>
               </div>
               <span style={{'alignSelf': 'flex-start', 'background': '#fff', 'color': '#1f5a31', 'fontSize': '12.5px', 'fontWeight': '700', 'padding': '9px 16px', 'borderRadius': '11px'}}>Explore Now -&gt;</span>
             </div>
@@ -1086,7 +1113,17 @@ export default function AppDashboard() {
             <a onClick={goExplore} style={{'fontSize': '13px', 'fontWeight': '700', 'color': '#e2822a', 'cursor': 'pointer'}}>View All</a>
           </div>
           <div style={{'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '13px'}}>
-            { filteredFeatured.map((f, index) => (
+            {homeDataLoading && skeletons.slice(0, 2).map((s) => (
+              <div key={s} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)'}}>
+                <div className="rv-skel" style={{height: '96px'}}></div>
+                <div style={{'padding': '11px 12px 13px', 'display': 'grid', 'gap': '8px'}}>
+                  <div className="rv-skel" style={{height: '14px', width: '82%', borderRadius: '8px'}}></div>
+                  <div className="rv-skel" style={{height: '12px', width: '62%', borderRadius: '8px'}}></div>
+                  <div className="rv-skel" style={{height: '15px', width: '48%', borderRadius: '8px'}}></div>
+                </div>
+              </div>
+            ))}
+            {!homeDataLoading && filteredFeatured.map((f, index) => (
               <div onClick={f.open} style={{'background': '#fff', 'borderRadius': '18px', 'overflow': 'hidden', 'border': '1px solid #eef3ec', 'boxShadow': '0 10px 28px -20px rgba(18,53,29,.5)', 'cursor': 'pointer'}}>
                 <PropertyImage src={propertyPrimaryImage(f.property)} alt={f.name} eager={index === 0} fallback={f.grad} style={{height: '96px'}}>
                   <span style={{'position': 'absolute', 'top': '8px', 'left': '8px', 'background': 'rgba(9,32,16,.55)', 'color': '#fff', 'fontSize': '10px', 'fontWeight': '700', 'padding': '3px 8px', 'borderRadius': '20px', 'backdropFilter': 'blur(4px)'}}>Location: {f.tag}</span>
@@ -1099,7 +1136,7 @@ export default function AppDashboard() {
               </div>
             ))}
           </div>
-          {!filteredFeatured.length && (
+          {!homeDataLoading && !filteredFeatured.length && (
             <div style={{'marginTop': '12px', 'background': '#fff', 'border': '1px solid #eef3ec', 'borderRadius': '16px', 'padding': '18px', 'fontSize': '13px', 'fontWeight': '600', 'color': '#6d7d6f'}}>No properties match your search right now.</div>
           )}
 

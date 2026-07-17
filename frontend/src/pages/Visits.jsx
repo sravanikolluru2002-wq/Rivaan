@@ -2,9 +2,37 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getJson, loadSession, requestJson } from '../lib/auth';
 
+function customerVisitsCacheKey(session) {
+  const identity = session?.user?.id || session?.user?.phone || session?.user?.uid;
+  return identity ? `rivan_customer_visits_${identity}` : null;
+}
+
+function loadVisitsCache(cacheKey) {
+  if (!cacheKey) return { visits: [], properties: [] };
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      visits: Array.isArray(parsed.visits) ? parsed.visits : [],
+      properties: Array.isArray(parsed.properties) ? parsed.properties : [],
+    };
+  } catch {
+    return { visits: [], properties: [] };
+  }
+}
+
+function saveVisitsCache(cacheKey, payload) {
+  if (!cacheKey) return;
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ ...payload, cached_at: new Date().toISOString() }));
+  } catch {}
+}
+
 export default function Visits() {
   const navigate = useNavigate();
   const [session] = useState(() => loadSession());
+  const visitsCacheKey = customerVisitsCacheKey(session);
+  const initialVisitsCache = loadVisitsCache(visitsCacheKey);
 
   const [stack, setStack] = useState(['visits']);
   const [tab, setTab] = useState('Upcoming');
@@ -13,8 +41,9 @@ export default function Visits() {
   const [pickDate, setPickDate] = useState(() => new Date().getDate());
   const [pickTime, setPickTime] = useState('11:00 AM');
   const [showCancel, setShowCancel] = useState(false);
-  const [visitRows, setVisitRows] = useState([]);
-  const [propertyRows, setPropertyRows] = useState([]);
+  const [visitRows, setVisitRows] = useState(() => initialVisitsCache.visits);
+  const [propertyRows, setPropertyRows] = useState(() => initialVisitsCache.properties);
+  const [loadingVisits, setLoadingVisits] = useState(!initialVisitsCache.visits.length);
   const [notice, setNotice] = useState('');
 
   const cur = stack[stack.length - 1];
@@ -44,6 +73,7 @@ export default function Visits() {
     const latest = await getJson('/api/visits/mine', session.access_token).catch(() => []);
     const rows = Array.isArray(latest) ? latest : [];
     setVisitRows(rows);
+    saveVisitsCache(visitsCacheKey, { visits: rows, properties: propertyRows });
     return rows;
   };
   const buildVisitDate = () => {
@@ -60,16 +90,22 @@ export default function Visits() {
       return;
     }
     let active = true;
+    setLoadingVisits(!visitRows.length);
     Promise.all([
       getJson('/api/visits/mine', session.access_token).catch(() => []),
       getJson('/api/properties', session.access_token).catch(() => []),
     ]).then(([visits, properties]) => {
       if (!active) return;
-      setVisitRows(Array.isArray(visits) ? visits : []);
-      setPropertyRows(Array.isArray(properties) ? properties : []);
+      const nextVisits = Array.isArray(visits) ? visits : [];
+      const nextProperties = Array.isArray(properties) ? properties : [];
+      setVisitRows(nextVisits);
+      setPropertyRows(nextProperties);
+      saveVisitsCache(visitsCacheKey, { visits: nextVisits, properties: nextProperties });
+    }).finally(() => {
+      if (active) setLoadingVisits(false);
     });
     return () => { active = false; };
-  }, [navigate, session?.access_token, session?.user?.role]);
+  }, [navigate, session?.access_token, session?.user?.role, visitsCacheKey]);
 
   const I = {
     eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 12a2.5 2.5 0 1 0 0 .01',
@@ -459,8 +495,24 @@ export default function Visits() {
         </div>
 
         <div style={{'padding': '18px 22px 0'}}>
+          {loadingVisits && listEmpty && (
+          <div style={{'display': 'flex', 'flexDirection': 'column', 'gap': '14px'}}>
+            {[1, 2].map((item) => (
+              <div key={item} style={{'background': '#fff', 'borderRadius': '22px', 'border': '1px solid #eef3ec', 'padding': '14px', 'boxShadow': '0 14px 34px -24px rgba(18,53,29,.55)'}}>
+                <div style={{'display': 'flex', 'gap': '13px'}}>
+                  <div className="rv-skel" style={{width: '88px', height: '88px', borderRadius: '15px', flex: 'none'}}></div>
+                  <div style={{'flex': '1', 'display': 'grid', 'gap': '10px', 'alignContent': 'center'}}>
+                    <div className="rv-skel" style={{height: '15px', width: '76%', borderRadius: '8px'}}></div>
+                    <div className="rv-skel" style={{height: '12px', width: '56%', borderRadius: '8px'}}></div>
+                    <div className="rv-skel" style={{height: '12px', width: '44%', borderRadius: '8px'}}></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          )}
           {/* EMPTY */}
-          {listEmpty && (
+          {!loadingVisits && listEmpty && (
           <div style={{'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'textAlign': 'center', 'padding': '56px 24px'}}>
             <div style={{'width': '90px', 'height': '90px', 'borderRadius': '28px', 'background': '#eef6ea', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}}>
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#8fae8c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>
