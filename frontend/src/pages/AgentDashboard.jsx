@@ -269,11 +269,19 @@ export default function AgentDashboard() {
       }));
 
       const latestSession = loadSession();
-      if (latestSession?.access_token && latestSession.access_token !== session.access_token) {
-        setSession(latestSession);
+      const profileSource = mergePartnerIdentity(nextAgentData.profile, latestSession?.user, user);
+      if (latestSession?.access_token) {
+        const nextSession = {
+          ...latestSession,
+          user: mergePartnerIdentity(profileSource, latestSession.user),
+        };
+        const identityChanged = JSON.stringify(nextSession.user || {}) !== JSON.stringify(latestSession.user || {});
+        if (latestSession.access_token !== session.access_token || identityChanged) {
+          saveSession(nextSession);
+          setSession(nextSession);
+        }
       }
 
-      const profileSource = mergePartnerIdentity(user, latestSession?.user, nextAgentData.profile);
       if (!profileDirtyRef.current || pageRef.current !== 'profile') {
         setProfileForm({
           name: profileSource.name || user.name || '',
@@ -411,7 +419,7 @@ export default function AgentDashboard() {
     };
   }, [session?.access_token]);
 
-  const displayedUser = mergePartnerIdentity(user, agentData.profile, profileDirty ? profileForm : null);
+  const displayedUser = mergePartnerIdentity(profileDirty ? profileForm : null, agentData.profile, user);
   const assets = agentData.assets || [];
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
   const bookings = agentData.bookings || [];
@@ -455,14 +463,14 @@ export default function AgentDashboard() {
   const canSubmitVisit = Boolean(visitForm.property_id && visitForm.customer_name.trim() && visitForm.customer_phone.trim() && visitForm.visit_date && visitForm.visit_time.trim());
   const canSubmitBooking = Boolean(bookingForm.plot_id && bookingForm.customer_name.trim() && bookingForm.customer_phone.trim());
   const shellStyle = {
-    height: isMobile ? 'auto' : '100dvh',
-    maxHeight: isMobile ? 'none' : '100dvh',
+    height: 'auto',
+    maxHeight: 'none',
     minHeight: '100dvh',
     display: 'flex',
     flexDirection: isMobile ? 'column' : 'row',
     background: '#eef2ec',
     color: '#16231a',
-    overflow: isMobile ? 'visible' : 'hidden',
+    overflow: 'visible',
   };
   const sidebarStyle = {
     width: isMobile ? 'auto' : '260px',
@@ -473,9 +481,12 @@ export default function AgentDashboard() {
     flexDirection: 'column',
     alignItems: 'stretch',
     gap: isMobile ? '10px' : '18px',
-    position: 'relative',
+    position: isMobile ? 'relative' : 'sticky',
     flexShrink: 0,
     top: 0,
+    height: isMobile ? 'auto' : '100dvh',
+    maxHeight: isMobile ? 'none' : '100dvh',
+    overflowY: isMobile ? 'visible' : 'auto',
     zIndex: 30,
     boxShadow: isMobile ? '0 12px 28px -24px rgba(9,32,16,.9)' : 'none',
   };
@@ -509,7 +520,7 @@ export default function AgentDashboard() {
     padding: isMobile ? '14px 12px 24px' : '24px',
     minWidth: 0,
     overflowX: 'hidden',
-    overflowY: isMobile ? 'visible' : 'auto',
+    overflowY: 'visible',
     WebkitOverflowScrolling: 'touch',
     overscrollBehavior: 'contain',
   };
@@ -701,7 +712,7 @@ export default function AgentDashboard() {
         if (payload[k] === '') payload[k] = null;
       });
       const updated = await putJson('/api/auth/profile', payload, session.access_token);
-      const mergedUser = mergePartnerIdentity(user, updated, payload);
+      const mergedUser = mergePartnerIdentity(updated, payload, user);
       const nextSession = { ...session, user: mergedUser };
       saveSession(nextSession);
       setSession(nextSession);

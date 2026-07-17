@@ -786,6 +786,34 @@ def phone_identity_variants(phone: Optional[str]) -> List[str]:
     return [value for value in variants if value]
 
 
+PROFILE_PLACEHOLDER_NAMES = {"agent", "partner", "admin", "customer", "user"}
+AGENT_PROFILE_SYNC_FIELDS = {"name", "address", "occupation", "age", "aadhaar_number", "agent_brand_name", "updated_at"}
+
+
+def is_placeholder_profile_name(value: Optional[str]) -> bool:
+    text = str(value or "").strip().lower()
+    return not text or text in PROFILE_PLACEHOLDER_NAMES
+
+
+def first_real_profile_name(*values: Optional[str]) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text and not is_placeholder_profile_name(text):
+            return text
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def first_filled_profile_value(*values: Any) -> Any:
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def local_find_user(*, user_id: Optional[str] = None, email: Optional[str] = None, phone: Optional[str] = None, google_sub: Optional[str] = None) -> Optional[Dict[str, Any]]:
     store = load_local_store()
     phone_variants = set(phone_identity_variants(phone))
@@ -2869,6 +2897,43 @@ def clean_user(doc: Dict[str, Any]) -> Dict[str, Any]:
     return user
 
 
+async def resolve_agent_profile_identity(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the freshest same-phone agent profile without letting placeholders win."""
+    if not is_agent_role(user.get("role")) or not await is_database_available():
+        return clean_user(user)
+
+    phone_variants = phone_identity_variants(user.get("phone"))
+    query_parts: List[Dict[str, Any]] = [{"id": user.get("id")}]
+    if phone_variants:
+        query_parts.append({"phone": {"$in": phone_variants}})
+
+    candidates = await db.users.find(
+        {"$or": query_parts, "role": ROLE_AGENT},
+        {"_id": 0},
+    ).to_list(25)
+    if not candidates:
+        return clean_user(user)
+
+    candidates = sorted(
+        candidates,
+        key=lambda item: str(item.get("updated_at") or item.get("last_login_at") or item.get("created_at") or ""),
+        reverse=True,
+    )
+    by_id = next((item for item in candidates if item.get("id") == user.get("id")), user)
+    merged = clean_user({**by_id})
+    merged["name"] = first_real_profile_name(
+        *(item.get("name") for item in candidates),
+        user.get("name"),
+    ) or merged.get("name") or "Partner"
+
+    for field in ("email", "address", "occupation", "age", "aadhaar_number", "agent_brand_name"):
+        value = first_filled_profile_value(*(item.get(field) for item in candidates), user.get(field))
+        if value not in (None, ""):
+            merged[field] = value
+
+    return merged
+
+
 def websocket_role_for_user(user: Optional[Dict[str, Any]]) -> str:
     if not user:
         return "guest"
@@ -3342,6 +3407,8 @@ async def issue_token_response(
     session_role: Optional[str] = None,
 ) -> TokenResp:
     clean = clean_user(user)
+    if is_agent_role(clean.get("role")):
+        clean = await resolve_agent_profile_identity(clean)
     current_session_id = session_id or str(uuid.uuid4())
     refresh_token, refresh_token_id = create_refresh_token(
         clean["id"],
@@ -4372,6 +4439,8 @@ async def refresh_auth_session(req: RefreshTokenReq, request: Request, response:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if is_agent_role(user.get("role")):
+        user = await resolve_agent_profile_identity(user)
 
     return await issue_token_response(user, response, request, session_id=session_id, session_role=session.get("session_role"))
 
@@ -4389,6 +4458,8 @@ async def logout_auth_session(req: RefreshTokenReq, request: Request, response: 
 
 @api_router.get("/auth/me")
 async def me(user: Dict[str, Any] = Depends(get_current_user)):
+    if is_agent_role(user.get("role")):
+        user = await resolve_agent_profile_identity(user)
     return clean_user(user)
 
 
@@ -4432,11 +4503,26 @@ async def update_profile(req: UpdateProfileReq, user: Dict[str, Any] = Depends(g
 
         try:
             await db.users.update_one({"id": user["id"]}, {"$set": update})
+            if is_agent_role(user.get("role")):
+                phone_variants = phone_identity_variants(user.get("phone"))
+                sync_fields = {
+                    key: value
+                    for key, value in update.items()
+                    if key in AGENT_PROFILE_SYNC_FIELDS
+                }
+                if sync_fields:
+                    agent_filters: List[Dict[str, Any]] = [{"id": user["id"]}]
+                    if phone_variants:
+                        agent_filters.append({"phone": {"$in": phone_variants}})
+                    await db.users.update_many(
+                        {"$or": agent_filters, "role": ROLE_AGENT},
+                        {"$set": sync_fields},
+                    )
             if user.get("id") == PRIMARY_AGENT_USER_ID or normalize_phone(user.get("phone")) == PRIMARY_AGENT_PHONE:
                 sync_fields = {
                     key: value
                     for key, value in update.items()
-                    if key in {"name", "address", "occupation", "age", "aadhaar_number", "agent_brand_name", "updated_at"}
+                    if key in AGENT_PROFILE_SYNC_FIELDS
                 }
                 if sync_fields:
                     await db.users.update_many(
@@ -4451,6 +4537,8 @@ async def update_profile(req: UpdateProfileReq, user: Dict[str, Any] = Depends(g
             )
 
         updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+        if is_agent_role((updated or user).get("role")):
+            updated = await resolve_agent_profile_identity(updated or user)
         return apply_session_role(updated, {"session_role": user.get("portal_role")})
     if not ALLOW_LOCAL_AUTH_FALLBACK:
         raise HTTPException(status_code=503, detail="Authentication database is unavailable")
@@ -6858,9 +6946,10 @@ async def agent_dashboard(user: Dict[str, Any] = Depends(get_agent_user)):
         notifications_count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
         active_deals = len([item for item in crm_dashboard.get("opportunities", []) if item.get("stage") not in CRM_CLOSED_STAGES])
         logger.info("Agent dashboard: assets=%d bookings=%d visits=%d leads=%d", len(assets), len(bookings), len(visits), len(crm_dashboard.get("leads", [])))
+        profile = await resolve_agent_profile_identity(user)
 
         return {
-            "profile": clean_user(user),
+            "profile": profile,
             "sub_agents": [],
             "kpis": {
                 "assets": len(assets),
