@@ -6,10 +6,8 @@ import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { firebaseAuth } from "../lib/firebase";
 import { clearSession, getBackendUrl, loadSession, postJson, restoreSession, saveSession } from "../lib/auth";
 
-const RESEND_SECONDS = 60;
-const OTP_REQUEST_COOLDOWN_MS = 60 * 1000;
-const OTP_BLOCK_COOLDOWN_MS = 30 * 60 * 1000;
-const OTP_COOLDOWN_KEY = "rivan_otp_request_cooldown";
+const RESEND_SECONDS = 45;
+const OTP_RATE_LIMIT_RETRY_SECONDS = 120;
 const PRIMARY_AGENT_PHONE = "9052644345";
 const LAST_STAFF_ROLE_KEY = "rivan_last_staff_role";
 const EMPTY_OTP = ["", "", "", "", "", ""];
@@ -39,32 +37,6 @@ function formatPhoneLabel(digits) {
 
 function isPrimaryAgentPhone(digits) {
   return normalizePhone(digits) === PRIMARY_AGENT_PHONE;
-}
-
-function getOtpCooldownKey(role, digits) {
-  return `${OTP_COOLDOWN_KEY}:${role}:${normalizePhone(digits)}`;
-}
-
-function getRemainingCooldownMs(role, digits) {
-  try {
-    const value = Number(localStorage.getItem(getOtpCooldownKey(role, digits)) || "0");
-    return Math.max(0, value - Date.now());
-  } catch {
-    return 0;
-  }
-}
-
-function setOtpCooldown(role, digits, durationMs) {
-  try {
-    localStorage.setItem(getOtpCooldownKey(role, digits), String(Date.now() + durationMs));
-  } catch {}
-}
-
-function formatWaitTime(milliseconds) {
-  const seconds = Math.ceil(milliseconds / 1000);
-  if (seconds <= 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
-  const minutes = Math.ceil(seconds / 60);
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
 function formatCountdown(seconds) {
@@ -249,6 +221,11 @@ export default function Login() {
     setApplication((current) => ({ ...current, [field]: value }));
   };
 
+  const updatePhone = (value) => {
+    setPhone(normalizePhone(value));
+    if (countdown > 0) setCountdown(0);
+  };
+
   const postCustomerExchange = async (payload) => {
     try {
       return await postJson("/api/auth/customer/firebase", payload);
@@ -327,13 +304,6 @@ export default function Login() {
       return;
     }
 
-    const cooldownMs = getRemainingCooldownMs(roleRef.current, normalizedPhone);
-    if (cooldownMs > 0) {
-      setError(`Please wait ${formatWaitTime(cooldownMs)} before requesting another OTP.`);
-      setCountdown(Math.ceil(cooldownMs / 1000));
-      return;
-    }
-
     if (!useNativePhoneAuth && (!recaptchaRef.current || !recaptchaReady)) {
       setError("Secure OTP check is still getting ready. Please try again in a moment.");
       return;
@@ -354,7 +324,6 @@ export default function Login() {
 
       const fullPhone = `+91${normalizedPhone}`;
       setStatus("Sending OTP now...");
-      setOtpCooldown(roleRef.current, normalizedPhone, OTP_REQUEST_COOLDOWN_MS);
       if (useNativePhoneAuth) {
         await startNativePhoneOtp(fullPhone, normalizedPhone, precheck);
         return;
@@ -367,13 +336,12 @@ export default function Login() {
       );
       confirmationRef.current = confirmation;
       setCountdown(RESEND_SECONDS);
-      setStatus(precheck.statusMessage || `OTP sent to ${formatPhoneLabel(normalizedPhone)}.`);
+      setStatus(precheck.statusMessage || `OTP sent to ${formatPhoneLabel(normalizedPhone)}. It may take a few seconds to arrive.`);
       setScreen("otp");
     } catch (err) {
       setError(friendlyFirebaseError(err));
       if (isFirebaseRateLimitError(err)) {
-        setOtpCooldown(roleRef.current, normalizedPhone, OTP_BLOCK_COOLDOWN_MS);
-        setCountdown(Math.ceil(OTP_BLOCK_COOLDOWN_MS / 1000));
+        setCountdown(OTP_RATE_LIMIT_RETRY_SECONDS);
       }
       if (String(err?.code || err?.message || "").includes("captcha-check-failed")) {
         resetFirebaseRecaptcha();
@@ -395,7 +363,7 @@ export default function Login() {
       nativePhoneVerificationIdRef.current = event.verificationId;
       confirmationRef.current = { native: true, verificationId: event.verificationId };
       setCountdown(RESEND_SECONDS);
-      setStatus(precheck.statusMessage || `OTP sent to ${formatPhoneLabel(normalizedPhone)}.`);
+      setStatus(precheck.statusMessage || `OTP sent to ${formatPhoneLabel(normalizedPhone)}. It may take a few seconds to arrive.`);
       setScreen("otp");
       setLoading(false);
     });
@@ -416,8 +384,7 @@ export default function Login() {
     const failedHandle = await FirebaseAuthentication.addListener("phoneVerificationFailed", (event) => {
       setError(friendlyFirebaseError(event));
       if (isFirebaseRateLimitError(event)) {
-        setOtpCooldown(roleRef.current, normalizedPhone, OTP_BLOCK_COOLDOWN_MS);
-        setCountdown(Math.ceil(OTP_BLOCK_COOLDOWN_MS / 1000));
+        setCountdown(OTP_RATE_LIMIT_RETRY_SECONDS);
       }
       setLoading(false);
     });
@@ -539,6 +506,14 @@ export default function Login() {
     admin: "Only the authorized admin mobile number can continue",
   };
 
+  const loginButtonLabel = !recaptchaReady
+    ? "Preparing..."
+    : loading
+      ? "Sending..."
+      : countdown > 0
+        ? `Try again in ${formatCountdown(countdown)}`
+        : "Continue";
+
   function friendlyFirebaseError(error) {
     const message = String(error?.message || error || "");
     const code = String(error?.code || "");
@@ -549,7 +524,7 @@ export default function Login() {
       return "Firebase rejected this APK credential. Reinstall the latest release APK and confirm the Android app SHA-1/SHA-256 are added in Firebase.";
     }
     if (isFirebaseRateLimitError(error)) {
-      return "Firebase has temporarily blocked OTP attempts for this number/device because too many requests were made. Please wait at least 30 minutes, then try once.";
+      return "OTP requests are cooling down for this number/device. Please wait a little and try again once, or use a different approved number if urgent.";
     }
     if (code.includes("invalid-phone-number")) {
       return "Enter a valid 10-digit mobile number.";
@@ -1037,7 +1012,7 @@ export default function Login() {
                   </span>
                   <input
                     value={phone}
-                    onChange={(event) => setPhone(normalizePhone(event.target.value))}
+                    onChange={(event) => updatePhone(event.target.value)}
                     inputMode="numeric"
                     placeholder="Enter your mobile number"
                     style={{
@@ -1078,7 +1053,7 @@ export default function Login() {
 
               <button
                 onClick={requestOtp}
-                disabled={loading || !recaptchaReady}
+                disabled={loading || !recaptchaReady || countdown > 0}
                 style={{
                   marginTop: "24px",
                   width: "100%",
@@ -1090,16 +1065,16 @@ export default function Login() {
                   fontFamily: "inherit",
                   fontSize: "16px",
                   fontWeight: "700",
-                  cursor: loading || !recaptchaReady ? "wait" : "pointer",
+                  cursor: loading || !recaptchaReady || countdown > 0 ? "wait" : "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "10px",
                   boxShadow: "0 14px 26px -10px rgba(18,68,35,.75)",
-                  opacity: loading || !recaptchaReady ? 0.7 : 1,
+                  opacity: loading || !recaptchaReady || countdown > 0 ? 0.7 : 1,
                 }}
               >
-                {!recaptchaReady ? "Preparing..." : loading ? "Sending..." : "Continue"} <span style={{ fontSize: "19px" }}>→</span>
+                {loginButtonLabel} <span style={{ fontSize: "19px" }}>→</span>
               </button>
             </div>
           )}
