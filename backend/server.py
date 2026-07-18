@@ -219,7 +219,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("rivan")
-DB_AVAILABILITY_TTL_SECONDS = float(os.environ.get("DB_AVAILABILITY_TTL_SECONDS", "4"))
+DB_AVAILABILITY_TTL_SECONDS = float(os.environ.get("DB_AVAILABILITY_TTL_SECONDS", "30"))
 DB_AVAILABILITY_TIMEOUT_SECONDS = float(
     os.environ.get(
         "DB_AVAILABILITY_TIMEOUT_SECONDS",

@@ -50,7 +50,13 @@ function formatCountdown(seconds) {
 }
 
 function shouldUseNativePhoneAuth() {
-  return Boolean(Capacitor?.isNativePlatform?.());
+  const platform = Capacitor?.getPlatform?.();
+  return Boolean(
+    Capacitor?.isNativePlatform?.() ||
+      platform === "android" ||
+      platform === "ios" ||
+      window.Capacitor?.isNativePlatform?.(),
+  );
 }
 
 function startGuestBrowsing(navigate) {
@@ -358,6 +364,10 @@ export default function Login() {
     await clearNativePhoneListeners();
     nativePhoneVerificationIdRef.current = "";
     confirmationRef.current = null;
+    setOtp(EMPTY_OTP);
+    setCountdown(RESEND_SECONDS);
+    setStatus("Sending OTP securely. If Firebase opens a quick verification page, it will return here automatically.");
+    setScreen("otp");
 
     const codeSentHandle = await FirebaseAuthentication.addListener("phoneCodeSent", (event) => {
       nativePhoneVerificationIdRef.current = event.verificationId;
@@ -392,9 +402,9 @@ export default function Login() {
     nativePhoneListenerHandlesRef.current = [codeSentHandle, completedHandle, failedHandle];
     await FirebaseAuthentication.signInWithPhoneNumber({
       phoneNumber: fullPhone,
-      timeout: 60,
+      timeout: 30,
     });
-    setStatus("Waiting for SMS verification...");
+    setStatus("OTP request submitted. Enter the code once the SMS arrives.");
   };
 
   const submitAgentApplication = async () => {
