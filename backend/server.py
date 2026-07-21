@@ -3001,7 +3001,7 @@ async def resolve_agent_profile_identity(user: Dict[str, Any]) -> Dict[str, Any]
     merged["name"] = first_real_profile_name(
         *(item.get("name") for item in candidates),
         user.get("name"),
-    ) or merged.get("name") or "Partner"
+    )
 
     for field in ("email", "address", "occupation", "age", "aadhaar_number", "agent_brand_name"):
         value = first_filled_profile_value(*(item.get(field) for item in candidates), user.get(field))
@@ -3929,7 +3929,11 @@ async def reconcile_primary_agent_profile() -> Optional[Dict[str, Any]]:
     for field in profile_fields:
         source_value = source.get(field)
         primary_value = (primary or {}).get(field)
-        if source_value not in (None, "") and (field != "name" or str(source_value).strip().lower() != "agent"):
+        if field == "name" and is_placeholder_profile_name(source_value):
+            if primary_value not in (None, "") and not is_placeholder_profile_name(primary_value):
+                update[field] = primary_value
+            continue
+        if source_value not in (None, ""):
             update[field] = source_value
         elif primary_value not in (None, ""):
             update[field] = primary_value
@@ -4622,6 +4626,18 @@ async def update_profile(req: UpdateProfileReq, user: Dict[str, Any] = Depends(g
         }
     update["updated_at"] = now_utc().isoformat()
     if update and await is_database_available():
+        if is_agent_role(user.get("role")) and "name" in update and is_placeholder_profile_name(update.get("name")):
+            phone_variants = phone_identity_variants(user.get("phone"))
+            query_parts: List[Dict[str, Any]] = [{"id": user["id"]}]
+            if phone_variants:
+                query_parts.append({"phone": {"$in": phone_variants}})
+            candidates = await db.users.find({"$or": query_parts, "role": ROLE_AGENT}, {"_id": 0}).to_list(25)
+            preserved_name = first_real_profile_name(*(item.get("name") for item in candidates), user.get("name"))
+            if preserved_name:
+                update["name"] = preserved_name
+            else:
+                update.pop("name", None)
+
         if update.get("email"):
             existing_user = await db.users.find_one(
                 {"email": update["email"], "id": {"$ne": user["id"]}},

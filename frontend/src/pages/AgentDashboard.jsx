@@ -114,6 +114,10 @@ function mergePartnerIdentity(...sources) {
   };
 }
 
+function cleanPartnerName(...values) {
+  return firstDisplayName(...values);
+}
+
 function formatSquareYards(item) {
   const raw = item?.size_sqy || item?.sq_yards || item?.square_yards;
   if (raw) return `${raw} sq yards`;
@@ -297,7 +301,7 @@ export default function AgentDashboard() {
 
       if (!profileDirtyRef.current || pageRef.current !== 'profile') {
         setProfileForm({
-          name: profileSource.name || user.name || '',
+          name: cleanPartnerName(profileSource.name, user.name),
           email: profileSource.email || user.email || '',
           address: profileSource.address || user.address || '',
           occupation: profileSource.occupation || user.occupation || '',
@@ -757,6 +761,9 @@ export default function AgentDashboard() {
       Object.keys(payload).forEach(k => {
         if (payload[k] === '') payload[k] = null;
       });
+      if (isPlaceholderName(payload.name)) {
+        payload.name = null;
+      }
       const updated = await putJson('/api/auth/profile', payload, session.access_token);
       const mergedUser = mergePartnerIdentity(updated, payload, user);
       const nextSession = { ...session, user: mergedUser };
