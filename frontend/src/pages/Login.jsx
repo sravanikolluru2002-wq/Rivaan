@@ -167,33 +167,33 @@ export default function Login() {
   }, [countdown]);
 
   useEffect(() => {
-    if (shouldUseNativePhoneAuth()) {
-      setRecaptchaReady(true);
-      return undefined;
+    setRecaptchaReady(true);
+  }, [recaptchaResetCount, screen]);
+
+  const ensureWebRecaptcha = async () => {
+    const container = document.getElementById("rivan-login-recaptcha");
+    if (!container) {
+      throw new Error("Secure OTP check is still loading. Please try again.");
     }
 
-    if (!window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, "rivan-login-recaptcha", {
-          size: "invisible",
-          callback: () => {},
-          "expired-callback": () => setRecaptchaReady(false),
-        });
-        window.recaptchaVerifier
-          .render()
-          .then(() => setRecaptchaReady(true))
-          .catch((err) => {
-            console.error("Recaptcha render error:", err);
-            setRecaptchaReady(false);
-          });
-      } catch (err) {
-        console.error("Recaptcha init error:", err);
-      }
-    } else {
-      setRecaptchaReady(true);
-    }
-    recaptchaRef.current = window.recaptchaVerifier;
-  }, [recaptchaResetCount]);
+    resetFirebaseRecaptcha();
+    container.innerHTML = "";
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    const verifier = new RecaptchaVerifier(firebaseAuth, container, {
+      size: "invisible",
+      callback: () => setRecaptchaReady(true),
+      "expired-callback": () => {
+        resetFirebaseRecaptcha();
+        setRecaptchaReady(false);
+      },
+    });
+    await verifier.render();
+    window.recaptchaVerifier = verifier;
+    recaptchaRef.current = verifier;
+    setRecaptchaReady(true);
+    return verifier;
+  };
 
   const resetMessages = () => {
     setError("");
@@ -313,7 +313,7 @@ export default function Login() {
       return;
     }
 
-    if (!useNativePhoneAuth && (!recaptchaRef.current || !recaptchaReady)) {
+    if (!useNativePhoneAuth && !recaptchaReady) {
       setError("Secure OTP check is still getting ready. Please try again in a moment.");
       return;
     }
@@ -338,10 +338,11 @@ export default function Login() {
         return;
       }
 
+      const verifier = await ensureWebRecaptcha();
       const confirmation = await signInWithPhoneNumber(
         firebaseAuth,
         fullPhone,
-        recaptchaRef.current,
+        verifier,
       );
       confirmationRef.current = confirmation;
       setCountdown(RESEND_SECONDS);
@@ -565,6 +566,7 @@ export default function Login() {
       window.recaptchaVerifier?.clear?.();
     } catch {}
     window.recaptchaVerifier = null;
+    recaptchaRef.current = null;
   }
 
   const inputStyle = {
@@ -1421,7 +1423,18 @@ export default function Login() {
         </div>
       </div>
 
-      <div id="rivan-login-recaptcha" />
+      <div
+        id="rivan-login-recaptcha"
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          left: "-10000px",
+          bottom: 0,
+          width: "1px",
+          height: "1px",
+          overflow: "hidden",
+        }}
+      />
     </>
   );
 }
